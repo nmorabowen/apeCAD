@@ -70,6 +70,8 @@ class AddPolyline:
 
 @dataclass(frozen=True, slots=True)
 class AddBox:
+    """AABB sugar: replay creates four points, a Face, and an Extrude Solid."""
+
     origin_xyz_mm: XYZ
     size_xyz_mm: XYZ
     label: str | None = None
@@ -411,6 +413,21 @@ class Tag:
             raise DocumentError(f"tag {self.name!r} needs at least one entity id")
 
 
+@dataclass(frozen=True, slots=True)
+class SetLabel:
+    """Rename (or clear) the unique label on one entity."""
+
+    entity_id: EntityId
+    label: str | None = None
+
+    def __post_init__(self) -> None:
+        raw = self.label
+        if raw is None or raw.strip() == "":
+            object.__setattr__(self, "label", None)
+        else:
+            object.__setattr__(self, "label", _optional_label(raw))
+
+
 Op = (
     AddPoint
     | AddLine
@@ -438,6 +455,7 @@ Op = (
     | ArrayPolar
     | Delete
     | Tag
+    | SetLabel
 )
 
 
@@ -647,6 +665,12 @@ def op_to_dict(op: Op) -> dict[str, object]:
             "op": "Delete",
             "entity_ids": list(op.entity_ids),
         }
+    if isinstance(op, SetLabel):
+        return {
+            "op": "SetLabel",
+            "entity_id": op.entity_id,
+            "label": op.label,
+        }
     return {
         "op": "Tag",
         "name": op.name,
@@ -842,6 +866,11 @@ def _parse_op(payload: dict[str, object]) -> Op:
         )
     if kind == "Delete":
         return Delete(entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]))
+    if kind == "SetLabel":
+        return SetLabel(
+            entity_id=_as_entity_id("entity_id", payload["entity_id"]),
+            label=_as_optional_str(payload.get("label")),
+        )
     if kind == "Tag":
         return Tag(
             name=_as_str("name", payload["name"]),

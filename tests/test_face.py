@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from apeCAD import Circle, Document, DocumentError, Face, Solid
+from apeCAD import Circle, Document, DocumentError, Face, Point, Solid
 
 
 def test_face_and_extrude_round_trip() -> None:
@@ -19,6 +19,11 @@ def test_face_and_extrude_round_trip() -> None:
     assert isinstance(face, Face)
     assert isinstance(solid, Solid)
     assert solid.distance_mm == 200.0
+    assert solid.cap_id is not None
+    cap = document.entity(solid.cap_id)
+    assert isinstance(cap, Face)
+    assert len(cap.point_ids) == 4
+    assert len(document.points()) == 8
     loaded = Document.from_json(document.to_json())
     assert loaded.entity_by_label("slab_solid").entity_id == solid.entity_id
     frame = loaded.to_frame()
@@ -41,6 +46,11 @@ def test_circle_is_an_extrudable_profile() -> None:
     solid = document.extrude(circle.entity_id, 400.0, label="column")
     assert isinstance(solid, Solid)
     assert solid.face_id == circle.entity_id
+    assert solid.cap_id is not None
+    lid = document.entity(solid.cap_id)
+    assert isinstance(lid, Point)
+    assert lid.xyz_mm.z_mm == pytest.approx(400.0)
+    assert len(document.points()) == 2
     frame = document.to_frame()
     assert frame.volumes[0].size_xyz_mm.z_mm == 400.0
     assert frame.volumes[0].size_xyz_mm.x_mm == 3000.0

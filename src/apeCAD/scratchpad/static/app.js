@@ -1,8 +1,29 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 
 const SNAP_APERTURE_MM = 400;
-const GRID_MM = 100;
+const GRID_DEFAULT_MINOR_MM = 100;
+const GRID_DEFAULT_MAJOR_MM = 1000;
+const GRID_EXTENT_MM = 40000;
+const GRID_MAX_DIVISIONS = 800;
+const GRID_MIN_MM = 1;
+const GRID_MAX_MM = 10000;
+const GRID_HIDDEN_SCALE_DEFAULT = 0.25;
+const GRID_HIDDEN_SCALE_MIN = 0.25;
+const GRID_HIDDEN_SCALE_MAX = 4;
+const GRID_MINOR_STYLE_DEFAULT = "dots";
+const GRID_DOT_SIZE_DEFAULT = 1.5;
+const GRID_DOT_SIZE_MIN = 0.5;
+const GRID_DOT_SIZE_MAX = 8;
+const GRID_LINE_WIDTH_DEFAULT = 1;
+const GRID_LINE_WIDTH_MIN = 0.5;
+const GRID_LINE_WIDTH_MAX = 8;
+const UNIT_MM = { mm: 1, cm: 10, m: 1000, in: 25.4 };
+const UNIT_STEP = { mm: 1, cm: 0.1, m: 0.01, in: 0.01 };
+const UNIT_DECIMALS = { mm: 0, cm: 1, m: 3, in: 2 };
 
 const canvas = document.getElementById("view");
 const status = document.getElementById("status");
@@ -12,9 +33,9 @@ const consolePrompt = document.getElementById("console-prompt");
 const consoleInput = document.getElementById("console-input");
 const projButton = document.getElementById("proj");
 const snapButton = document.getElementById("snap");
+const gridSnapButton = document.getElementById("grid-snap");
 const orthoButton = document.getElementById("ortho");
 const gridButton = document.getElementById("grid");
-const sidesInput = document.getElementById("sides");
 const coordsEl = document.getElementById("coords");
 const dimsEl = document.getElementById("dims");
 const treeEl = document.getElementById("tree");
@@ -25,6 +46,7 @@ let tool = "select";
 let pending = null;
 let lastPointer = null;
 let selectedIds = new Set();
+let hiddenIds = new Set();
 let cutterIds = new Set();
 let marqueeOrigin = null;
 let sceneState = {
@@ -33,99 +55,799 @@ let sceneState = {
 };
 let pointerDown = null;
 let useOrtho = true;
+let projection = "parallel";
+let namedView = null;
 let snapOn = true;
+let gridSnapOn = true;
 let gridOn = true;
+let gridMinorOn = true;
 let orthoOn = false;
 let ghostDims = [];
 let committedDims = [];
+let saveName = "apecad.json";
+let viewCubeOn = true;
+
+const PREFS_KEY = "apeCAD.prefs.v2";
+const LAYOUT_KEY = "apeCAD.layout.v2";
+const PREF_DEFAULTS = {
+  background: "g5",
+  clay: 176,
+  curve: "#111111",
+  keyLight: true,
+  ao: true,
+  showEdges: true,
+  showCurves: true,
+  showFaces: true,
+  grid: true,
+  gridSnap: true,
+  gridMinorOn: true,
+  gridMinor: GRID_DEFAULT_MINOR_MM,
+  gridMajor: GRID_DEFAULT_MAJOR_MM,
+  gridAuto: true,
+  gridHiddenScale: GRID_HIDDEN_SCALE_DEFAULT,
+  gridMinorStyle: GRID_MINOR_STYLE_DEFAULT,
+  gridDotSize: GRID_DOT_SIZE_DEFAULT,
+  gridLineWidth: GRID_LINE_WIDTH_DEFAULT,
+  displayUnit: "mm",
+};
+const BACKGROUNDS = {
+  g2: { bg: 0x1c1c1c, major: 0x3c3c3c, minor: 0x2a2a2a },
+  g5: { bg: 0xe4e9ee, major: 0xc0c0c0, minor: 0xd2d2d2 },
+  g6: { bg: 0xa3a6aa, major: 0x8a8e92, minor: 0x96999d },
+};
+const EDGE_COLOR = 0x111111;
+const CURVE_PICK = 0x4a90d9;
+const CURVE_HOVER = 0x6aa8e8;
+const SNAP_COLOR = 0xd55e00;
+
+function clampGridSpacing(value, fallback = GRID_DEFAULT_MINOR_MM) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return Math.min(Math.max(raw, GRID_MIN_MM), GRID_MAX_MM);
+}
+
+function loadPrefs() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
+    const merged = { ...PREF_DEFAULTS, ...(raw && typeof raw === "object" ? raw : {}) };
+    if (raw && typeof raw === "object" && raw.gridMinor == null && raw.gridSpacing != null) {
+      merged.gridMinor = clampGridSpacing(raw.gridSpacing);
+    }
+    if (raw && typeof raw === "object" && raw.gridMajor == null) {
+      merged.gridMajor = clampGridSpacing(merged.gridMinor * 10, GRID_DEFAULT_MAJOR_MM);
+    }
+    if (merged.gridMajor < merged.gridMinor) merged.gridMajor = merged.gridMinor;
+    return merged;
+  } catch (_error) {
+    return { ...PREF_DEFAULTS };
+  }
+}
+
+let prefs = loadPrefs();
+if (prefs.grid === false) gridOn = false;
+if (prefs.gridSnap === false) gridSnapOn = false;
+if (prefs.gridMinorOn === false) gridMinorOn = false;
+prefs.gridHiddenScale = clampHiddenScale(prefs.gridHiddenScale);
+prefs.gridMinorStyle = gridMinorStyle();
+prefs.gridDotSize = clampDotSize(prefs.gridDotSize);
+prefs.gridLineWidth = clampLineWidth(prefs.gridLineWidth);
+prefs.displayUnit = displayUnit();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x14171c);
+scene.background = new THREE.Color(0xe4e9ee);
 
 const WORLD_UP = new THREE.Vector3(0, 0, 1);
 const ISO_DIR = new THREE.Vector3(1, -1, 1);
+const viewUp = new THREE.Vector3(0, 0, 1);
+const VIEW_PRESETS = {
+  top: { dir: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0), label: "Top" },
+  bottom: { dir: new THREE.Vector3(0, 0, -1), up: new THREE.Vector3(0, 1, 0), label: "Bottom" },
+  front: { dir: new THREE.Vector3(0, -1, 0), up: WORLD_UP, label: "Front" },
+  back: { dir: new THREE.Vector3(0, 1, 0), up: WORLD_UP, label: "Back" },
+  right: { dir: new THREE.Vector3(1, 0, 0), up: WORLD_UP, label: "Right" },
+  left: { dir: new THREE.Vector3(-1, 0, 0), up: WORLD_UP, label: "Left" },
+};
 
 const persp = new THREE.PerspectiveCamera(50, 1, 10, 2_000_000);
 persp.up.copy(WORLD_UP);
-persp.position.set(12000, 9000, 14000);
+persp.position.copy(ISO_DIR.clone().normalize().multiplyScalar(10000));
 const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 10, 2_000_000);
 orthoCam.up.copy(WORLD_UP);
 orthoCam.position.copy(persp.position);
 
 const controls = new OrbitControls(orthoCam, canvas);
-controls.target.set(2000, 1500, 0);
+controls.target.set(0, 0, 0);
 controls.mouseButtons.LEFT = -1;
 controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
 controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
 // Keep orbit off the Z pole so lookAt(up=+Z) stays well-defined after Top/Bottom.
 controls.minPolarAngle = 0.04;
 controls.maxPolarAngle = Math.PI - 0.04;
+controls.minDistance = 10;
+controls.maxDistance = 2_000_000;
 controls.update();
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-const key = new THREE.DirectionalLight(0xffffff, 0.6);
-key.position.set(1, 0.6, 1.4);
+const hemi = new THREE.HemisphereLight(0xf4f7fb, 0x6e757c, 0.55);
+scene.add(hemi);
+const key = new THREE.DirectionalLight(0xffffff, 0.45);
+key.position.set(-1.1, 0.85, 1.35);
 scene.add(key);
-const grid = new THREE.GridHelper(40000, 40, 0x3a4450, 0x24303a);
-grid.rotation.x = Math.PI / 2;
-scene.add(grid);
+function clampHiddenScale(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return GRID_HIDDEN_SCALE_DEFAULT;
+  const clamped = Math.min(Math.max(raw, GRID_HIDDEN_SCALE_MIN), GRID_HIDDEN_SCALE_MAX);
+  return Math.round(clamped * 100) / 100;
+}
+
+function hiddenLineScale() {
+  return clampHiddenScale(prefs.gridHiddenScale);
+}
+
+function clampDotSize(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return GRID_DOT_SIZE_DEFAULT;
+  const clamped = Math.min(Math.max(raw, GRID_DOT_SIZE_MIN), GRID_DOT_SIZE_MAX);
+  return Math.round(clamped * 2) / 2;
+}
+
+function gridDotSize() {
+  return clampDotSize(prefs.gridDotSize);
+}
+
+function clampLineWidth(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return GRID_LINE_WIDTH_DEFAULT;
+  const clamped = Math.min(Math.max(raw, GRID_LINE_WIDTH_MIN), GRID_LINE_WIDTH_MAX);
+  return Math.round(clamped * 2) / 2;
+}
+
+function gridLineWidth() {
+  return clampLineWidth(prefs.gridLineWidth);
+}
+
+function gridMinorStyle() {
+  return prefs.gridMinorStyle === "lines" ? "lines" : "dots";
+}
+
+function displayUnit() {
+  return UNIT_MM[prefs.displayUnit] ? prefs.displayUnit : "mm";
+}
+
+function mmToUnit(mm, unit = displayUnit()) {
+  return mm / UNIT_MM[unit];
+}
+
+function fromDisplay(value, unit = displayUnit()) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return NaN;
+  return raw * UNIT_MM[unit];
+}
+
+function formatGridInput(mm) {
+  const unit = displayUnit();
+  const value = mmToUnit(mm, unit);
+  const decimals = UNIT_DECIMALS[unit];
+  const rounded = Number(value.toFixed(decimals));
+  return String(rounded);
+}
+
+function formatNumber(mm) {
+  return formatGridInput(mm);
+}
+
+function prefMinorMm() {
+  return clampGridSpacing(prefs.gridMinor, GRID_DEFAULT_MINOR_MM);
+}
+
+function prefMajorMm() {
+  const minor = prefMinorMm();
+  return Math.max(clampGridSpacing(prefs.gridMajor, GRID_DEFAULT_MAJOR_MM), minor);
+}
+
+function gridAutoOn() {
+  return prefs.gridAuto !== false;
+}
+
+function niceLength(mm) {
+  if (!Number.isFinite(mm) || mm <= 0) return GRID_DEFAULT_MINOR_MM;
+  const exp = Math.floor(Math.log10(mm));
+  const base = 10 ** exp;
+  const n = mm / base;
+  const nice = n <= 1.5 ? 1 : n <= 3.5 ? 2 : n <= 7.5 ? 5 : 10;
+  return clampGridSpacing(nice * base);
+}
+
+function scenePlanBox() {
+  const box = new THREE.Box3();
+  for (const point of sceneState.points || []) {
+    box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, 0));
+  }
+  return box.isEmpty() ? null : box;
+}
+
+function sceneBounds3() {
+  const box = new THREE.Box3();
+  for (const point of sceneState.points || []) {
+    box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0));
+  }
+  return box.isEmpty() ? null : box;
+}
+
+function sceneFrame() {
+  const box = sceneBounds3();
+  const minor = gridMinorMm();
+  const major = gridMajorMm();
+  if (!box) {
+    return {
+      center: new THREE.Vector3(0, 0, 0),
+      radius: Math.max(major * 4, minor * 20, 500),
+    };
+  }
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const radius = Math.max(size.length() * 0.55, minor * 2, 1);
+  return { center, radius };
+}
+
+function frameDistance(radius) {
+  const aspect = Math.max(canvas.clientWidth, 1) / Math.max(canvas.clientHeight, 1);
+  const vFov = (persp.fov * Math.PI) / 360;
+  const hFov = Math.atan(Math.tan(vFov) * aspect);
+  const fov = Math.min(vFov, hFov);
+  return radius / Math.max(Math.tan(fov), 0.05);
+}
+
+function resetViewZoom() {
+  orthoCam.zoom = 1;
+  persp.zoom = 1;
+}
+
+function lookAtScene(dir, extras = {}) {
+  const { center, radius } = sceneFrame();
+  resetViewZoom();
+  const nextDir = dir && dir.lengthSq() > 1e-8 ? dir.clone() : ISO_DIR.clone();
+  goToView(nextDir, {
+    target: extras.target || center,
+    dist: extras.dist != null ? extras.dist : frameDistance(radius),
+    up: extras.up || viewUp.clone(),
+    axis: Boolean(extras.axis),
+  });
+}
+
+function effectiveGrid() {
+  const minor0 = prefMinorMm();
+  const major0 = prefMajorMm();
+  if (!gridAutoOn()) return { minor: minor0, major: major0 };
+  const box = scenePlanBox();
+  if (!box) return { minor: minor0, major: major0 };
+  const size = box.getSize(new THREE.Vector3());
+  const span = Math.max(size.x, size.y);
+  if (span < minor0 * 2) return { minor: minor0, major: major0 };
+  const ratio = Math.max(Math.round(major0 / minor0) || 10, 2);
+  const major = niceLength(span / 10);
+  const minor = clampGridSpacing(major / ratio, minor0);
+  return { minor, major: Math.max(major, minor) };
+}
+
+function gridMinorMm() {
+  return effectiveGrid().minor;
+}
+
+function gridMajorMm() {
+  return effectiveGrid().major;
+}
+
+function gridReachMm() {
+  const major = gridMajorMm();
+  const box = scenePlanBox();
+  if (!box) return GRID_EXTENT_MM / 2;
+  const reach = Math.max(
+    Math.abs(box.min.x), Math.abs(box.max.x),
+    Math.abs(box.min.y), Math.abs(box.max.y),
+  );
+  const span = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y);
+  return Math.min(
+    Math.max(reach * 1.35, span * 0.7, major * 6, GRID_DEFAULT_MAJOR_MM * 2),
+    GRID_EXTENT_MM * 2,
+  );
+}
+
+function gridLayout(spacing) {
+  const reach = gridReachMm();
+  let divisions = Math.round((reach * 2) / spacing);
+  divisions = Math.max(2, Math.min(divisions, GRID_MAX_DIVISIONS));
+  if (divisions % 2 !== 0) divisions += 1;
+  return { divisions, size: divisions * spacing };
+}
+
+function appendHiddenSpan(from, to, dash, gap, emitSeg, maxSeg) {
+  if (dash <= 0) {
+    const piece = Math.max(maxSeg || 1000, 100);
+    for (let a = from; a < to - 1e-6; a += piece) {
+      emitSeg(a, Math.min(a + piece, to));
+    }
+    return;
+  }
+  const period = dash + gap;
+  const start = Math.floor(from / period) * period;
+  for (let s = start; s < to; s += period) {
+    const a = Math.max(s, from);
+    const b = Math.min(s + dash, to);
+    if (b - a > 1e-6) emitSeg(a, b);
+  }
+}
+
+function onGridStep(value, step) {
+  return Math.abs(value - snapToStep(value, step)) < 1e-4;
+}
+
+function makeMinorDots(spacing, color, skipStep) {
+  const { divisions, size } = gridLayout(spacing);
+  const step = size / divisions;
+  const half = size / 2;
+  const positions = [];
+  for (let i = 0, x = -half; i <= divisions; i++, x += step) {
+    if (skipStep && onGridStep(x, skipStep)) continue;
+    for (let j = 0, y = -half; j <= divisions; j++, y += step) {
+      if (skipStep && onGridStep(y, skipStep)) continue;
+      positions.push(x, y, 0);
+    }
+  }
+  if (!positions.length) return null;
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  const helper = new THREE.Points(
+    geometry,
+    new THREE.PointsMaterial({
+      color,
+      size: gridDotSize(),
+      sizeAttenuation: false,
+      toneMapped: false,
+    }),
+  );
+  sendBehind(helper, -1);
+  return helper;
+}
+
+function makeGridHelper(spacing, color, hidden, skipStep) {
+  const { divisions, size } = gridLayout(spacing);
+  const step = size / divisions;
+  const half = size / 2;
+  const scale = hidden ? hiddenLineScale() : 0;
+  const period = hidden ? spacing * scale : 0;
+  const dash = hidden ? period * (2 / 3) : 0;
+  const gap = hidden ? period - dash : 0;
+  const positions = [];
+  for (let i = 0, k = -half; i <= divisions; i++, k += step) {
+    if (skipStep && onGridStep(k, skipStep)) continue;
+    appendHiddenSpan(-half, half, dash, gap, (a, b) => {
+      positions.push(a, 0, k, b, 0, k);
+    }, step);
+    appendHiddenSpan(-half, half, dash, gap, (a, b) => {
+      positions.push(k, 0, a, k, 0, b);
+    }, step);
+  }
+  if (!positions.length) return null;
+  const geometry = new LineSegmentsGeometry();
+  geometry.setPositions(positions);
+  const helper = new LineSegments2(
+    geometry,
+    new LineMaterial({
+      color,
+      linewidth: gridLineWidth(),
+      worldUnits: false,
+      toneMapped: false,
+    }),
+  );
+  helper.rotation.x = Math.PI / 2;
+  sendBehind(helper, -1);
+  syncGridLineResolution(helper);
+  return helper;
+}
+
+function makeGrid() {
+  const pal = BACKGROUNDS[prefs.background] || BACKGROUNDS.g5;
+  const group = new THREE.Group();
+  const minor = gridMinorMm();
+  const major = gridMajorMm();
+  if (gridMinorOn && major > minor + 1e-6) {
+    const minorGrid = gridMinorStyle() === "dots"
+      ? makeMinorDots(minor, pal.minor, major)
+      : makeGridHelper(minor, pal.minor, true, major);
+    if (minorGrid) group.add(minorGrid);
+  }
+  const majorGrid = makeGridHelper(major, pal.major, false);
+  if (majorGrid) group.add(majorGrid);
+  group.visible = gridOn;
+  return group;
+}
+
+function disposeObject(object) {
+  if (!object) return;
+  object.traverse((node) => {
+    if (node.geometry) node.geometry.dispose();
+    for (const mat of [].concat(node.material || [])) {
+      if (mat) mat.dispose();
+    }
+  });
+}
+
+function rebuildGrid() {
+  const next = makeGrid();
+  if (grid) {
+    scene.remove(grid);
+    disposeObject(grid);
+  }
+  grid = next;
+  scene.add(grid);
+  syncGridLineResolution(grid);
+}
+
+function syncGridLineResolution(root = grid) {
+  if (!root) return;
+  const width = Math.max(canvas.clientWidth, 1);
+  const height = Math.max(canvas.clientHeight, 1);
+  root.traverse((node) => {
+    if (node.material && node.material.resolution) {
+      node.material.resolution.set(width, height);
+    }
+  });
+}
+
+function setGridSpacing(minor, major) {
+  prefs.gridAuto = false;
+  prefs.gridMinor = clampGridSpacing(minor, GRID_DEFAULT_MINOR_MM);
+  if (major != null) prefs.gridMajor = clampGridSpacing(major, GRID_DEFAULT_MAJOR_MM);
+  if (prefs.gridMajor < prefs.gridMinor) prefs.gridMajor = prefs.gridMinor;
+  savePrefs();
+  rebuildGrid();
+  refreshToggles();
+  if (lastPointer) updateGhost(lastPointer);
+  setHint(`Grid ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`);
+}
+
+function setGridAuto(next) {
+  prefs.gridAuto = Boolean(next);
+  savePrefs();
+  rebuildGrid();
+  refreshToggles();
+  setHint(prefs.gridAuto
+    ? `Grid auto ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`
+    : "Grid spacing is manual.");
+}
+
+function setGridMinorOn(next) {
+  gridMinorOn = next;
+  prefs.gridMinorOn = next;
+  savePrefs();
+  rebuildGrid();
+  refreshToggles();
+  setHint(gridMinorOn ? "Minor grid on." : "Minor grid off.");
+}
+
+function setGridHiddenScale(next, opts = {}) {
+  prefs.gridHiddenScale = clampHiddenScale(next);
+  savePrefs();
+  rebuildGrid();
+  syncGridPrefsForm();
+  if (!opts.silent) setHint(`Hidden line scale ${hiddenLineScale()}.`);
+}
+
+function setGridMinorStyle(next) {
+  prefs.gridMinorStyle = next === "lines" ? "lines" : "dots";
+  savePrefs();
+  rebuildGrid();
+  syncGridPrefsForm();
+  setHint(prefs.gridMinorStyle === "dots" ? "Minor grid: dots." : "Minor grid: lines.");
+}
+
+function setGridDotSize(next, opts = {}) {
+  prefs.gridDotSize = clampDotSize(next);
+  savePrefs();
+  const size = gridDotSize();
+  let updated = false;
+  if (grid) {
+    grid.traverse((node) => {
+      if (node.isPoints && node.material) {
+        node.material.size = size;
+        updated = true;
+      }
+    });
+  }
+  if (!updated && gridMinorStyle() === "dots") rebuildGrid();
+  syncGridPrefsForm();
+  if (!opts.silent) setHint(`Dot size ${size} px.`);
+}
+
+function setGridLineWidth(next, opts = {}) {
+  prefs.gridLineWidth = clampLineWidth(next);
+  savePrefs();
+  const width = gridLineWidth();
+  let updated = false;
+  if (grid) {
+    grid.traverse((node) => {
+      if (node.material && node.material.linewidth != null) {
+        node.material.linewidth = width;
+        updated = true;
+      }
+    });
+  }
+  if (!updated) rebuildGrid();
+  syncGridPrefsForm();
+  if (!opts.silent) setHint(`Line thickness ${width} px.`);
+}
+
+function setDisplayUnit(next) {
+  prefs.displayUnit = UNIT_MM[next] ? next : "mm";
+  savePrefs();
+  refreshToggles();
+  if (lastPointer) updateGhost(lastPointer);
+  setHint(`Units ${displayUnit()}.`);
+}
+
+function syncGridMenu() {
+  const minorOnEl = document.getElementById("grid-minor-on");
+  if (minorOnEl) minorOnEl.checked = gridMinorOn;
+}
+
+function syncGridPrefsForm() {
+  const showEl = document.getElementById("gpref-show");
+  if (!showEl) return;
+  showEl.checked = gridOn;
+  document.getElementById("gpref-minor-on").checked = gridMinorOn;
+  document.getElementById("gpref-snap").checked = gridSnapOn;
+  const autoEl = document.getElementById("gpref-auto");
+  if (autoEl) autoEl.checked = gridAutoOn();
+  const styleEl = document.getElementById("gpref-minor-style");
+  if (styleEl && document.activeElement !== styleEl) styleEl.value = gridMinorStyle();
+  const unitEl = document.getElementById("gpref-unit");
+  if (unitEl && document.activeElement !== unitEl) unitEl.value = displayUnit();
+  const dots = gridMinorStyle() === "dots";
+  const dotOpts = document.getElementById("gpref-dot-opts");
+  const lineOpts = document.getElementById("gpref-line-opts");
+  if (dotOpts) dotOpts.hidden = !dots;
+  if (lineOpts) lineOpts.hidden = dots;
+  const unit = displayUnit();
+  const step = UNIT_STEP[unit];
+  const min = mmToUnit(GRID_MIN_MM);
+  const max = mmToUnit(GRID_MAX_MM);
+  const minorEl = document.getElementById("gpref-minor");
+  const majorEl = document.getElementById("gpref-major");
+  for (const el of [minorEl, majorEl]) {
+    el.min = String(min);
+    el.max = String(max);
+    el.step = String(step);
+    el.disabled = gridAutoOn();
+  }
+  if (document.activeElement !== minorEl) minorEl.value = formatGridInput(gridMinorMm());
+  if (document.activeElement !== majorEl) majorEl.value = formatGridInput(gridMajorMm());
+  const scaleEl = document.getElementById("gpref-hidden-scale");
+  const scaleNum = document.getElementById("gpref-hidden-scale-num");
+  const scale = hiddenLineScale();
+  if (document.activeElement !== scaleEl) scaleEl.value = String(scale);
+  if (document.activeElement !== scaleNum) scaleNum.value = String(scale);
+  const dotEl = document.getElementById("gpref-dot-size");
+  const dotNum = document.getElementById("gpref-dot-size-num");
+  const size = gridDotSize();
+  if (dotEl && document.activeElement !== dotEl) dotEl.value = String(size);
+  if (dotNum && document.activeElement !== dotNum) dotNum.value = String(size);
+  const widthEl = document.getElementById("gpref-line-width");
+  const widthNum = document.getElementById("gpref-line-width-num");
+  const width = gridLineWidth();
+  if (widthEl && document.activeElement !== widthEl) widthEl.value = String(width);
+  if (widthNum && document.activeElement !== widthNum) widthNum.value = String(width);
+  for (const button of document.querySelectorAll("[data-grid-minor]")) {
+    button.textContent = `${formatGridInput(Number(button.dataset.gridMinor))} / ${formatGridInput(Number(button.dataset.gridMajor))}`;
+  }
+  const placeholder = document.getElementById("console-input");
+  if (placeholder) placeholder.placeholder = `length ${unit} · angle ° · Enter`;
+}
+
+let grid = null;
+const contact = new THREE.Mesh(
+  new THREE.PlaneGeometry(40000, 40000),
+  new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.06,
+    depthWrite: false,
+  }),
+);
+contact.position.z = -2;
+contact.renderOrder = -2;
+scene.add(contact);
 scene.add(new THREE.AxesHelper(3000));
 const draft = new THREE.Group();
 const ghosts = new THREE.Group();
 scene.add(draft);
 scene.add(ghosts);
 
+function sendBehind(object, order) {
+  object.renderOrder = order;
+  const materials = [].concat(object.material || []);
+  for (const mat of materials) {
+    if (!mat) continue;
+    mat.depthTest = false;
+    mat.depthWrite = false;
+  }
+}
+
+rebuildGrid();
+draft.renderOrder = 1;
+ghosts.renderOrder = 2;
+
 function camera() {
   return useOrtho ? orthoCam : persp;
 }
 
-function applyCameraPose(position, target) {
+function applyCameraPose(position, target, up) {
+  if (up) viewUp.copy(up);
   const src = camera();
   const dst = useOrtho ? persp : orthoCam;
   src.position.copy(position);
-  src.up.copy(WORLD_UP);
+  src.up.copy(viewUp);
   src.lookAt(target);
   dst.position.copy(src.position);
-  dst.up.copy(WORLD_UP);
+  dst.up.copy(viewUp);
   dst.quaternion.copy(src.quaternion);
   controls.target.copy(target);
 }
 
+function updateClipPlanes(dist) {
+  const radius = sceneFrame().radius;
+  const span = Math.max(radius * 8, dist * 8, 10);
+  persp.near = Math.max(0.1, Math.min(dist * 0.02, radius));
+  persp.far = dist + span;
+  orthoCam.near = -span;
+  orthoCam.far = span;
+  controls.minDistance = Math.max(radius * 0.02, 0.5);
+  controls.maxDistance = Math.max(radius * 400, dist * 20, 1000);
+}
+
+let viewSize = { w: 0, h: 0 };
+
 function syncCameras() {
   const src = camera();
   const dst = useOrtho ? persp : orthoCam;
-  src.up.copy(WORLD_UP);
+  src.up.copy(viewUp);
   dst.position.copy(src.position);
   dst.quaternion.copy(src.quaternion);
-  dst.up.copy(WORLD_UP);
+  dst.up.copy(viewUp);
   const width = Math.max(canvas.clientWidth, 1);
   const height = Math.max(canvas.clientHeight, 1);
   const aspect = width / height;
   persp.aspect = aspect;
+  const dist = Math.max(src.position.distanceTo(controls.target), 1);
+  updateClipPlanes(dist);
   persp.updateProjectionMatrix();
-  const dist = src.position.distanceTo(controls.target);
-  const half = Math.max(dist * Math.tan((persp.fov * Math.PI) / 360), 500);
+  const half = Math.max(dist * Math.tan((persp.fov * Math.PI) / 360), 1);
   orthoCam.left = -half * aspect;
   orthoCam.right = half * aspect;
   orthoCam.top = half;
   orthoCam.bottom = -half;
   orthoCam.updateProjectionMatrix();
-  renderer.setSize(width, height, false);
+  if (width !== viewSize.w || height !== viewSize.h) {
+    viewSize = { w: width, h: height };
+    renderer.setSize(width, height, false);
+  }
+  syncGridLineResolution();
 }
 
-function setProjection(nextOrtho) {
-  useOrtho = nextOrtho;
+function syncViewMenu() {
+  const mark = (cmd, on) => {
+    const el = document.querySelector(`[data-cmd="${cmd}"]`);
+    if (el) el.classList.toggle("is-on", on);
+  };
+  mark("perspective", projection === "perspective");
+  mark("parallel", projection === "parallel");
+  for (const name of Object.keys(VIEW_PRESETS)) {
+    mark(`view-${name}`, namedView === name);
+  }
+}
+
+function setOrbitPoleLimit(axisView) {
+  if (axisView) {
+    controls.minPolarAngle = 0;
+    controls.maxPolarAngle = Math.PI;
+  } else {
+    controls.minPolarAngle = 0.04;
+    controls.maxPolarAngle = Math.PI - 0.04;
+  }
+}
+
+function bindProjectionCamera(opts = {}) {
+  const dst = camera();
+  dst.up.copy(viewUp);
+  controls.object = dst;
+  const named = namedView && VIEW_PRESETS[namedView];
+  projButton.classList.toggle("active", useOrtho);
+  projButton.title = named
+    ? `${named.label} (O perspective / parallel)`
+    : useOrtho ? "Parallel (O)" : "Perspective (O)";
+  setOrbitPoleLimit(Boolean(namedView));
+  syncCameras();
+  if (!opts.deferUpdate) controls.update();
+  syncViewMenu();
+}
+
+function setProjectionMode(mode, extras = {}) {
+  if (mode === "orthographic") {
+    goNamedView(namedView || "top");
+    return;
+  }
+  const leavingNamed = namedView;
+  namedView = null;
+  projection = mode;
+  useOrtho = mode !== "perspective";
+  const hint = mode === "perspective" ? "Perspective." : "Parallel.";
+  if (leavingNamed) {
+    viewUp.copy(WORLD_UP);
+    const dir = camera().position.clone().sub(controls.target);
+    bindProjectionCamera();
+    goToView(dir, { up: WORLD_UP.clone() });
+    if (!extras.silent) setHint(hint);
+    return;
+  }
+  viewUp.copy(WORLD_UP);
   const src = useOrtho ? persp : orthoCam;
   const dst = camera();
   dst.position.copy(src.position);
   dst.quaternion.copy(src.quaternion);
-  dst.up.copy(WORLD_UP);
-  controls.object = dst;
-  projButton.querySelector("span").textContent = useOrtho ? "Parallel" : "Perspective";
-  syncCameras();
-  controls.update();
+  dst.up.copy(viewUp);
+  bindProjectionCamera();
+  if (!extras.silent) setHint(hint);
+}
+
+function setProjection(nextOrtho) {
+  setProjectionMode(nextOrtho ? "parallel" : "perspective", { silent: true });
+}
+
+function releaseNamedViewForOrbit() {
+  if (!namedView) return;
+  const leaving = namedView;
+  namedView = null;
+  viewAnim = null;
+  if (projection === "orthographic") {
+    projection = "parallel";
+    useOrtho = true;
+  }
+  const target = controls.target.clone();
+  const offset = camera().position.clone().sub(target);
+  const dist = Math.max(offset.length(), 1);
+  const dir = (leaving === "top" || leaving === "bottom")
+    ? stableViewDir(offset)
+    : offset.clone().normalize();
+  viewUp.copy(WORLD_UP);
+  applyCameraPose(target.clone().addScaledVector(dir, dist), target, WORLD_UP);
+  bindProjectionCamera();
+}
+
+function goNamedView(name) {
+  const preset = VIEW_PRESETS[name];
+  if (!preset) return;
+  namedView = name;
+  projection = "orthographic";
+  useOrtho = true;
+  viewUp.copy(preset.up);
+  bindProjectionCamera({ deferUpdate: true });
+  goToView(preset.dir.clone(), { up: preset.up.clone(), axis: true });
+  setHint(`${preset.label} view.`);
+}
+
+function namedViewFromDir(dir) {
+  const x = Math.abs(dir.x) > 0.85 ? Math.sign(dir.x) : 0;
+  const y = Math.abs(dir.y) > 0.85 ? Math.sign(dir.y) : 0;
+  const z = Math.abs(dir.z) > 0.85 ? Math.sign(dir.z) : 0;
+  if (Math.abs(x) + Math.abs(y) + Math.abs(z) !== 1) return null;
+  if (z === 1) return "top";
+  if (z === -1) return "bottom";
+  if (y === -1) return "front";
+  if (y === 1) return "back";
+  if (x === 1) return "right";
+  if (x === -1) return "left";
+  return null;
 }
 
 window.addEventListener("resize", syncCameras);
@@ -271,13 +993,16 @@ function goToView(dir, extras = {}) {
   const fromTarget = controls.target.clone();
   const toTarget = (extras.target || controls.target).clone();
   const fromOffset = camera().position.clone().sub(fromTarget);
-  const dist = extras.dist != null ? extras.dist : Math.max(fromOffset.length(), 500);
-  const toOffset = stableViewDir(dir).multiplyScalar(dist);
+  const dist = extras.dist != null ? extras.dist : Math.max(fromOffset.length(), 1);
+  const toDir = extras.axis ? dir.clone().normalize() : stableViewDir(dir);
+  const toOffset = toDir.multiplyScalar(dist);
   viewAnim = {
     fromOffset,
     toOffset,
     fromTarget,
     toTarget,
+    up: (extras.up || viewUp).clone(),
+    axis: Boolean(extras.axis),
     t0: performance.now(),
     ms: 220,
   };
@@ -289,31 +1014,25 @@ function tickViewAnim() {
   const s = u * u * (3 - 2 * u);
   const target = viewAnim.fromTarget.clone().lerp(viewAnim.toTarget, s);
   const offset = slerpOffset(viewAnim.fromOffset, viewAnim.toOffset, s);
-  applyCameraPose(target.clone().add(offset), target);
+  applyCameraPose(target.clone().add(offset), target, viewAnim.up);
   syncCameras();
   if (u >= 1) {
+    const endTarget = viewAnim.toTarget;
+    const endPos = endTarget.clone().add(viewAnim.toOffset);
+    applyCameraPose(endPos, endTarget, viewAnim.up);
+    setOrbitPoleLimit(viewAnim.axis);
+    syncCameras();
     controls.update();
+    applyCameraPose(endPos, endTarget, viewAnim.up);
     syncCameras();
     viewAnim = null;
   }
 }
 
 function fitView() {
-  const box = new THREE.Box3();
-  for (const point of sceneState.points || []) {
-    box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0));
-  }
-  if (box.isEmpty()) {
-    goToView(ISO_DIR, { target: new THREE.Vector3(2000, 1500, 0), dist: 18000 });
-    return;
-  }
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const radius = Math.max(size.length() * 0.55, 800);
-  let dir = camera().position.clone().sub(controls.target);
+  let dir = namedView ? VIEW_PRESETS[namedView].dir.clone() : camera().position.clone().sub(controls.target);
   if (dir.lengthSq() < 1e-8) dir.copy(ISO_DIR);
-  const dist = radius / Math.max(Math.tan((persp.fov * Math.PI) / 360), 0.05);
-  goToView(dir, { target: center, dist });
+  lookAtScene(dir, { up: viewUp.clone(), axis: Boolean(namedView) });
 }
 
 let cubePointer = null;
@@ -331,14 +1050,35 @@ cubeCanvas.addEventListener("pointerup", (event) => {
   if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 6) return;
   const hit = pickCube(event);
   if (!hit) return;
-  goToView(viewDirFromCubePoint(hit.point));
+  const dir = viewDirFromCubePoint(hit.point);
+  const name = namedViewFromDir(dir);
+  if (name) goNamedView(name);
+  else {
+    namedView = null;
+    if (projection === "orthographic") {
+      projection = "parallel";
+      useOrtho = true;
+      bindProjectionCamera();
+    }
+    viewUp.copy(WORLD_UP);
+    goToView(dir, { up: WORLD_UP.clone() });
+    syncViewMenu();
+  }
 });
 cubeCanvas.addEventListener("pointermove", (event) => {
   cubeCanvas.style.cursor = pickCube(event) ? "pointer" : "default";
 });
 cubeCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
 document.getElementById("view-iso").addEventListener("click", () => {
-  goToView(ISO_DIR);
+  namedView = null;
+  if (projection === "orthographic") {
+    projection = "parallel";
+    useOrtho = true;
+  }
+  viewUp.copy(WORLD_UP);
+  bindProjectionCamera();
+  lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
+  setHint("ISO (Front–Right).");
 });
 document.getElementById("view-fit").addEventListener("click", () => fitView());
 
@@ -381,20 +1121,26 @@ function setTyped(value) {
 function isTypingField(event) {
   if (event.target === consoleInput) return false;
   const tag = event.target && event.target.tagName;
-  return tag === "INPUT" || tag === "TEXTAREA";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  return Boolean(event.target && event.target.closest && event.target.closest("dialog"));
 }
 
 function refreshToggles() {
   snapButton.classList.toggle("active", snapOn);
+  gridSnapButton.classList.toggle("active", gridSnapOn);
   orthoButton.classList.toggle("active", orthoOn);
   gridButton.classList.toggle("active", gridOn);
   const parts = [];
   if (snapOn) parts.push("SNAP");
+  if (gridSnapOn) parts.push(`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`);
   if (orthoOn) parts.push("ORTHO");
-  if (snapOn && gridOn) parts.push("GRID");
+  if (gridOn) parts.push("GRID");
   const typed = activeLength();
-  if (typed !== null) parts.push(`${typed} mm`);
+  if (typed !== null) parts.push(formatLength(typed));
   status.textContent = parts.join(" · ") || "free";
+  grid.visible = gridOn;
+  syncGridMenu();
+  syncGridPrefsForm();
 }
 
 function labelValue() {
@@ -403,8 +1149,7 @@ function labelValue() {
 }
 
 function fieldLength() {
-  const value = Number(typedText());
-  return Number.isFinite(value) && value > 0 ? value : null;
+  return parseLength(typedText());
 }
 
 function activeLength() {
@@ -416,21 +1161,32 @@ function bufferLength() {
 }
 
 function sidesValue() {
-  const value = Number(sidesInput.value);
-  if (!Number.isInteger(value) || value < 3) return 6;
-  return Math.min(value, 64);
+  return 6;
 }
 
 function arrayCount() {
-  const value = Number(sidesInput.value);
-  if (!Number.isInteger(value) || value < 2) return 4;
-  return Math.min(value, 64);
+  return 4;
+}
+
+function parseLength(text) {
+  const match = String(text || "").trim().match(/^([+-]?\d+(?:\.\d+)?)\s*(mm|cm|m|in|")?$/i);
+  if (!match) return null;
+  const n = Number(match[1]);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  const suffix = match[2] ? match[2].toLowerCase() : displayUnit();
+  const key = suffix === '"' ? "in" : suffix;
+  const factor = UNIT_MM[key];
+  if (!factor) return null;
+  return n * factor;
+}
+
+function formatLength(mm) {
+  if (!Number.isFinite(mm)) return "—";
+  return `${formatNumber(mm)} ${displayUnit()}`;
 }
 
 function formatMm(value) {
-  if (!Number.isFinite(value)) return "—";
-  const rounded = Math.abs(value - Math.round(value)) < 0.05 ? Math.round(value) : Math.round(value * 10) / 10;
-  return `${rounded} mm`;
+  return formatLength(value);
 }
 
 function formatDeg(rad) {
@@ -462,39 +1218,79 @@ function worldToScreen(x, y, z) {
 
 function projectDims() {
   dimsEl.innerHTML = "";
-  for (const item of committedDims.concat(ghostDims)) {
-    const screen = worldToScreen(item.x_mm, item.y_mm, item.z_mm || 0);
-    if (!screen) continue;
-    const el = document.createElement("div");
-    el.className = item.ghost ? "dim" : "dim committed";
-    el.textContent = item.text;
-    el.style.left = `${screen.x}px`;
-    el.style.top = `${screen.y}px`;
-    dimsEl.appendChild(el);
-  }
 }
 
 function setCoords(hit, origin) {
   if (!hit) {
-    coordsEl.textContent = "X 0   Y 0   Z 0";
+    coordsEl.textContent = `X 0   Y 0   Z 0   ${displayUnit()}`;
     return;
   }
-  const x = Math.round(hit.x_mm);
-  const y = Math.round(hit.y_mm);
-  const z = Math.round(hit.z_mm || 0);
-  let text = `X ${x}   Y ${y}   Z ${z}`;
+  const x = formatNumber(hit.x_mm);
+  const y = formatNumber(hit.y_mm);
+  const z = formatNumber(hit.z_mm || 0);
+  let text = `X ${x}   Y ${y}   Z ${z}   ${displayUnit()}`;
   if (origin) {
     const dx = hit.x_mm - origin.x_mm;
     const dy = hit.y_mm - origin.y_mm;
     const length = dist3(origin, hit);
     const ang = Math.atan2(dy, dx);
-    text += `    ΔX ${Math.round(dx)}   ΔY ${Math.round(dy)}    L ${formatMm(length)}    ${formatDeg(ang)}`;
+    text += `    ΔX ${formatNumber(dx)}   ΔY ${formatNumber(dy)}    L ${formatLength(length)}    ${formatDeg(ang)}`;
   }
   coordsEl.textContent = text;
 }
 
-function addCurve(group, pts, color = 0xe8edf2, entityId = null) {
+function parseCssHex(value, fallback) {
+  const raw = String(value || "").replace("#", "").trim();
+  const hex = raw.length === 3
+    ? raw.split("").map((ch) => ch + ch).join("")
+    : raw;
+  const parsed = Number.parseInt(hex, 16);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clayHex() {
+  const value = Math.max(80, Math.min(230, Number(prefs.clay) || 176));
+  return (value << 16) | (value << 8) | value;
+}
+
+function curveIdle() {
+  return parseCssHex(prefs.curve, EDGE_COLOR);
+}
+
+function isPicked(entityId) {
+  return entityId != null && selectedIds.has(entityId);
+}
+
+function curveFor(entityId) {
+  if (isPicked(entityId)) return CURVE_PICK;
+  if (entityId != null && cutterIds.has(entityId)) return CURVE_HOVER;
+  return curveIdle();
+}
+
+function clayMat(preview, opacity, entityId = null) {
+  return new THREE.MeshLambertMaterial({
+    color: preview ? CURVE_PICK : (isPicked(entityId) ? CURVE_PICK : clayHex()),
+    transparent: preview || opacity < 0.99,
+    opacity,
+    side: THREE.DoubleSide,
+  });
+}
+
+function addEdgeOverlay(group, mesh, entityId, preview) {
+  if (preview || !prefs.showEdges) return;
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(mesh.geometry),
+    new THREE.LineBasicMaterial({ color: EDGE_COLOR }),
+  );
+  edges.position.copy(mesh.position);
+  edges.quaternion.copy(mesh.quaternion);
+  mark(edges, entityId);
+  group.add(edges);
+}
+
+function addCurve(group, pts, color = curveIdle(), entityId = null) {
   if (pts.length < 2) return;
+  if (group !== ghosts && !prefs.showCurves) return;
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(
       pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0)),
@@ -625,44 +1421,38 @@ function mark(object, entityId) {
   object.userData.entityId = entityId;
 }
 
-function accentFor(entityId, base) {
-  if (entityId != null && selectedIds.has(entityId)) return 0x6cb3ff;
-  if (entityId != null && cutterIds.has(entityId)) return 0xf0c674;
-  return base;
-}
-
 function addVolume(group, origin, size, color, opacity, entityId = null) {
+  const preview = group === ghosts;
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(size[0], size[1], size[2]),
-    new THREE.MeshStandardMaterial({ color, transparent: true, opacity }),
+    clayMat(preview, opacity, entityId),
   );
   mesh.position.set(origin[0] + size[0] / 2, origin[1] + size[1] / 2, origin[2] + size[2] / 2);
   mark(mesh, entityId);
+  if (!preview && !prefs.showFaces) mesh.visible = false;
   group.add(mesh);
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(mesh.geometry),
-    new THREE.LineBasicMaterial({ color }),
-  );
-  edges.position.copy(mesh.position);
-  mark(edges, entityId);
-  group.add(edges);
+  addEdgeOverlay(group, mesh, entityId, preview);
 }
 
 function addCylinder(group, cx, cy, radius, originZ, height, color, opacity, entityId = null) {
+  const preview = group === ghosts;
   const mesh = new THREE.Mesh(
     new THREE.CylinderGeometry(radius, radius, Math.max(Math.abs(height), 1), 48),
-    new THREE.MeshStandardMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide }),
+    clayMat(preview, opacity, entityId),
   );
   mesh.rotation.x = Math.PI / 2;
   mesh.position.set(cx, cy, originZ + height / 2);
   mark(mesh, entityId);
+  if (!preview && !prefs.showFaces) mesh.visible = false;
   group.add(mesh);
+  addEdgeOverlay(group, mesh, entityId, preview);
 }
 
-function addFaceGraphic(group, pts, { fill = true, opacity = 0.45, entityId = null, color = 0xf0c674 } = {}) {
+function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entityId = null, color = null } = {}) {
   if (pts.length < 3) return;
+  const preview = group === ghosts;
   const z = (Number.isFinite(pts[0].z_mm) ? pts[0].z_mm : 0) + 20;
-  if (fill) {
+  if (fill && (preview || prefs.showFaces)) {
     const vertices = [];
     const origin = pts[0];
     for (let i = 1; i < pts.length - 1; i += 1) {
@@ -677,23 +1467,21 @@ function addFaceGraphic(group, pts, { fill = true, opacity = 0.45, entityId = nu
     geometry.computeVertexNormals();
     const mesh = new THREE.Mesh(
       geometry,
-      new THREE.MeshStandardMaterial({
-        color,
-        transparent: true,
-        opacity,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-      }),
+      clayMat(preview, preview ? opacity : 0.92, entityId),
     );
+    if (preview && color != null) mesh.material.color.setHex(color);
     mesh.renderOrder = 2;
     mark(mesh, entityId);
     group.add(mesh);
   }
+  if (!preview && !prefs.showEdges && !prefs.showCurves) return;
   const loop = pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, z + 8));
   loop.push(loop[0].clone());
   const outline = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(loop),
-    new THREE.LineBasicMaterial({ color: accentFor(entityId, 0xffe08a) }),
+    new THREE.LineBasicMaterial({
+      color: preview ? (color ?? curveIdle()) : EDGE_COLOR,
+    }),
   );
   mark(outline, entityId);
   group.add(outline);
@@ -704,119 +1492,100 @@ function rebuild() {
   committedDims = [];
   const byId = new Map((sceneState.points || []).map((point) => [point.entity_id, point]));
   for (const point of sceneState.points || []) {
+    if (!prefs.showCurves || hiddenIds.has(point.entity_id)) continue;
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(80, 12, 12),
-      new THREE.MeshStandardMaterial({ color: accentFor(point.entity_id, 0x6cb3ff) }),
+      new THREE.MeshLambertMaterial({ color: curveFor(point.entity_id) }),
     );
     mesh.position.set(point.x_mm, point.y_mm, point.z_mm);
     mark(mesh, point.entity_id);
     draft.add(mesh);
   }
   for (const line of sceneState.lines || []) {
+    if (hiddenIds.has(line.entity_id)) continue;
     const start = byId.get(line.start_id);
     const end = byId.get(line.end_id);
     if (!start || !end) continue;
-    const drawn = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(start.x_mm, start.y_mm, start.z_mm),
-      new THREE.Vector3(end.x_mm, end.y_mm, end.z_mm),
-    ]), new THREE.LineBasicMaterial({ color: accentFor(line.entity_id, 0xe8edf2) }));
-    mark(drawn, line.entity_id);
-    draft.add(drawn);
-    const mid = midpoint(start, end);
-    committedDims.push({ ...mid, z_mm: (mid.z_mm || 0) + 40, text: formatMm(dist3(start, end)) });
+    if (prefs.showCurves) {
+      const drawn = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(start.x_mm, start.y_mm, start.z_mm),
+        new THREE.Vector3(end.x_mm, end.y_mm, end.z_mm),
+      ]), new THREE.LineBasicMaterial({ color: curveFor(line.entity_id) }));
+      mark(drawn, line.entity_id);
+      draft.add(drawn);
+    }
   }
   for (const polyline of sceneState.polylines || []) {
+    if (hiddenIds.has(polyline.entity_id)) continue;
     const pts = polyline.point_ids.map((id) => byId.get(id)).filter(Boolean);
     if (pts.length < 2) continue;
+    if (!prefs.showCurves) continue;
     const vectors = pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm));
     if (polyline.closed) vectors.push(vectors[0].clone());
     const drawn = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(vectors),
-      new THREE.LineBasicMaterial({ color: accentFor(polyline.entity_id, 0xe8edf2) }),
+      new THREE.LineBasicMaterial({ color: curveFor(polyline.entity_id) }),
     );
     mark(drawn, polyline.entity_id);
     draft.add(drawn);
   }
-  const extruded = new Set((sceneState.solids || []).map((solid) => solid.face_id));
+  const extruded = new Set();
+  for (const solid of sceneState.solids || []) {
+    extruded.add(solid.face_id);
+    if (solid.cap_id) extruded.add(solid.cap_id);
+  }
   for (const face of sceneState.faces || []) {
+    if (hiddenIds.has(face.entity_id) || extruded.has(face.entity_id)) continue;
     const pts = face.point_ids.map((id) => byId.get(id)).filter(Boolean);
     addFaceGraphic(draft, pts, {
-      fill: !extruded.has(face.entity_id),
-      opacity: 0.38,
+      fill: true,
+      opacity: 0.92,
       entityId: face.entity_id,
-      color: accentFor(face.entity_id, 0xf0c674),
     });
-    if (pts.length >= 2 && !extruded.has(face.entity_id)) {
-      const xs = pts.map((p) => p.x_mm);
-      const ys = pts.map((p) => p.y_mm);
-      committedDims.push({
-        x_mm: (Math.min(...xs) + Math.max(...xs)) / 2,
-        y_mm: (Math.min(...ys) + Math.max(...ys)) / 2,
-        z_mm: 60,
-        text: `${formatMm(Math.max(...xs) - Math.min(...xs))} × ${formatMm(Math.max(...ys) - Math.min(...ys))}`,
-      });
-    }
   }
   for (const circle of sceneState.circles || []) {
+    if (hiddenIds.has(circle.entity_id)) continue;
     const center = byId.get(circle.center_id);
     if (!center) continue;
     const loop = sampleCircle(center, circle.radius_mm);
     addFaceGraphic(draft, loop.slice(0, -1), {
       fill: !extruded.has(circle.entity_id),
-      opacity: 0.38,
+      opacity: 0.92,
       entityId: circle.entity_id,
-      color: accentFor(circle.entity_id, 0xf0c674),
-    });
-    committedDims.push({
-      x_mm: center.x_mm + circle.radius_mm,
-      y_mm: center.y_mm,
-      z_mm: 40,
-      text: `R ${formatMm(circle.radius_mm)}`,
     });
   }
   for (const arc of sceneState.arcs || []) {
+    if (hiddenIds.has(arc.entity_id)) continue;
     const start = byId.get(arc.start_id);
     const midPt = byId.get(arc.mid_id);
     const end = byId.get(arc.end_id);
     if (!start || !midPt || !end) continue;
-    addCurve(draft, sampleArc(start, midPt, end), accentFor(arc.entity_id, 0xe8edf2), arc.entity_id);
-    const circ = circumcircle(start, midPt, end);
-    if (circ) {
-      committedDims.push({
-        x_mm: midPt.x_mm,
-        y_mm: midPt.y_mm,
-        z_mm: 40,
-        text: `R ${formatMm(circ.radius)}`,
-      });
-    }
+    addCurve(draft, sampleArc(start, midPt, end), curveFor(arc.entity_id), arc.entity_id);
   }
   for (const ellipse of sceneState.ellipses || []) {
+    if (hiddenIds.has(ellipse.entity_id)) continue;
     const center = byId.get(ellipse.center_id);
     if (!center) continue;
     const loop = sampleEllipse(center, ellipse.radius_x_mm, ellipse.radius_y_mm);
     addFaceGraphic(draft, loop.slice(0, -1), {
       fill: !extruded.has(ellipse.entity_id),
-      opacity: 0.38,
+      opacity: 0.92,
       entityId: ellipse.entity_id,
-      color: accentFor(ellipse.entity_id, 0xf0c674),
-    });
-    committedDims.push({
-      x_mm: center.x_mm,
-      y_mm: center.y_mm + ellipse.radius_y_mm,
-      z_mm: 40,
-      text: `${formatMm(ellipse.radius_x_mm)} × ${formatMm(ellipse.radius_y_mm)}`,
     });
   }
   for (const bezier of sceneState.beziers || []) {
+    if (hiddenIds.has(bezier.entity_id)) continue;
     const pts = bezier.point_ids.map((id) => byId.get(id)).filter(Boolean);
     if (pts.length !== 4) continue;
-    addCurve(draft, sampleBezier(pts), accentFor(bezier.entity_id, 0xe8edf2), bezier.entity_id);
+    addCurve(draft, sampleBezier(pts), curveFor(bezier.entity_id), bezier.entity_id);
   }
   for (const box of sceneState.boxes || []) {
-    addVolume(draft, box.origin_xyz_mm, box.size_xyz_mm, accentFor(box.entity_id, 0x7dcea0), 0.28, box.entity_id);
+    if (hiddenIds.has(box.entity_id)) continue;
+    addVolume(draft, box.origin_xyz_mm, box.size_xyz_mm, clayHex(), 1, box.entity_id);
   }
   for (const solid of sceneState.solids || []) {
-    const color = accentFor(solid.entity_id, 0x7dcea0);
+    if (hiddenIds.has(solid.entity_id)) continue;
+    const color = clayHex();
     const face = (sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
     const circle = (sceneState.circles || []).find((item) => item.entity_id === solid.face_id);
     const ellipse = (sceneState.ellipses || []).find((item) => item.entity_id === solid.face_id);
@@ -825,7 +1594,7 @@ function rebuild() {
       const center = byId.get(circle.center_id);
       if (!center) continue;
       const originZ = solid.distance_mm >= 0 ? center.z_mm : center.z_mm - height;
-      addCylinder(draft, center.x_mm, center.y_mm, circle.radius_mm, originZ, height, color, 0.28, solid.entity_id);
+      addCylinder(draft, center.x_mm, center.y_mm, circle.radius_mm, originZ, height, color, 1, solid.entity_id);
       continue;
     }
     if (ellipse) {
@@ -837,7 +1606,7 @@ function rebuild() {
         [center.x_mm - ellipse.radius_x_mm, center.y_mm - ellipse.radius_y_mm, originZ],
         [ellipse.radius_x_mm * 2, ellipse.radius_y_mm * 2, height],
         color,
-        0.28,
+        1,
         solid.entity_id,
       );
       continue;
@@ -858,11 +1627,12 @@ function rebuild() {
         Math.max(height, 1),
       ],
       color,
-      0.28,
+      1,
       solid.entity_id,
     );
   }
   refreshDocks();
+  rebuildGrid();
 }
 
 async function refreshFrom(payload) {
@@ -881,7 +1651,7 @@ function catalog() {
     rows.push({
       id: item.entity_id,
       kind,
-      name: item.label || `${kind} ${item.entity_id}`,
+      name: item.label || brepKind(kind),
       item,
     });
   };
@@ -897,6 +1667,339 @@ function catalog() {
   for (const item of sceneState.solids || []) push("Solid", item);
   rows.sort((a, b) => a.id - b.id);
   return rows;
+}
+
+function brepKind(kind) {
+  if (kind === "Point") return "Vertex";
+  if (kind === "Line") return "Edge";
+  return kind;
+}
+
+function lineConnecting(a, b) {
+  return (sceneState.lines || []).find((line) => (
+    (line.start_id === a && line.end_id === b)
+    || (line.start_id === b && line.end_id === a)
+  )) || null;
+}
+
+function brepChildren(row) {
+  const byId = new Map(catalog().map((item) => [item.id, item]));
+  const take = (id) => byId.get(id) || null;
+  if (row.kind === "Solid") {
+    const kids = [];
+    const profile = take(row.item.face_id);
+    if (profile) kids.push(profile);
+    const cap = take(row.item.cap_id);
+    if (cap) kids.push(cap);
+    return kids;
+  }
+  if (row.kind === "Face") {
+    const ids = row.item.point_ids || [];
+    if (ids.length < 2) return ids.map(take).filter(Boolean);
+    const edges = [];
+    for (let i = 0; i < ids.length; i += 1) {
+      const line = lineConnecting(ids[i], ids[(i + 1) % ids.length]);
+      if (!line) return ids.map(take).filter(Boolean);
+      edges.push(byId.get(line.entity_id));
+    }
+    return edges.filter(Boolean);
+  }
+  if (row.kind === "Line") {
+    return [take(row.item.start_id), take(row.item.end_id)].filter(Boolean);
+  }
+  if (row.kind === "Circle" || row.kind === "Ellipse") {
+    const center = take(row.item.center_id);
+    return center ? [center] : [];
+  }
+  if (row.kind === "Arc") {
+    return [take(row.item.start_id), take(row.item.mid_id), take(row.item.end_id)].filter(Boolean);
+  }
+  if (row.kind === "Polyline" || row.kind === "Bezier") {
+    return (row.item.point_ids || []).map(take).filter(Boolean);
+  }
+  return [];
+}
+
+function collectNested(row, nested) {
+  for (const child of brepChildren(row)) {
+    nested.add(child.id);
+    collectNested(child, nested);
+  }
+}
+
+function brepRoots() {
+  const rows = catalog();
+  const nested = new Set();
+  for (const row of rows) collectNested(row, nested);
+  const rank = {
+    Solid: 0, Box: 1, Face: 2, Circle: 2, Ellipse: 2,
+    Polyline: 3, Bezier: 3, Arc: 3, Line: 4, Point: 5,
+  };
+  return rows
+    .filter((row) => !nested.has(row.id))
+    .sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) || a.id - b.id);
+}
+
+const collapsedTree = new Set();
+
+function renderTreeNode(row, parent) {
+  const kids = brepChildren(row);
+  const node = document.createElement("div");
+  node.className = "tree-node";
+  const rowEl = document.createElement("div");
+  const dimmed = hiddenIds.has(row.id);
+  rowEl.className = `tree-row${selectedIds.has(row.id) ? " selected" : ""}${dimmed ? " dimmed" : ""}`;
+  rowEl.dataset.id = String(row.id);
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "tree-toggle";
+  toggle.tabIndex = -1;
+  if (kids.length) {
+    const collapsed = collapsedTree.has(row.id);
+    toggle.innerHTML = collapsed
+      ? '<svg viewBox="0 0 24 24"><path d="M9 6 L15 12 L9 18"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M6 9 L12 15 L18 9"/></svg>';
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (collapsedTree.has(row.id)) collapsedTree.delete(row.id);
+      else collapsedTree.add(row.id);
+      refreshDocks();
+    });
+  } else {
+    toggle.style.visibility = "hidden";
+  }
+  const kindEl = document.createElement("span");
+  kindEl.className = "tree-kind";
+  kindEl.textContent = brepKind(row.kind);
+  const nameEl = document.createElement("span");
+  nameEl.className = "tree-name";
+  nameEl.textContent = row.item.label || brepKind(row.kind);
+  rowEl.append(toggle, kindEl, nameEl);
+  rowEl.addEventListener("click", (event) => setSelection(row.id, { shift: event.shiftKey }));
+  rowEl.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    beginRename(row, rowEl);
+  });
+  rowEl.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!selectedIds.has(row.id)) setSelection(row.id);
+    openTreeMenu(event.clientX, event.clientY, row);
+  });
+  node.append(rowEl);
+  if (kids.length && !collapsedTree.has(row.id)) {
+    const branch = document.createElement("div");
+    branch.className = "tree-kids";
+    for (const child of kids) renderTreeNode(child, branch);
+    node.append(branch);
+  }
+  parent.append(node);
+}
+
+const ctxMenu = document.getElementById("ctx-menu");
+let ctxRow = null;
+
+function closeTreeMenu() {
+  ctxMenu.classList.remove("open");
+  ctxMenu.hidden = true;
+  ctxRow = null;
+}
+
+function openTreeMenu(x, y, row) {
+  ctxRow = row;
+  const hidden = hiddenIds.has(row.id);
+  const kids = brepChildren(row);
+  ctxMenu.innerHTML = "";
+  const addItem = (label, cmd, shortcut = "") => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.treeCmd = cmd;
+    button.innerHTML = shortcut ? `${label} <kbd>${shortcut}</kbd>` : label;
+    ctxMenu.append(button);
+  };
+  addItem("Select", "select");
+  addItem("Rename", "rename", "F2");
+  addItem("Duplicate", "duplicate");
+  addItem(hidden ? "Show" : "Hide", hidden ? "show" : "hide");
+  addItem("Fit", "fit");
+  const sep = document.createElement("div");
+  sep.className = "menu-sep";
+  ctxMenu.append(sep);
+  if (kids.length) addItem(collapsedTree.has(row.id) ? "Expand" : "Collapse", "toggle");
+  addItem("Delete", "delete", "Del");
+  ctxMenu.hidden = false;
+  ctxMenu.classList.add("open");
+  const pad = 6;
+  const rect = ctxMenu.getBoundingClientRect();
+  const left = Math.min(x, window.innerWidth - rect.width - pad);
+  const top = Math.min(y, window.innerHeight - rect.height - pad);
+  ctxMenu.style.left = `${Math.max(pad, left)}px`;
+  ctxMenu.style.top = `${Math.max(pad, top)}px`;
+}
+
+ctxMenu.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-tree-cmd]");
+  if (!button || !ctxRow) return;
+  event.stopPropagation();
+  const row = ctxRow;
+  const cmd = button.dataset.treeCmd;
+  closeTreeMenu();
+  runTreeCommand(cmd, row);
+});
+
+function hideSubtree(row, hide) {
+  const ids = new Set([row.id]);
+  collectNested(row, ids);
+  for (const id of ids) {
+    if (hide) hiddenIds.add(id);
+    else hiddenIds.delete(id);
+  }
+  rebuild();
+}
+
+function beginRename(row, rowEl) {
+  closeTreeMenu();
+  const nameEl = rowEl.querySelector(".tree-name");
+  if (!nameEl || rowEl.querySelector(".tree-rename")) return;
+  const input = document.createElement("input");
+  input.className = "tree-rename";
+  input.type = "text";
+  input.value = row.item.label || "";
+  input.setAttribute("aria-label", "Rename");
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let finished = false;
+  const finish = async (commit) => {
+    if (finished) return;
+    finished = true;
+    if (!commit) {
+      refreshDocks();
+      return;
+    }
+    const next = input.value.trim() === "" ? null : input.value.trim();
+    if (next === (row.item.label || null)) {
+      refreshDocks();
+      return;
+    }
+    try {
+      await refreshFrom(await api("/api/op", "POST", {
+        op: "SetLabel",
+        entity_id: row.id,
+        label: next,
+      }));
+      setHint(next ? `Renamed to ${next}.` : "Label cleared.");
+    } catch (error) {
+      setHint(error.message);
+      refreshDocks();
+    }
+  };
+  input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finish(true);
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener("blur", () => finish(true));
+}
+
+function gatherPoints(row, into = []) {
+  if (row.kind === "Point") into.push(row.item);
+  if (row.kind === "Box" && row.item.origin_xyz_mm && row.item.size_xyz_mm) {
+    const o = row.item.origin_xyz_mm;
+    const s = row.item.size_xyz_mm;
+    into.push(
+      { x_mm: o[0], y_mm: o[1], z_mm: o[2] },
+      { x_mm: o[0] + s[0], y_mm: o[1] + s[1], z_mm: o[2] + s[2] },
+    );
+  }
+  for (const child of brepChildren(row)) gatherPoints(child, into);
+  return into;
+}
+
+function fitEntity(row) {
+  const pts = gatherPoints(row);
+  const box = new THREE.Box3();
+  for (const point of pts) {
+    box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0));
+  }
+  if (box.isEmpty()) {
+    fitView();
+    return;
+  }
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const radius = Math.max(size.length() * 0.55, gridMinorMm() * 2, 1);
+  let dir = namedView ? VIEW_PRESETS[namedView].dir.clone() : camera().position.clone().sub(controls.target);
+  if (dir.lengthSq() < 1e-8) dir.copy(ISO_DIR);
+  resetViewZoom();
+  goToView(dir, {
+    target: center,
+    dist: frameDistance(radius),
+    up: viewUp.clone(),
+    axis: Boolean(namedView),
+  });
+}
+
+async function duplicateEntities(ids) {
+  if (!ids.length) {
+    setHint("Select something to duplicate.");
+    return;
+  }
+  await refreshFrom(await api("/api/op", "POST", {
+    op: "ArrayLinear",
+    entity_ids: ids,
+    dx_mm: gridMinorMm(),
+    dy_mm: 0,
+    dz_mm: 0,
+    copies: 1,
+  }));
+  setHint("Duplicated.");
+}
+
+function runTreeCommand(cmd, row) {
+  if (cmd === "select") {
+    setSelection(row.id);
+    return;
+  }
+  if (cmd === "rename") {
+    const rowEl = treeEl.querySelector(`.tree-row[data-id="${row.id}"]`);
+    if (rowEl) beginRename(row, rowEl);
+    return;
+  }
+  if (cmd === "duplicate") {
+    const ids = selectedIds.has(row.id) ? [...selectedIds] : [row.id];
+    duplicateEntities(ids).catch((error) => setHint(error.message));
+    return;
+  }
+  if (cmd === "hide") {
+    hideSubtree(row, true);
+    setHint("Hidden in the view. Right-click → Show to restore.");
+    return;
+  }
+  if (cmd === "show") {
+    hideSubtree(row, false);
+    return;
+  }
+  if (cmd === "fit") {
+    fitEntity(row);
+    return;
+  }
+  if (cmd === "toggle") {
+    if (collapsedTree.has(row.id)) collapsedTree.delete(row.id);
+    else collapsedTree.add(row.id);
+    refreshDocks();
+    return;
+  }
+  if (cmd === "delete") {
+    if (!selectedIds.has(row.id)) setSelection(row.id);
+    commitDelete().catch((error) => setHint(error.message));
+  }
 }
 
 function findRecord(id) {
@@ -932,16 +2035,11 @@ function refreshDocks() {
     if (!rows.some((row) => row.id === id)) selectedIds.delete(id);
   }
   treeEl.innerHTML = "";
-  if (!rows.length) {
+  const roots = brepRoots();
+  if (!roots.length) {
     treeEl.textContent = "No entities.";
   } else {
-    for (const row of rows) {
-      const div = document.createElement("div");
-      div.className = `tree-item${selectedIds.has(row.id) ? " selected" : ""}`;
-      div.innerHTML = `<span class="tree-kind">${row.kind}</span><span>${row.name}</span>`;
-      div.addEventListener("click", (event) => setSelection(row.id, { shift: event.shiftKey }));
-      treeEl.appendChild(div);
-    }
+    for (const row of roots) renderTreeNode(row, treeEl);
   }
   if (selectedIds.size === 0) {
     propBody.textContent = "Nothing selected.";
@@ -964,26 +2062,50 @@ function refreshDocks() {
 
 function propertyFields(row) {
   const item = row.item;
-  const fields = [["Type", row.kind], ["Id", String(row.id)], ["Label", item.label || "—"]];
+  const fields = [["Type", brepKind(row.kind)], ["Label", item.label || "—"]];
   if (row.kind === "Point") {
     fields.push(["X", formatMm(item.x_mm)], ["Y", formatMm(item.y_mm)], ["Z", formatMm(item.z_mm)]);
   }
-  if (row.kind === "Line") fields.push(["Start", String(item.start_id)], ["End", String(item.end_id)]);
-  if (row.kind === "Circle") fields.push(["Centre", String(item.center_id)], ["Radius", formatMm(item.radius_mm)]);
+  if (row.kind === "Line") {
+    const start = pointById(item.start_id);
+    const end = pointById(item.end_id);
+    if (start && end) fields.push(["Length", formatMm(dist3(start, end))]);
+  }
+  if (row.kind === "Polyline") {
+    const pts = (item.point_ids || []).map(pointById).filter(Boolean);
+    let length = 0;
+    for (let index = 1; index < pts.length; index += 1) length += dist3(pts[index - 1], pts[index]);
+    if (item.closed && pts.length > 2) length += dist3(pts[pts.length - 1], pts[0]);
+    if (pts.length) fields.push(["Length", formatMm(length)], ["Vertices", String(pts.length)]);
+  }
+  if (row.kind === "Face") {
+    const pts = (item.point_ids || []).map(pointById).filter(Boolean);
+    if (pts.length) {
+      const xs = pts.map((point) => point.x_mm);
+      const ys = pts.map((point) => point.y_mm);
+      const zs = pts.map((point) => point.z_mm);
+      fields.push(["Width", formatMm(Math.max(...xs) - Math.min(...xs))]);
+      fields.push(["Depth", formatMm(Math.max(...ys) - Math.min(...ys))]);
+      const dz = Math.max(...zs) - Math.min(...zs);
+      if (dz > 0.5) fields.push(["Elevation", formatMm(zs[0])]);
+      fields.push(["Vertices", String(pts.length)]);
+    }
+  }
+  if (row.kind === "Circle") fields.push(["Radius", formatMm(item.radius_mm)]);
   if (row.kind === "Ellipse") {
-    fields.push(["Centre", String(item.center_id)], ["Rx", formatMm(item.radius_x_mm)], ["Ry", formatMm(item.radius_y_mm)]);
+    fields.push(["Rx", formatMm(item.radius_x_mm)], ["Ry", formatMm(item.radius_y_mm)]);
   }
   if (row.kind === "Arc") {
-    fields.push(["Start", String(item.start_id)], ["Mid", String(item.mid_id)], ["End", String(item.end_id)]);
+    const start = pointById(item.start_id);
+    const mid = pointById(item.mid_id);
+    const end = pointById(item.end_id);
+    const circ = start && mid && end ? circumcircle(start, mid, end) : null;
+    if (circ) fields.push(["Radius", formatMm(circ.radius)]);
   }
-  if (row.kind === "Face") fields.push(["Points", String((item.point_ids || []).length)]);
-  if (row.kind === "Solid") {
-    fields.push(["Profile", String(item.face_id)], ["Height", formatMm(item.distance_mm)]);
-  }
+  if (row.kind === "Solid") fields.push(["Height", formatMm(item.distance_mm)]);
   if (row.kind === "Box" && item.size_xyz_mm) {
     fields.push(["Size", item.size_xyz_mm.map((value) => formatMm(value)).join(" × ")]);
   }
-  if (row.kind === "Bezier") fields.push(["Controls", (item.point_ids || []).join(", ")]);
   return fields;
 }
 
@@ -1673,10 +2795,47 @@ function setTool(next) {
 
 async function reload() {
   await refreshFrom(await api("/api/scene"));
+  lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
+}
+
+function snapToStep(value, step) {
+  return Math.round(value / step) * step;
 }
 
 function snapGrid(value) {
-  return Math.round(value / GRID_MM) * GRID_MM;
+  const minor = gridMinorMm();
+  const major = gridMajorMm();
+  const a = snapToStep(value, minor);
+  const b = snapToStep(value, major);
+  return Math.abs(value - b) <= Math.abs(value - a) ? b : a;
+}
+
+function nearestGridPoint(raw) {
+  const minor = gridMinorMm();
+  const major = gridMajorMm();
+  const xs = [snapToStep(raw.x_mm, minor), snapToStep(raw.x_mm, major)];
+  const ys = [snapToStep(raw.y_mm, minor), snapToStep(raw.y_mm, major)];
+  let best = null;
+  for (const x_mm of xs) {
+    for (const y_mm of ys) {
+      const dist = Math.hypot(x_mm - raw.x_mm, y_mm - raw.y_mm);
+      const onMajor = Math.abs(x_mm - snapToStep(x_mm, major)) < 1e-6
+        && Math.abs(y_mm - snapToStep(y_mm, major)) < 1e-6;
+      const kind = onMajor ? "grid-major" : "grid-minor";
+      if (
+        !best
+        || dist < best.dist - 1e-6
+        || (Math.abs(dist - best.dist) < 1e-6 && kind === "grid-major")
+      ) {
+        best = { x_mm, y_mm, z_mm: 0, dist, snap: kind };
+      }
+    }
+  }
+  return best;
+}
+
+function isGridSnap(kind) {
+  return kind === "grid" || kind === "grid-minor" || kind === "grid-major";
 }
 
 function ndcFromEvent(event) {
@@ -1723,12 +2882,19 @@ function applySnaps(raw) {
         snap: "node",
       };
     }
-    if (gridOn) {
-      const snapped = { x_mm: snapGrid(raw.x_mm), y_mm: snapGrid(raw.y_mm), z_mm: 0 };
-      const dist = Math.hypot(snapped.x_mm - raw.x_mm, snapped.y_mm - raw.y_mm);
-      if (dist <= SNAP_APERTURE_MM) {
-        return { ...snapped, snap: "grid" };
-      }
+  }
+  if (gridSnapOn) {
+    const snapped = nearestGridPoint(raw);
+    if (!snapped) return { ...raw, snap: null };
+    const minor = gridMinorMm();
+    const major = gridMajorMm();
+    const reach = Math.max(
+      SNAP_APERTURE_MM,
+      minor * Math.SQRT2 / 2,
+      major * Math.SQRT2 / 2,
+    );
+    if (snapped.dist <= reach) {
+      return { x_mm: snapped.x_mm, y_mm: snapped.y_mm, z_mm: 0, snap: snapped.snap };
     }
   }
   return { ...raw, snap: null };
@@ -1785,7 +2951,7 @@ function hitHeight(event, cornerA, cornerB) {
   raycaster.setFromCamera(ndcFromEvent(event), camera());
   const hit = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(new THREE.Plane(look, -look.dot(mid)), hit)) return 3000;
-  return snapOn && gridOn ? snapGrid(hit.z) : hit.z;
+  return gridSnapOn ? snapGrid(hit.z) : hit.z;
 }
 
 async function addFaceFromCorners(a, b, label) {
@@ -1831,6 +2997,22 @@ async function ensurePoint(xyz) {
 
 function ghostLine(a, b) {
   ghostStroke(a, b, 0x6cb3ff, true);
+}
+
+function ghostPolyline(pts, cursor) {
+  const all = cursor ? pts.concat([cursor]) : pts;
+  for (let index = 0; index < all.length - 1; index += 1) {
+    ghostStroke(all[index], all[index + 1], 0x6cb3ff, index === all.length - 2);
+  }
+}
+
+function polylineCloses(end) {
+  return Boolean(
+    pending
+    && pending.kind === "polyline"
+    && pending.pts.length >= 3
+    && dist3(pending.pts[0], end) <= SNAP_APERTURE_MM,
+  );
 }
 
 function ghostStroke(a, b, color, dashed) {
@@ -1882,7 +3064,7 @@ function ghostRect(a, b, height = 0) {
 }
 
 function drawSnapMarker(xyz, kind) {
-  const size = kind === "node" ? 180 : 130;
+  const size = kind === "node" ? 180 : kind === "grid-major" ? 160 : 110;
   const z = xyz.z_mm + 40;
   const loop = [
     [xyz.x_mm - size, xyz.y_mm - size, z],
@@ -1893,13 +3075,26 @@ function drawSnapMarker(xyz, kind) {
   ].map((corner) => new THREE.Vector3(...corner));
   ghosts.add(new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(loop),
-    new THREE.LineBasicMaterial({ color: kind === "node" ? 0xffdd55 : 0x6cb3ff }),
+    new THREE.LineBasicMaterial({ color: SNAP_COLOR }),
   ));
 }
 
 function currentEnd(event) {
+  if (!pending) return null;
+  if (pending.kind === "polyline") {
+    const raw = rawHit(event);
+    if (!raw) return null;
+    const last = pending.pts[pending.pts.length - 1];
+    if (pending.pts.length >= 3 && dist3(pending.pts[0], raw) <= SNAP_APERTURE_MM) {
+      return { ...pending.pts[0], snap: "node" };
+    }
+    const hit = applySnaps(raw);
+    if (!hit) return null;
+    if (hit.snap === "node") return hit;
+    return applyLength(last, orthogonalize(last, hit, event), activeLength());
+  }
   const raw = hitWorkplane(event);
-  if (!raw || !pending) return null;
+  if (!raw) return null;
   if (raw.snap === "node") return raw;
   if (pending.kind === "line" || pending.kind === "move" || pending.kind === "array" || pending.kind === "mirror" || (pending.kind === "radial" && tool !== "ellipse")) {
     return applyLength(pending.a, orthogonalize(pending.a, raw, event), activeLength());
@@ -1918,7 +3113,7 @@ function updateGhost(event) {
     return;
   }
   const hit = hitWorkplane(event);
-  if (hit && hit.snap) drawSnapMarker(hit, hit.snap);
+  if (hit && (hit.snap === "node" || isGridSnap(hit.snap))) drawSnapMarker(hit, hit.snap);
   if ((tool === "trim" || tool === "extend") && !pending) {
     const picked = pickEntity(event);
     const preview = picked ? solveTrimOrExtend(picked, hit, tool) : null;
@@ -1937,15 +3132,20 @@ function updateGhost(event) {
     setCoords(hit);
     return;
   }
+  if (pending.kind === "polyline") {
+    const end = currentEnd(event);
+    if (end) {
+      ghostPolyline(pending.pts, end);
+      const last = pending.pts[pending.pts.length - 1];
+      setCoords(end, last);
+      if (polylineCloses(end)) drawSnapMarker(pending.pts[0], "node");
+    }
+    return;
+  }
   if (pending.kind === "line" || pending.kind === "move" || pending.kind === "array" || pending.kind === "mirror") {
     const end = currentEnd(event);
     if (end) {
       ghostLine(pending.a, end);
-      const mid = midpoint(pending.a, end);
-      const text = pending.kind === "mirror"
-        ? "axis"
-        : formatMm(dist3(pending.a, end));
-      ghostDims.push({ ...mid, z_mm: 50, text, ghost: true });
       setCoords(end, pending.a);
     }
     return;
@@ -1954,14 +3154,6 @@ function updateGhost(event) {
     const end = hitWorkplane(event);
     if (end) {
       ghostLine(pending.a, end);
-      const typed = activeLength();
-      const deg = typed != null ? typed : Math.atan2(end.y_mm - pending.a.y_mm, end.x_mm - pending.a.x_mm) * 180 / Math.PI;
-      ghostDims.push({
-        ...end,
-        z_mm: 50,
-        text: `${Math.round(deg * 10) / 10}°`,
-        ghost: true,
-      });
       setCoords(end, pending.a);
     }
     return;
@@ -1970,15 +3162,6 @@ function updateGhost(event) {
     const end = currentEnd(event);
     if (end) {
       ghostRect(pending.a, end);
-      const w = Math.abs(end.x_mm - pending.a.x_mm);
-      const h = Math.abs(end.y_mm - pending.a.y_mm);
-      ghostDims.push({
-        x_mm: (pending.a.x_mm + end.x_mm) / 2,
-        y_mm: (pending.a.y_mm + end.y_mm) / 2,
-        z_mm: 50,
-        text: `${formatMm(w)} × ${formatMm(h)}`,
-        ghost: true,
-      });
       setCoords(end, pending.a);
     }
     return;
@@ -1986,13 +3169,6 @@ function updateGhost(event) {
   if (pending.kind === "height" || pending.kind === "extrude") {
     const height = hitHeight(event, pending.a, pending.b);
     ghostRect(pending.a, pending.b, height);
-    ghostDims.push({
-      x_mm: (pending.a.x_mm + pending.b.x_mm) / 2,
-      y_mm: (pending.a.y_mm + pending.b.y_mm) / 2,
-      z_mm: Math.abs(height) / 2,
-      text: formatMm(Math.abs(height)),
-      ghost: true,
-    });
     setCoords(hit);
     return;
   }
@@ -2002,33 +3178,12 @@ function updateGhost(event) {
     const radius = dist3(pending.a, rim);
     if (tool === "circle") {
       addFaceGraphic(ghosts, sampleCircle(pending.a, radius).slice(0, -1), { fill: true, opacity: 0.22 });
-      ghostDims.push({
-        x_mm: pending.a.x_mm + radius,
-        y_mm: pending.a.y_mm,
-        z_mm: 50,
-        text: `R ${formatMm(radius)}`,
-        ghost: true,
-      });
     } else if (tool === "polygon") {
       addFaceGraphic(ghosts, regularPolygon(pending.a, rim, sidesValue()), { fill: true, opacity: 0.18 });
-      ghostDims.push({
-        x_mm: pending.a.x_mm,
-        y_mm: pending.a.y_mm,
-        z_mm: 50,
-        text: `${sidesValue()} × R ${formatMm(radius)}`,
-        ghost: true,
-      });
     } else if (tool === "ellipse") {
       const rx = Math.max(Math.abs(rim.x_mm - pending.a.x_mm), 1);
       const ry = Math.max(Math.abs(rim.y_mm - pending.a.y_mm), 1);
       addFaceGraphic(ghosts, sampleEllipse(pending.a, rx, ry).slice(0, -1), { fill: true, opacity: 0.22 });
-      ghostDims.push({
-        x_mm: pending.a.x_mm,
-        y_mm: pending.a.y_mm,
-        z_mm: 50,
-        text: `${formatMm(rx)} × ${formatMm(ry)}`,
-        ghost: true,
-      });
     }
     setCoords(rim, pending.a);
     return;
@@ -2038,13 +3193,8 @@ function updateGhost(event) {
     if (!cur) return;
     if (pending.pts.length === 1) {
       ghostLine(pending.pts[0], cur);
-      ghostDims.push({ ...midpoint(pending.pts[0], cur), z_mm: 50, text: formatMm(dist3(pending.pts[0], cur)), ghost: true });
     } else {
       addCurve(ghosts, sampleArc(pending.pts[0], pending.pts[1], cur), 0x6cb3ff);
-      const circ = circumcircle(pending.pts[0], pending.pts[1], cur);
-      if (circ) {
-        ghostDims.push({ x_mm: pending.pts[1].x_mm, y_mm: pending.pts[1].y_mm, z_mm: 50, text: `R ${formatMm(circ.radius)}`, ghost: true });
-      }
     }
     setCoords(cur, pending.pts[0]);
     return;
@@ -2061,17 +3211,80 @@ function updateGhost(event) {
 }
 
 async function finishLine(end) {
+  if (dist3(pending.a, end) < 1) {
+    setHint("Line: click a different point, or Esc to end the chain.");
+    return;
+  }
   const startId = await ensurePoint(pending.a);
   const endId = await ensurePoint(end);
   await refreshFrom(await api("/api/op", "POST", {
-    op: "AddLine", start_id: startId, end_id: endId, label: labelValue(),
+    op: "AddLine",
+    start_id: startId,
+    end_id: endId,
+    label: pending.chain ? null : labelValue(),
+  }));
+  clearTyped();
+  ghosts.clear();
+  ghostDims = [];
+  pending = {
+    kind: "line",
+    a: { x_mm: end.x_mm, y_mm: end.y_mm, z_mm: end.z_mm || 0, entity_id: endId },
+    chain: true,
+  };
+  refreshToggles();
+  setHint("Line: click the next point. Esc ends the chain.");
+  if (lastPointer) updateGhost(lastPointer);
+}
+
+function polylineHint() {
+  if (!pending || pending.pts.length < 2) {
+    return "Polyline: click the next point.";
+  }
+  if (pending.pts.length < 3) {
+    return "Polyline: click the next point, or Enter to finish.";
+  }
+  return "Polyline: click the next point, Enter to finish, click start or type C to close.";
+}
+
+async function appendPolylineVertex(end) {
+  if (polylineCloses(end)) {
+    await finishPolyline(true);
+    return;
+  }
+  const last = pending.pts[pending.pts.length - 1];
+  if (dist3(last, end) < 1) {
+    setHint("Polyline: click a different point, Enter to finish, or Esc to cancel.");
+    return;
+  }
+  pending.pts.push(end);
+  clearTyped();
+  setHint(polylineHint());
+  if (lastPointer) updateGhost(lastPointer);
+}
+
+async function finishPolyline(closed) {
+  const pts = pending.pts;
+  if (pts.length < 2 || (closed && pts.length < 3)) {
+    setHint(closed ? "Polyline: need three points to close." : "Polyline: click at least two points, then Enter.");
+    return;
+  }
+  const ids = [];
+  for (const point of pts) ids.push(await ensurePoint(point));
+  if (new Set(ids).size !== ids.length) {
+    throw new Error("polyline vertices collapsed; click distinct points");
+  }
+  await refreshFrom(await api("/api/op", "POST", {
+    op: "AddPolyline",
+    point_ids: ids,
+    closed: Boolean(closed),
+    label: labelValue(),
   }));
   pending = null;
   clearTyped();
   ghosts.clear();
   ghostDims = [];
   refreshToggles();
-  setHint("Line placed. LMB draws another.");
+  setHint(closed ? "Closed polyline placed." : "Polyline placed. LMB starts another.");
 }
 
 async function finishFace(end) {
@@ -2207,7 +3420,9 @@ async function finishBezier(end) {
 async function onClick(event) {
   try {
     if (tool === "select") {
-      setSelection(pickEntity(event), { shift: event.shiftKey });
+      const picked = pickEntity(event);
+      setSelection(picked, { shift: event.shiftKey });
+      if (picked == null && !event.shiftKey) setHint("Selection cleared.");
       return;
     }
     if (tool === "move") {
@@ -2383,12 +3598,25 @@ async function onClick(event) {
       if (!xyz) return;
       if (!pending) {
         pending = { kind: "line", a: xyz };
-        setHint("Line: click the second point, or type a length and Enter.");
+        setHint("Line: click the next point, or type a length and Enter.");
         return;
       }
       const end = currentEnd(event);
       if (!end) return;
       await finishLine(end);
+      return;
+    }
+    if (tool === "polyline") {
+      const xyz = hitWorkplane(event);
+      if (!xyz) return;
+      if (!pending) {
+        pending = { kind: "polyline", pts: [xyz] };
+        setHint("Polyline: click the next point.");
+        return;
+      }
+      const end = currentEnd(event);
+      if (!end) return;
+      await appendPolylineVertex(end);
       return;
     }
     if (tool === "rect") {
@@ -2481,10 +3709,110 @@ async function onClick(event) {
 }
 
 async function commitWithEnter() {
-  if (!pending) return;
+  if (!pending) {
+    const echoed = typedText();
+    if (/^grid\s+auto$/i.test(echoed)) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridAuto(true);
+      clearTyped();
+      return;
+    }
+    if (/^grid\s+manual$/i.test(echoed)) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridAuto(false);
+      clearTyped();
+      return;
+    }
+    const match = echoed.match(/^grid(?:\s+|=)(\d+(?:\.\d+)?)(?:\s+(\d+(?:\.\d+)?))?$/i);
+    if (match) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridSpacing(
+        fromDisplay(Number(match[1])),
+        match[2] != null ? fromDisplay(Number(match[2])) : undefined,
+      );
+      clearTyped();
+      return;
+    }
+    const majorMatch = echoed.match(/^major(?:\s+|=)(\d+(?:\.\d+)?)$/i);
+    if (majorMatch) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridSpacing(gridMinorMm(), fromDisplay(Number(majorMatch[1])));
+      clearTyped();
+      return;
+    }
+    const hiddenMatch = echoed.match(/^hidden(?:\s+|=)(\d+(?:\.\d+)?)$/i);
+    if (hiddenMatch) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridHiddenScale(Number(hiddenMatch[1]));
+      clearTyped();
+      return;
+    }
+    const dotMatch = echoed.match(/^dot(?:size)?(?:\s+|=)(\d+(?:\.\d+)?)$/i);
+    if (dotMatch) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridDotSize(Number(dotMatch[1]));
+      clearTyped();
+      return;
+    }
+    const thickMatch = echoed.match(/^(?:thick(?:ness)?|linew(?:idth)?)(?:\s+|=)(\d+(?:\.\d+)?)$/i);
+    if (thickMatch) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridLineWidth(Number(thickMatch[1]));
+      clearTyped();
+      return;
+    }
+    const styleMatch = echoed.match(/^(?:minor\s+)?(dots|lines)$/i);
+    if (styleMatch) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setGridMinorStyle(styleMatch[1].toLowerCase());
+      clearTyped();
+      return;
+    }
+    const unitMatch = echoed.match(/^(mm|cm|m|in)$/i);
+    if (unitMatch) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setDisplayUnit(unitMatch[1].toLowerCase());
+      clearTyped();
+      return;
+    }
+    const viewMatch = echoed.match(/^(top|front|right|left|back|bottom)$/i);
+    if (viewMatch) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      goNamedView(viewMatch[1].toLowerCase());
+      clearTyped();
+      return;
+    }
+    if (/^persp(ective)?$/i.test(echoed)) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setProjectionMode("perspective");
+      clearTyped();
+      return;
+    }
+    if (/^parallel$/i.test(echoed)) {
+      appendLog(`${consolePrompt.textContent} ${echoed}`);
+      setProjectionMode("parallel");
+      clearTyped();
+      return;
+    }
+    return;
+  }
   const echoed = typedText();
   if (echoed) appendLog(`${consolePrompt.textContent} ${echoed}`);
   try {
+    if (pending.kind === "polyline") {
+      const token = echoed.trim().toLowerCase();
+      if (token === "c" || token === "close") {
+        await finishPolyline(true);
+        return;
+      }
+      if (activeLength() != null && lastPointer) {
+        const end = currentEnd(lastPointer);
+        if (end) await appendPolylineVertex(end);
+        return;
+      }
+      await finishPolyline(false);
+      return;
+    }
     if (pending.kind === "rotate") {
       const typed = activeLength();
       if (typed != null) {
@@ -2554,20 +3882,21 @@ async function commitWithEnter() {
 
 const toolHints = {
   select: "Select: click, or drag L→R window / R→L crossing. Shift adds. Delete removes.",
-  line: "Line: two clicks. Type a length, Enter to commit.",
+  line: "Line: click to chain segments. Type a length, Enter to commit. Esc ends the chain.",
+  polyline: "Polyline: click vertices. Enter finishes. Click start or type C to close.",
   rect: "Rect: two clicks for a rectangle on XY.",
   circle: "Circle: centre, then radius. Then Select + Extrude.",
   arc: "Arc: three clicks (start, on-arc, end).",
   ellipse: "Ellipse: centre, then a corner of the bounding box.",
-  polygon: "Polygon: centre, then radius. n sets the side count.",
+  polygon: "Polygon: centre, then radius. The library places a hexagon.",
   bezier: "Bézier: four control points.",
   box: "Box: rectangle, then pull height. Type height and Enter.",
   extrude: "Extrude: select a face/circle/ellipse, then pull height.",
-  move: "Move: select entities, click a base point, then the destination.",
+  move: "Move (M): select entities, click a base point, then the destination.",
   rotate: "Rotate: select, click the pivot, type degrees or click an angle.",
   mirror: "Mirror: select, then two clicks for the mirror axis.",
-  array: "Array: select, click spacing to the next copy. n = total count.",
-  polar: "Polar: select, click the centre. n = count. Length = sweep ° (default 360).",
+  array: "Array: select, click spacing to the next copy.",
+  polar: "Polar: select, click the centre. Length = sweep ° (default 360).",
   trim: "Trim (T): click the part to remove. Shift pins a cutter. Implied intersection is OK.",
   extend: "Extend (E): click the short end to grow to a boundary. Shift pins a boundary.",
   break: "Break: click two crossing lines to insert a shared node.",
@@ -2580,10 +3909,16 @@ for (const button of document.querySelectorAll("button[data-tool]")) {
   button.addEventListener("click", () => setTool(button.dataset.tool));
 }
 
-projButton.addEventListener("click", () => setProjection(!useOrtho));
+projButton.addEventListener("click", () => {
+  setProjectionMode(projection === "perspective" ? "parallel" : "perspective");
+});
 snapButton.addEventListener("click", () => {
   snapOn = !snapOn;
   refreshToggles();
+  if (lastPointer) updateGhost(lastPointer);
+});
+gridSnapButton.addEventListener("click", () => {
+  setGridSnapOn(!gridSnapOn);
   if (lastPointer) updateGhost(lastPointer);
 });
 orthoButton.addEventListener("click", () => {
@@ -2592,35 +3927,12 @@ orthoButton.addEventListener("click", () => {
   if (lastPointer) updateGhost(lastPointer);
 });
 gridButton.addEventListener("click", () => {
-  gridOn = !gridOn;
-  refreshToggles();
+  setGridOn(!gridOn);
   if (lastPointer) updateGhost(lastPointer);
 });
 consoleInput.addEventListener("input", () => {
   refreshToggles();
   if (lastPointer) updateGhost(lastPointer);
-});
-
-document.getElementById("undo").addEventListener("click", async () => {
-  try { pending = null; ghosts.clear(); await refreshFrom(await api("/api/undo", "POST", {})); }
-  catch (error) { setHint(error.message); }
-});
-document.getElementById("redo").addEventListener("click", async () => {
-  try { await refreshFrom(await api("/api/redo", "POST", {})); }
-  catch (error) { setHint(error.message); }
-});
-document.getElementById("clear").addEventListener("click", async () => {
-  pending = null;
-  ghosts.clear();
-  await refreshFrom(await api("/api/reset", "POST", {}));
-  setHint("Cleared.");
-});
-document.getElementById("save").addEventListener("click", () => {
-  const blob = new Blob([JSON.stringify(sceneState.document, null, 2)], { type: "application/json" });
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = "apecad.json";
-  link.click();
 });
 
 canvas.addEventListener("pointerdown", (event) => {
@@ -2629,6 +3941,9 @@ canvas.addEventListener("pointerdown", (event) => {
     controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
   } else {
     controls.mouseButtons.LEFT = -1;
+  }
+  if (event.button === 1 || (event.button === 0 && event.altKey)) {
+    releaseNamedViewForOrbit();
   }
   if (event.button !== 0) return;
   pointerDown = { x: event.clientX, y: event.clientY };
@@ -2666,6 +3981,12 @@ window.addEventListener("keydown", (event) => {
     if (lastPointer) updateGhost(lastPointer);
     return;
   }
+  if (event.key === "F7") {
+    event.preventDefault();
+    setGridSnapOn(!gridSnapOn);
+    if (lastPointer) updateGhost(lastPointer);
+    return;
+  }
   if (event.key === "F8") {
     event.preventDefault();
     orthoOn = !orthoOn;
@@ -2675,20 +3996,76 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key === "F9") {
     event.preventDefault();
-    gridOn = !gridOn;
-    refreshToggles();
+    setGridOn(!gridOn);
     if (lastPointer) updateGhost(lastPointer);
     return;
   }
+  if (event.key === "F2") {
+    if (isTypingField(event) || event.target === consoleInput) return;
+    event.preventDefault();
+    if (selectedIds.size !== 1) {
+      setHint("Select one entity to rename.");
+      return;
+    }
+    const id = [...selectedIds][0];
+    const row = findRecord(id);
+    const rowEl = treeEl.querySelector(`.tree-row[data-id="${id}"]`);
+    if (row && rowEl) beginRename(row, rowEl);
+    return;
+  }
+  if (event.ctrlKey || event.metaKey) {
+    const key = event.key.toLowerCase();
+    if (key === "n") {
+      event.preventDefault();
+      newDocument().catch((error) => setHint(error.message));
+      return;
+    }
+    if (key === "o") {
+      event.preventDefault();
+      openDocument();
+      return;
+    }
+    if (key === "s") {
+      event.preventDefault();
+      saveDocument(event.shiftKey);
+      return;
+    }
+    if (key === "z") {
+      event.preventDefault();
+      undoDocument().catch((error) => setHint(error.message));
+      return;
+    }
+    if (key === "y") {
+      event.preventDefault();
+      redoDocument().catch((error) => setHint(error.message));
+      return;
+    }
+    if (key === "a") {
+      if (event.target === consoleInput || isTypingField(event)) return;
+      event.preventDefault();
+      selectAll();
+      return;
+    }
+    return;
+  }
   if (event.key === "Escape") {
+    if (document.querySelector(".menu.open")) {
+      event.preventDefault();
+      closeMenus();
+      return;
+    }
+    if (document.querySelector("dialog[open]")) return;
     if (pending) {
+      const endedChain = pending.kind === "line" && pending.chain;
       pending = null;
       clearTyped();
       ghosts.clear();
       ghostDims = [];
       hideMarquee();
       refreshToggles();
-      setHint("Cancelled.");
+      setHint(endedChain
+        ? "Line chain ended. Click to start another, or Esc for Select."
+        : "Cancelled.");
       return;
     }
     if (tool !== "select") {
@@ -2716,6 +4093,11 @@ window.addEventListener("keydown", (event) => {
         setTool("trim");
         return;
       }
+      if (event.key === "m" || event.key === "M") {
+        event.preventDefault();
+        setTool("move");
+        return;
+      }
       if (event.key === "e" || event.key === "E") {
         event.preventDefault();
         setTool("extend");
@@ -2736,6 +4118,11 @@ window.addEventListener("keydown", (event) => {
       setTool("trim");
       return;
     }
+    if (event.key === "m" || event.key === "M") {
+      event.preventDefault();
+      setTool("move");
+      return;
+    }
     if (event.key === "e" || event.key === "E") {
       event.preventDefault();
       setTool("extend");
@@ -2753,7 +4140,7 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "o" || event.key === "O") {
-    setProjection(!useOrtho);
+    setProjectionMode(projection === "perspective" ? "parallel" : "perspective");
     return;
   }
   if (event.key === "Enter") {
@@ -2796,48 +4183,443 @@ function bindSplit(handle, onMove) {
 }
 
 const workspaceEl = document.getElementById("workspace");
-const dockEl = document.getElementById("dock");
+const outlinerEl = document.getElementById("outliner");
 const propsEl = document.getElementById("props");
-bindSplit(document.getElementById("split-x"), (event) => {
-  const rect = workspaceEl.getBoundingClientRect();
-  const maxWidth = Math.max(rect.width * 0.5, 180);
-  const width = Math.min(Math.max(event.clientX - rect.left, 180), maxWidth);
-  dockEl.style.width = `${width}px`;
-  syncCameras();
-});
-bindSplit(document.getElementById("split-y"), (event) => {
-  const rect = dockEl.getBoundingClientRect();
-  const height = Math.min(Math.max(rect.bottom - event.clientY, 88), rect.height - 140);
-  propsEl.style.height = `${height}px`;
-});
 const consoleEl = document.getElementById("console");
-bindSplit(document.getElementById("split-console"), (event) => {
-  const body = document.body.getBoundingClientRect();
-  const height = Math.min(Math.max(body.bottom - event.clientY, 56), body.height * 0.4);
-  consoleEl.style.height = `${height}px`;
-  syncCameras();
-});
+const fileOpenEl = document.getElementById("file-open");
+const prefsDialog = document.getElementById("prefs-dialog");
+const gridPrefsDialog = document.getElementById("grid-prefs-dialog");
+const helpDialog = document.getElementById("help-dialog");
 
-function setDockCollapsed(collapsed) {
-  workspaceEl.classList.toggle("dock-collapsed", collapsed);
-  document.getElementById("dock-toggle").title = collapsed ? "Show model panel" : "Collapse panel";
-  syncCameras();
+function persistLayout() {
+  sessionStorage.setItem(LAYOUT_KEY, JSON.stringify({
+    outliner: outlinerEl.style.width || "260px",
+    props: propsEl.style.height || "140px",
+    console: consoleEl.style.height || "72px",
+    outlinerCollapsed: workspaceEl.classList.contains("outliner-collapsed"),
+    railCollapsed: workspaceEl.classList.contains("rail-collapsed"),
+    consoleCollapsed: document.body.classList.contains("console-collapsed"),
+  }));
 }
 
-document.getElementById("dock-toggle").addEventListener("click", () => {
-  setDockCollapsed(true);
+function restoreLayout() {
+  try {
+    const layout = JSON.parse(sessionStorage.getItem(LAYOUT_KEY) || "null");
+    if (!layout || typeof layout !== "object") return;
+    if (layout.outliner) outlinerEl.style.width = layout.outliner;
+    if (layout.props) propsEl.style.height = layout.props;
+    if (layout.console) consoleEl.style.height = layout.console;
+    workspaceEl.classList.toggle("outliner-collapsed", !!layout.outlinerCollapsed);
+    workspaceEl.classList.toggle("rail-collapsed", !!layout.railCollapsed);
+    document.body.classList.toggle("console-collapsed", !!layout.consoleCollapsed);
+  } catch (_error) {
+    /* keep defaults */
+  }
+}
+
+function setGridOn(next) {
+  gridOn = next;
+  prefs.grid = next;
+  savePrefs();
+  refreshToggles();
+  grid.visible = gridOn;
+}
+
+function setGridSnapOn(next) {
+  gridSnapOn = next;
+  prefs.gridSnap = next;
+  savePrefs();
+  refreshToggles();
+}
+
+function applyViz() {
+  const pal = BACKGROUNDS[prefs.background] || BACKGROUNDS.g5;
+  scene.background.setHex(pal.bg);
+  document.getElementById("stage").style.background = `#${pal.bg.toString(16).padStart(6, "0")}`;
+  rebuildGrid();
+  const dark = prefs.background === "g2";
+  hemi.color.setHex(dark ? 0xc8cdd3 : 0xf4f7fb);
+  hemi.groundColor.setHex(prefs.ao ? (dark ? 0x0a0a0a : 0x6e757c) : (dark ? 0x2a2a2a : 0xc5cad0));
+  hemi.intensity = prefs.ao ? 0.58 : 0.42;
+  key.visible = prefs.keyLight;
+  key.intensity = prefs.keyLight ? 0.45 : 0;
+  contact.visible = prefs.ao;
+  contact.material.opacity = dark ? 0.18 : 0.06;
+  rebuild();
+}
+
+function savePrefs() {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+}
+
+function syncPrefsForm() {
+  document.getElementById("pref-background").value = prefs.background;
+  document.getElementById("pref-clay").value = String(prefs.clay);
+  document.getElementById("pref-curve").value = prefs.curve;
+  document.getElementById("pref-key").checked = prefs.keyLight;
+  document.getElementById("pref-ao").checked = prefs.ao;
+  document.getElementById("pref-edges").checked = prefs.showEdges;
+  document.getElementById("pref-curves").checked = prefs.showCurves;
+  document.getElementById("pref-faces").checked = prefs.showFaces;
+}
+
+function readPrefsForm() {
+  prefs = {
+    background: document.getElementById("pref-background").value,
+    clay: Number(document.getElementById("pref-clay").value) || 176,
+    curve: document.getElementById("pref-curve").value,
+    keyLight: document.getElementById("pref-key").checked,
+    ao: document.getElementById("pref-ao").checked,
+    showEdges: document.getElementById("pref-edges").checked,
+    showCurves: document.getElementById("pref-curves").checked,
+    showFaces: document.getElementById("pref-faces").checked,
+    grid: gridOn,
+    gridSnap: gridSnapOn,
+    gridMinorOn,
+    gridAuto: gridAutoOn(),
+    gridMinor: prefMinorMm(),
+    gridMajor: prefMajorMm(),
+    gridHiddenScale: hiddenLineScale(),
+    gridMinorStyle: gridMinorStyle(),
+    gridDotSize: gridDotSize(),
+    gridLineWidth: gridLineWidth(),
+    displayUnit: displayUnit(),
+  };
+  savePrefs();
+  applyViz();
+  refreshToggles();
+  if (lastPointer) updateGhost(lastPointer);
+}
+
+function downloadJson(filename) {
+  const blob = new Blob([JSON.stringify(sceneState.document, null, 2)], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function saveDocument(saveAs = false) {
+  if (saveAs) {
+    const next = window.prompt("Save as", saveName) || "";
+    if (!next.trim()) return;
+    saveName = next.trim().endsWith(".json") ? next.trim() : `${next.trim()}.json`;
+  }
+  downloadJson(saveName);
+  setHint(`Saved ${saveName}. Preferences are not in this file.`);
+}
+
+function openDocument() {
+  fileOpenEl.click();
+}
+
+function documentFromFile(parsed) {
+  if (parsed && parsed.schema && Array.isArray(parsed.ops)) return parsed;
+  if (parsed && parsed.document && parsed.document.schema) return parsed.document;
+  throw new Error("not an apeCAD document JSON");
+}
+
+async function loadDocumentDict(dict, name) {
+  pending = null;
+  ghosts.clear();
+  selectedIds.clear();
+  await refreshFrom(await api("/api/load", "POST", dict));
+  if (name) saveName = name;
+  namedView = null;
+  viewUp.copy(WORLD_UP);
+  bindProjectionCamera();
+  lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
+  setHint(`Opened ${saveName}.`);
+}
+
+async function newDocument() {
+  pending = null;
+  ghosts.clear();
+  selectedIds.clear();
+  await refreshFrom(await api("/api/reset", "POST", {}));
+  saveName = "apecad.json";
+  namedView = null;
+  viewUp.copy(WORLD_UP);
+  bindProjectionCamera();
+  lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
+  setHint("New document.");
+}
+
+async function undoDocument() {
+  pending = null;
+  ghosts.clear();
+  await refreshFrom(await api("/api/undo", "POST", {}));
+}
+
+async function redoDocument() {
+  await refreshFrom(await api("/api/redo", "POST", {}));
+}
+
+function selectAll() {
+  selectedIds = new Set(catalog().map((row) => row.id));
+  rebuild();
+  setHint(selectedIds.size ? `${selectedIds.size} selected.` : "Nothing to select.");
+}
+
+function closeMenus() {
+  for (const menu of document.querySelectorAll(".menu.open")) menu.classList.remove("open");
+  closeTreeMenu();
+}
+
+function runCommand(cmd) {
+  closeMenus();
+  if (cmd === "new") return newDocument().catch((error) => setHint(error.message));
+  if (cmd === "open" || cmd === "import") return openDocument();
+  if (cmd === "save") return saveDocument(false);
+  if (cmd === "save-as" || cmd === "export") return saveDocument(true);
+  if (cmd === "prefs") {
+    syncPrefsForm();
+    prefsDialog.showModal();
+    return;
+  }
+  if (cmd === "grid-prefs") {
+    syncGridPrefsForm();
+    gridPrefsDialog.showModal();
+    return;
+  }
+  if (cmd === "quit") {
+    window.close();
+    setHint("Close the browser tab to quit.");
+    return;
+  }
+  if (cmd === "undo") return undoDocument().catch((error) => setHint(error.message));
+  if (cmd === "redo") return redoDocument().catch((error) => setHint(error.message));
+  if (cmd === "select-all") return selectAll();
+  if (cmd === "delete") return commitDelete().catch((error) => setHint(error.message));
+  if (cmd === "perspective") return setProjectionMode("perspective");
+  if (cmd === "parallel") return setProjectionMode("parallel");
+  if (cmd === "view-top") return goNamedView("top");
+  if (cmd === "view-front") return goNamedView("front");
+  if (cmd === "view-right") return goNamedView("right");
+  if (cmd === "view-left") return goNamedView("left");
+  if (cmd === "view-back") return goNamedView("back");
+  if (cmd === "view-bottom") return goNamedView("bottom");
+  if (cmd === "projection") {
+    return setProjectionMode(projection === "perspective" ? "parallel" : "perspective");
+  }
+  if (cmd === "snap") {
+    snapOn = !snapOn;
+    refreshToggles();
+    return;
+  }
+  if (cmd === "grid-snap") {
+    setGridSnapOn(!gridSnapOn);
+    return;
+  }
+  if (cmd === "ortho") {
+    orthoOn = !orthoOn;
+    refreshToggles();
+    return;
+  }
+  if (cmd === "grid") {
+    setGridOn(!gridOn);
+    return;
+  }
+  if (cmd === "fit") return document.getElementById("view-fit").click();
+  if (cmd === "iso") return document.getElementById("view-iso").click();
+  if (cmd === "viewcube") {
+    viewCubeOn = !viewCubeOn;
+    document.getElementById("viewcube-wrap").hidden = !viewCubeOn;
+    return;
+  }
+  if (cmd === "toggle-outliner") {
+    workspaceEl.classList.toggle("outliner-collapsed");
+    persistLayout();
+    syncCameras();
+    return;
+  }
+  if (cmd === "toggle-rail") {
+    workspaceEl.classList.toggle("rail-collapsed");
+    persistLayout();
+    return;
+  }
+  if (cmd === "toggle-console") {
+    document.body.classList.toggle("console-collapsed");
+    persistLayout();
+    syncCameras();
+    return;
+  }
+  if (cmd === "help") {
+    helpDialog.showModal();
+  }
+}
+
+for (const menu of document.querySelectorAll(".menu")) {
+  const button = menu.querySelector(":scope > button");
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const wasOpen = menu.classList.contains("open");
+    closeMenus();
+    if (!wasOpen) menu.classList.add("open");
+  });
+}
+document.addEventListener("click", closeMenus);
+document.getElementById("tree-wrap").addEventListener("contextmenu", (event) => {
+  event.preventDefault();
 });
-document.getElementById("dock-expand").addEventListener("click", () => {
-  setDockCollapsed(false);
+for (const button of document.querySelectorAll("[data-cmd]")) {
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    runCommand(button.dataset.cmd);
+  });
+}
+
+fileOpenEl.addEventListener("change", async () => {
+  const file = fileOpenEl.files && fileOpenEl.files[0];
+  fileOpenEl.value = "";
+  if (!file) return;
+  try {
+    await loadDocumentDict(documentFromFile(JSON.parse(await file.text())), file.name);
+  } catch (error) {
+    setHint(error.message);
+  }
+});
+
+for (const id of [
+  "pref-background", "pref-clay", "pref-curve", "pref-key", "pref-ao",
+  "pref-edges", "pref-curves", "pref-faces",
+]) {
+  document.getElementById(id).addEventListener("change", readPrefsForm);
+  document.getElementById(id).addEventListener("input", readPrefsForm);
+}
+document.getElementById("prefs-close").addEventListener("click", () => prefsDialog.close());
+document.getElementById("grid-prefs-close").addEventListener("click", () => gridPrefsDialog.close());
+document.getElementById("help-close").addEventListener("click", () => helpDialog.close());
+document.getElementById("grid-menu").addEventListener("click", (event) => event.stopPropagation());
+document.getElementById("grid-minor-on").addEventListener("change", (event) => {
+  setGridMinorOn(event.target.checked);
+});
+document.getElementById("gpref-show").addEventListener("change", (event) => {
+  setGridOn(event.target.checked);
+});
+document.getElementById("gpref-minor-on").addEventListener("change", (event) => {
+  setGridMinorOn(event.target.checked);
+});
+document.getElementById("gpref-snap").addEventListener("change", (event) => {
+  setGridSnapOn(event.target.checked);
+});
+document.getElementById("gpref-auto").addEventListener("change", (event) => {
+  setGridAuto(event.target.checked);
+});
+document.getElementById("gpref-minor-style").addEventListener("change", (event) => {
+  setGridMinorStyle(event.target.value);
+});
+function readGridSpacingForm() {
+  setGridSpacing(
+    fromDisplay(document.getElementById("gpref-minor").value),
+    fromDisplay(document.getElementById("gpref-major").value),
+  );
+}
+document.getElementById("gpref-minor").addEventListener("change", readGridSpacingForm);
+document.getElementById("gpref-major").addEventListener("change", readGridSpacingForm);
+document.getElementById("gpref-unit").addEventListener("change", (event) => {
+  setDisplayUnit(event.target.value);
+});
+const hiddenScaleEl = document.getElementById("gpref-hidden-scale");
+const hiddenScaleNum = document.getElementById("gpref-hidden-scale-num");
+hiddenScaleEl.addEventListener("input", () => {
+  setGridHiddenScale(hiddenScaleEl.value, { silent: true });
+});
+hiddenScaleEl.addEventListener("change", () => {
+  setGridHiddenScale(hiddenScaleEl.value);
+});
+hiddenScaleNum.addEventListener("input", () => {
+  setGridHiddenScale(hiddenScaleNum.value, { silent: true });
+});
+hiddenScaleNum.addEventListener("change", () => {
+  setGridHiddenScale(hiddenScaleNum.value);
+});
+const dotSizeEl = document.getElementById("gpref-dot-size");
+const dotSizeNum = document.getElementById("gpref-dot-size-num");
+dotSizeEl.addEventListener("input", () => {
+  setGridDotSize(dotSizeEl.value, { silent: true });
+});
+dotSizeEl.addEventListener("change", () => {
+  setGridDotSize(dotSizeEl.value);
+});
+dotSizeNum.addEventListener("input", () => {
+  setGridDotSize(dotSizeNum.value, { silent: true });
+});
+dotSizeNum.addEventListener("change", () => {
+  setGridDotSize(dotSizeNum.value);
+});
+const lineWidthEl = document.getElementById("gpref-line-width");
+const lineWidthNum = document.getElementById("gpref-line-width-num");
+lineWidthEl.addEventListener("input", () => {
+  setGridLineWidth(lineWidthEl.value, { silent: true });
+});
+lineWidthEl.addEventListener("change", () => {
+  setGridLineWidth(lineWidthEl.value);
+});
+lineWidthNum.addEventListener("input", () => {
+  setGridLineWidth(lineWidthNum.value, { silent: true });
+});
+lineWidthNum.addEventListener("change", () => {
+  setGridLineWidth(lineWidthNum.value);
+});
+for (const button of document.querySelectorAll("[data-grid-minor]")) {
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setGridSpacing(button.dataset.gridMinor, button.dataset.gridMajor);
+  });
+}
+
+bindSplit(document.getElementById("split-outliner"), (event) => {
+  const rect = workspaceEl.getBoundingClientRect();
+  const maxWidth = Math.max(rect.width * 0.5, 180);
+  outlinerEl.style.width = `${Math.min(Math.max(event.clientX - rect.left, 180), maxWidth)}px`;
+  persistLayout();
+  syncCameras();
+});
+bindSplit(document.getElementById("split-tree"), (event) => {
+  const rect = outlinerEl.getBoundingClientRect();
+  const height = Math.min(Math.max(rect.bottom - event.clientY, 72), rect.height - 140);
+  propsEl.style.height = `${height}px`;
+  persistLayout();
+});
+bindSplit(document.getElementById("split-console"), (event) => {
+  const body = document.body.getBoundingClientRect();
+  consoleEl.style.height = `${Math.min(Math.max(body.bottom - event.clientY, 56), body.height * 0.4)}px`;
+  persistLayout();
+  syncCameras();
+});
+
+document.getElementById("outliner-toggle").addEventListener("click", () => {
+  workspaceEl.classList.add("outliner-collapsed");
+  persistLayout();
+  syncCameras();
+});
+document.getElementById("outliner-expand").addEventListener("click", () => {
+  workspaceEl.classList.remove("outliner-collapsed");
+  persistLayout();
+  syncCameras();
+});
+document.getElementById("rail-toggle").addEventListener("click", () => {
+  workspaceEl.classList.add("rail-collapsed");
+  persistLayout();
+});
+document.getElementById("rail-expand").addEventListener("click", () => {
+  workspaceEl.classList.remove("rail-collapsed");
+  persistLayout();
 });
 
 function tick() {
   tickViewAnim();
+  syncCameras();
   renderer.render(scene, camera());
   syncCube();
   projectDims();
   requestAnimationFrame(tick);
 }
+restoreLayout();
+syncPrefsForm();
+applyViz();
 refreshToggles();
 tick();
 reload().catch((error) => setHint(error.message));

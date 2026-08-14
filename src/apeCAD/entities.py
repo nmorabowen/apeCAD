@@ -34,7 +34,7 @@ class Polyline:
 
 @dataclass(frozen=True, slots=True)
 class Box:
-    """Axis-aligned box: origin is the minimum corner, size is extent in mm."""
+    """Legacy AABB. New AddBox ops expand to Face + Extrude instead."""
 
     entity_id: EntityId
     origin_xyz_mm: XYZ
@@ -53,12 +53,13 @@ class Face:
 
 @dataclass(frozen=True, slots=True)
 class Solid:
-    """Intent solid: a face pulled by a signed distance along a direction."""
+    """Intent solid: a profile pulled by a signed distance. Cap is the far end."""
 
     entity_id: EntityId
     face_id: EntityId
     distance_mm: float
     direction_xyz: XYZ
+    cap_id: EntityId | None = None
     label: str | None = None
 
 

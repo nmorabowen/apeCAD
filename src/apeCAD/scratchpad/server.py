@@ -63,6 +63,18 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
                 self.server.document = Document()
                 self._send_json(200, scene_payload(self.server.document))
                 return
+            if parsed.path == "/api/load":
+                payload = self._read_json_object()
+                nested = payload.get("document")
+                if payload.get("schema") is None and isinstance(nested, dict):
+                    payload = {
+                        key: value
+                        for key, value in nested.items()
+                        if isinstance(key, str)
+                    }
+                self.server.document = Document.from_dict(payload)
+                self._send_json(200, scene_payload(self.server.document))
+                return
         except DocumentError as exc:
             self._send_json(400, {"error": str(exc)})
             return
