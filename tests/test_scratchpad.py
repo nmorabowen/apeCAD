@@ -48,7 +48,59 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
         html = response.read().decode("utf-8")
     assert "apeCAD scratchpad" in html
     assert 'id="viewcube"' in html
+    assert 'id="menubar"' in html
+    assert 'id="rail"' in html
+    assert 'id="props"' in html
+    assert 'id="props-dock"' not in html
+    assert 'id="sides"' not in html
+    assert 'id="ctx-menu"' in html
+    assert 'data-tool="polyline"' in html
+    assert 'id="grid-snap"' in html
+    assert 'data-cmd="grid-snap"' in html
+    assert 'data-menu="grid"' in html
+    assert 'id="grid-minor-on"' in html
+    assert 'id="grid-prefs-dialog"' in html
+    assert 'id="gpref-hidden-scale"' in html
+    assert 'id="gpref-minor"' in html
+    assert 'id="gpref-minor-style"' in html
+    assert 'id="gpref-dot-size"' in html
+    assert 'id="gpref-line-width"' in html
+    assert 'id="gpref-auto"' in html
+    assert 'id="gpref-unit"' in html
+    assert 'data-cmd="grid-prefs"' in html
+    assert 'data-cmd="perspective"' in html
+    assert 'data-cmd="parallel"' in html
+    assert 'data-cmd="view-top"' in html
+    assert 'data-cmd="view-front"' in html
     assert (STATIC_DIR / "app.js").is_file()
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    assert "chain: true" in app
+    assert "Esc ends the chain" in app
+    assert 'kind: "polyline"' in app
+    assert 'setTool("move")' in app
+    assert "picked == null && !event.shiftKey" in app
+    assert "gridSnapOn" in app
+    assert "isGridSnap" in app
+    assert "gridMinorMm" in app
+    assert "gridMajorMm" in app
+    assert "grid-major" in app
+    assert "hiddenLineScale" in app
+    assert "gridHiddenScale" in app
+    assert "gridDotSize" in app
+    assert "gridLineWidth" in app
+    assert "LineSegments2" in app
+    assert "makeMinorDots" in app
+    assert "displayUnit" in app
+    assert "effectiveGrid" in app
+    assert "niceLength" in app
+    assert "sceneFrame" in app
+    assert "lookAtScene" in app
+    assert "goNamedView" in app
+    assert "setProjectionMode" in app
+    assert "new THREE.Vector3(1, -1, 1)" in app
+    assert "makeGridHelper" in app
+    assert "updateClipPlanes" in app
+    assert "appendHiddenSpan" in app
 
 
 def test_add_point_via_op_api(server: ScratchpadServer) -> None:
@@ -61,6 +113,24 @@ def test_add_point_via_op_api(server: ScratchpadServer) -> None:
     points = payload["points"]
     assert isinstance(points, list)
     assert points[0]["label"] == "A"
+
+
+def test_set_label_via_op_api(server: ScratchpadServer) -> None:
+    _call(
+        server,
+        "/api/op",
+        "POST",
+        {"op": "AddPoint", "x_mm": 0, "y_mm": 0, "z_mm": 0, "label": "A"},
+    )
+    renamed = _call(
+        server,
+        "/api/op",
+        "POST",
+        {"op": "SetLabel", "entity_id": 1, "label": "origin"},
+    )
+    points = renamed["points"]
+    assert isinstance(points, list)
+    assert points[0]["label"] == "origin"
 
 
 def test_line_and_undo(server: ScratchpadServer) -> None:
@@ -77,6 +147,33 @@ def test_line_and_undo(server: ScratchpadServer) -> None:
     assert len(lines) == 1
     undone = _call(server, "/api/undo", "POST", {})
     assert undone["lines"] == []
+
+
+def test_add_box_via_op_api_is_a_solid(server: ScratchpadServer) -> None:
+    payload = _call(
+        server,
+        "/api/op",
+        "POST",
+        {
+            "op": "AddBox",
+            "origin_xyz_mm": [0, 0, 0],
+            "size_xyz_mm": [6000, 4000, 200],
+            "label": "slab_L2",
+        },
+    )
+    assert payload["boxes"] == []
+    solids = payload["solids"]
+    assert isinstance(solids, list)
+    assert len(solids) == 1
+    assert solids[0]["label"] == "slab_L2"
+    assert solids[0]["distance_mm"] == 200
+    faces = payload["faces"]
+    assert isinstance(faces, list)
+    assert len(faces) == 2
+    assert payload["created_id"] == solids[0]["entity_id"]
+    points = payload["points"]
+    assert isinstance(points, list)
+    assert len(points) == 8
 
 
 def test_face_and_extrude_via_op_api(server: ScratchpadServer) -> None:
@@ -103,11 +200,18 @@ def test_face_and_extrude_via_op_api(server: ScratchpadServer) -> None:
         "POST",
         {"op": "Extrude", "face_id": 5, "distance_mm": 200, "label": "slab_solid"},
     )
-    assert after_solid["created_id"] == 6
     solids = after_solid["solids"]
     assert isinstance(solids, list)
     assert solids[0]["face_id"] == 5
     assert solids[0]["distance_mm"] == 200
+    assert after_solid["created_id"] == solids[0]["entity_id"]
+    assert solids[0]["cap_id"] is not None
+    points = after_solid["points"]
+    assert isinstance(points, list)
+    assert len(points) == 8
+    faces = after_solid["faces"]
+    assert isinstance(faces, list)
+    assert len(faces) == 2
 
 
 def test_translate_and_insert_node_via_op_api(server: ScratchpadServer) -> None:
@@ -205,6 +309,52 @@ def test_bad_op_is_400(server: ScratchpadServer) -> None:
     request = Request(
         f"http://127.0.0.1:{port}/api/op",
         data=json.dumps({"op": "AddLine", "start_id": 1, "end_id": 2}).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(HTTPError) as error:
+        urlopen(request)
+    assert error.value.code == 400
+
+
+def test_load_json_replaces_the_document(server: ScratchpadServer) -> None:
+    _call(
+        server,
+        "/api/op",
+        "POST",
+        {"op": "AddPoint", "x_mm": 0, "y_mm": 0, "z_mm": 0, "label": "A"},
+    )
+    scene = _call(server, "/api/scene")
+    document = scene["document"]
+    assert isinstance(document, dict)
+    _call(server, "/api/reset", "POST", {})
+    assert _call(server, "/api/scene")["points"] == []
+    loaded = _call(server, "/api/load", "POST", document)
+    points = loaded["points"]
+    assert isinstance(points, list)
+    assert points[0]["label"] == "A"
+
+
+def test_load_accepts_a_scene_payload_wrapper(server: ScratchpadServer) -> None:
+    _call(
+        server,
+        "/api/op",
+        "POST",
+        {"op": "AddPoint", "x_mm": 100, "y_mm": 0, "z_mm": 0, "label": "B"},
+    )
+    scene = _call(server, "/api/scene")
+    _call(server, "/api/reset", "POST", {})
+    loaded = _call(server, "/api/load", "POST", scene)
+    points = loaded["points"]
+    assert isinstance(points, list)
+    assert points[0]["label"] == "B"
+
+
+def test_load_bad_json_is_400(server: ScratchpadServer) -> None:
+    port = server.server_address[1]
+    request = Request(
+        f"http://127.0.0.1:{port}/api/load",
+        data=json.dumps({"ops": []}).encode(),
         method="POST",
         headers={"Content-Type": "application/json"},
     )

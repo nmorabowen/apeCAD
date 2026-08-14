@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from apeCAD import Box, Document, DocumentError, Line, Polyline
+from apeCAD import Document, DocumentError, Face, Line, Polyline, Solid
 
 
 def _portal() -> Document:
@@ -23,12 +23,27 @@ def test_add_point_line_box_and_tag() -> None:
     beam = document.entity_by_label("beam_B1")
     slab = document.entity_by_label("slab_L2")
     assert isinstance(beam, Line)
-    assert isinstance(slab, Box)
+    assert isinstance(slab, Solid)
     assert beam.start_id == document.entity_by_label("A").entity_id
-    assert slab.size_xyz_mm.z_mm == 200.0
+    assert slab.distance_mm == 200.0
+    assert isinstance(document.entity(slab.face_id), Face)
+    assert document.boxes() == ()
     assert document.tagged("level_1") == frozenset(
         {document.entity_by_label("A").entity_id, document.entity_by_label("B").entity_id}
     )
+
+
+def test_set_label_renames_and_clears() -> None:
+    document = Document()
+    point = document.add_point(0.0, 0.0, 0.0, label="A")
+    document.set_label(point.entity_id, "origin")
+    assert document.entity_by_label("origin").entity_id == point.entity_id
+    with pytest.raises(DocumentError, match="unknown label"):
+        document.entity_by_label("A")
+    document.set_label(point.entity_id, None)
+    assert document.entity(point.entity_id).label is None
+    with pytest.raises(DocumentError, match="unknown label"):
+        document.entity_by_label("origin")
 
 
 def test_polyline_closed_loop() -> None:
@@ -67,6 +82,25 @@ def test_box_size_must_be_positive() -> None:
     document = Document()
     with pytest.raises(DocumentError, match="positive"):
         document.add_box((0.0, 0.0, 0.0), (100.0, 0.0, 50.0))
+
+
+def test_add_box_expands_to_face_and_extrude() -> None:
+    document = Document()
+    solid = document.add_box((0.0, 0.0, 0.0), (6000.0, 4000.0, 200.0), label="slab_L2")
+    assert isinstance(solid, Solid)
+    assert document.boxes() == ()
+    face = document.entity(solid.face_id)
+    assert isinstance(face, Face)
+    assert len(face.point_ids) == 4
+    assert solid.cap_id is not None
+    cap = document.entity(solid.cap_id)
+    assert isinstance(cap, Face)
+    assert len(document.points()) == 8
+    assert len(document.faces()) == 2
+    assert len(document.ops()) == 1
+    assert document.ops()[0].__class__.__name__ == "AddBox"
+    loaded = Document.from_json(document.to_json())
+    assert isinstance(loaded.entity_by_label("slab_L2"), Solid)
 
 
 def test_non_finite_coordinate_is_rejected() -> None:

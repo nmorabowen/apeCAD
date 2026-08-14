@@ -59,6 +59,7 @@ def scene_payload(document: Document) -> dict[str, object]:
                 "face_id": solid.face_id,
                 "distance_mm": solid.distance_mm,
                 "direction_xyz": list(solid.direction_xyz.to_tuple()),
+                "cap_id": solid.cap_id,
                 "label": solid.label,
             }
             for solid in document.solids()

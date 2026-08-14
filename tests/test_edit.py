@@ -58,12 +58,16 @@ def test_translate_moves_shared_points_once() -> None:
     assert loaded.entity(ab.start_id).xyz_mm.to_tuple() == (100.0, 50.0, 0.0)  # type: ignore[union-attr]
 
 
-def test_translate_box_origin() -> None:
+def test_translate_box_moves_face_points() -> None:
     document = Document()
-    box = document.add_box((0.0, 0.0, 0.0), (1000.0, 800.0, 200.0), label="pad")
-    document.translate((box.entity_id,), 250.0, 0.0, 10.0)
-    moved = document.entity_by_label("pad")
-    assert moved.origin_xyz_mm.to_tuple() == (250.0, 0.0, 10.0)  # type: ignore[union-attr]
+    solid = document.add_box((0.0, 0.0, 0.0), (1000.0, 800.0, 200.0), label="pad")
+    document.translate((solid.entity_id,), 250.0, 0.0, 10.0)
+    face = document.entity(solid.face_id)
+    assert isinstance(face, Face)
+    xs = sorted(document.entity(pid).xyz_mm.x_mm for pid in face.point_ids)  # type: ignore[union-attr]
+    zs = sorted(document.entity(pid).xyz_mm.z_mm for pid in face.point_ids)  # type: ignore[union-attr]
+    assert xs[0] == pytest.approx(250.0)
+    assert zs[0] == pytest.approx(10.0)
 
 
 def test_insert_node_splits_line_and_face() -> None:
@@ -409,9 +413,15 @@ def test_delete_point_cascades_to_users() -> None:
 def test_delete_solid_keeps_profile() -> None:
     document, _lines, face = _square()
     solid = document.extrude(face.entity_id, 200.0, label="wall")
+    cap_id = solid.cap_id
     document.delete((solid.entity_id,))
     assert document.solids() == ()
     assert document.entity(face.entity_id)
+    assert len(document.faces()) == 1
+    assert len(document.points()) == 4
+    if cap_id is not None:
+        with pytest.raises(DocumentError, match="unknown entity"):
+            document.entity(cap_id)
     loaded = Document.from_json(document.to_json())
     assert loaded.solids() == ()
     assert loaded.entity(face.entity_id)

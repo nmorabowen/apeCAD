@@ -23,6 +23,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0011](0011-window-select-modify-nodes.md) | Window selection, modify ops, and insert-node | Accepted |
 | [0012](0012-kernel-free-modify-transform.md) | Kernel-free modify and transform | Accepted |
 | [0013](0013-view-cube.md) | View cube is a client compass, not a document op | Accepted |
+| [0014](0014-menubar-side-rail-prefs.md) | Menubar, side rail, and client preferences | Accepted |
 
 ## Template
 

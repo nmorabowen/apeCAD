@@ -8,7 +8,7 @@
 | Entity | Meaning |
 |---|---|
 | Face | Closed planar loop of point ids |
-| Solid | Face extruded by a signed distance along a direction |
+| Solid | Face extruded by a signed distance; far-end vertices (and a cap face) are created |
 | Circle | Centre point + radius |
 | Arc | Three points (start, on-arc, end) |
 | Ellipse | Centre + axis-aligned radii |
@@ -19,7 +19,8 @@ Ops: `AddFace`, `Extrude`, `AddCircle`, `AddArc`, `AddEllipse`,
 `AddFaceFromLines`, `JoinPolyline`, `Rotate`, `Mirror`, `ChamferCorner`,
 `FilletCorner`, `Sew`, `Simplify`, `ArrayLinear`, `ArrayPolar`,
 `Delete`.
-`Box` stays as sugar. Regular polygon is a `Face`.
+`AddBox` is sugar: it writes a `Face` + `Extrude` (`Solid`). The `Box`
+entity is not created. Regular polygon is a `Face`.
 `Circle` and `Ellipse` are profiles: they fill as faces and can be
 extruded without baking into a polyline.
 
@@ -40,30 +41,38 @@ them, and unused endpoints left behind.
 
 ## In the scratchpad (now)
 
-- Parallel and perspective cameras
-- View cube: Top +Z, Front −Y, Right +X; ISO = +X −Y +Z (Right–Front–Top); Fit frames points
+- Perspective (vanishing points) and Parallel (axonometric, no vanishing points). O toggles those two 3D lenses.
+- Orthographic views: Top / Front / Right / Left / Back / Bottom — true axis look (Top is +Z, screen-up +Y), parallel lens. Polar-orbit clamp is off for these views so they do not skew.
 - LMB draw, MMB orbit, RMB pan, wheel zoom (no Orbit tool)
 - Ghost line / rectangle / extrusion while drawing
-- SNAP (F3): master snap on/off (nodes + grid)
-- GRID (F9): 100 mm grid snap, only while SNAP is on
+- Line chains: each click continues from the last end until Esc; still stores `Line`s that share points
+- Polyline: click vertices, Enter to finish open, click start or type C to close; stores `AddPolyline`. Join remains a repair tool.
+- SNAP (F3): snap to existing nodes (vertices)
+- GRIDSNAP (F7): snap to minor and major grid intersections; independent of SNAP and of grid visibility
+- GRID (F9): show or hide the grid helper; does not control snapping. Major lines are continuous solids. Minor is dots at intersections (default) or hidden linetype (dash 2/3, gap 1/3 of the dash period).
+- Show minor: Grid menu checkbox; hides minor dots/lines only. Snap to minor is unchanged (F7).
+- Grid preferences: Grid → Preferences. Units mm / cm / m / in (display only; document stays millimetres). Auto spacing (default on) picks a 1–2–5 minor/major from the model plan size (~10 major cells across); empty scene uses the stored 100 / 1000 mm. Manual values, presets, or `grid 50 500` turn auto off. `grid auto` / `grid manual`. Dot size default 1.5 px. Line thickness default 1 px. Hidden scale default 0.25 when minor style is lines. Client pref, not in the JSON.
 - ORTHO (F8): lock H/V; Shift inverts for one stroke
 - Node snap overrides ORTHO (and typed length) so a snapped node keeps its real angle
-- Snap marker: square at the active node/grid snap
+- Snap square appears on node snap and on minor/major grid snap (when GRIDSNAP is on); major crossings use a larger square
 - Type a length or angle in the command line at the bottom, then Enter
+- Length, size, and radius live in the properties dock, not as labels on the stroke
 - Face/Rect tool = rectangle on XY, then `AddFace` (no height)
 - Circle / Arc / Ellipse / Polygon / Bézier sketch tools
 - Box tool = rectangle on XY, then pull height with the mouse, then `Face`+`Extrude`
 - Alt+LMB also orbits (same as MMB)
 - Ribbon (Select / Sketch / Solid / View) with apeCAD SVG icons
-- Left dock: model tree with properties below it; drag the edges to
-  resize; collapse to hide the dock
-- Select tool: click a primitive; drag L→R window (inside) or R→L
+- Left dock: nested B-rep tree (Solid → Face/Edge/Vertex) with
+  properties below it; drag the edges to resize; collapse to hide
+  the dock. No `n` field; polygon and array counts stay in the library.
+  Right-click: select, rename, duplicate, hide/show, fit, delete.
+- Select tool: click a primitive; click empty space to deselect; drag L→R window (inside) or R→L
   crossing (intersects); Shift adds; Esc returns to Select, then clears
 - Modify: Trim (T), Extend (E), Break, Node, Face (from lines), Join (J),
   Chamfer, Fillet, Sew, Simplify, Delete (Del)
-- Transform: Move, Rotate, Mirror, Array (linear), Polar
-- Extrude the selected face, circle, or ellipse
-- Live readout: X Y Z, ΔX ΔY, length, angle; dimension chips on the stroke
+- Transform: Move (M), Rotate, Mirror, Array (linear), Polar
+- Extrude the selected face, circle, or ellipse (replicates the profile knots at the far end)
+- Live readout: X Y Z, ΔX ΔY, length, angle in the command line; properties hold committed sizes
 
 ## Later (not this slice)
 

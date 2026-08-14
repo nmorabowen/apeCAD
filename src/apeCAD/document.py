@@ -57,6 +57,7 @@ from apeCAD.ops import (
     Mirror,
     Op,
     Rotate,
+    SetLabel,
     Sew,
     Simplify,
     Tag,
@@ -123,13 +124,14 @@ class Document:
         size_xyz_mm: tuple[float, float, float] | XYZ,
         *,
         label: str | None = None,
-    ) -> Box:
+    ) -> Solid:
+        """AABB sugar: four points, a Face, and Extrude. One AddBox op in the log."""
         op = AddBox(
             origin_xyz_mm=XYZ.from_sequence(origin_xyz_mm),
             size_xyz_mm=XYZ.from_sequence(size_xyz_mm),
             label=label,
         )
-        return self._require_produced(self._apply(op), Box)
+        return self._require_produced(self._apply(op), Solid)
 
     def add_face(
         self,
@@ -416,6 +418,9 @@ class Document:
     def tag(self, name: str, entity_ids: tuple[EntityId, ...] | list[EntityId]) -> None:
         self._apply(Tag(name=name, entity_ids=tuple(entity_ids)))
 
+    def set_label(self, entity_id: EntityId, label: str | None) -> None:
+        self._apply(SetLabel(entity_id=entity_id, label=label))
+
     def undo(self) -> None:
         if not self._ops:
             raise DocumentError("nothing to undo")
@@ -541,6 +546,7 @@ class Document:
             ArrayLinear,
             ArrayPolar,
             Delete,
+            SetLabel,
         )):
             return None
         return self._entities[_entity_id_of(committed)]
@@ -596,6 +602,8 @@ class Document:
             return self._array_polar(op)
         if isinstance(op, Delete):
             return self._delete(op)
+        if isinstance(op, SetLabel):
+            return self._set_label(op)
         return self._tag(op)
 
     def _add_point(self, op: AddPoint) -> AddPoint:
@@ -641,15 +649,33 @@ class Document:
 
     def _add_box(self, op: AddBox) -> AddBox:
         self._reject_taken_label(op.label)
-        entity_id = self._allocate_id(op.entity_id)
-        self._register_label(entity_id, op.label)
-        self._entities[entity_id] = Box(
-            entity_id=entity_id,
-            origin_xyz_mm=op.origin_xyz_mm,
-            size_xyz_mm=op.size_xyz_mm,
-            label=op.label,
+        origin = op.origin_xyz_mm
+        size = op.size_xyz_mm
+        corners = (
+            (origin.x_mm, origin.y_mm, origin.z_mm),
+            (origin.x_mm + size.x_mm, origin.y_mm, origin.z_mm),
+            (origin.x_mm + size.x_mm, origin.y_mm + size.y_mm, origin.z_mm),
+            (origin.x_mm, origin.y_mm + size.y_mm, origin.z_mm),
         )
-        return replace(op, entity_id=entity_id)
+        point_ids: list[EntityId] = []
+        for x_mm, y_mm, z_mm in corners:
+            point_id, _created = self._point_at(
+                x_mm, y_mm, z_mm, requested=None, tolerance_mm=0.0
+            )
+            point_ids.append(point_id)
+        if len(set(point_ids)) != 4:
+            raise DocumentError("box corners collapsed onto existing points")
+        face_op = self._add_face(AddFace(point_ids=tuple(point_ids)))
+        extrude_op = self._extrude(
+            Extrude(
+                face_id=face_op.entity_id,
+                distance_mm=size.z_mm,
+                direction_xyz=XYZ(0.0, 0.0, 1.0),
+                label=op.label,
+                entity_id=op.entity_id,
+            )
+        )
+        return replace(op, entity_id=extrude_op.entity_id)
 
     def _add_face(self, op: AddFace) -> AddFace:
         for point_id in op.point_ids:
@@ -671,6 +697,7 @@ class Document:
                 f"entity {op.face_id} is not a profile (need a face, circle, or ellipse)"
             )
         self._reject_taken_label(op.label)
+        cap_id = self._extrude_cap(face, op)
         entity_id = self._allocate_id(op.entity_id)
         self._register_label(entity_id, op.label)
         self._entities[entity_id] = Solid(
@@ -678,9 +705,48 @@ class Document:
             face_id=op.face_id,
             distance_mm=op.distance_mm,
             direction_xyz=op.direction_xyz,
+            cap_id=cap_id,
             label=op.label,
         )
         return replace(op, entity_id=entity_id)
+
+    def _extrude_offset(self, op: Extrude) -> XYZ:
+        direction = op.direction_xyz
+        length = (
+            direction.x_mm**2 + direction.y_mm**2 + direction.z_mm**2
+        ) ** 0.5
+        scale = op.distance_mm / length
+        return XYZ(
+            direction.x_mm * scale,
+            direction.y_mm * scale,
+            direction.z_mm * scale,
+        )
+
+    def _extrude_cap(self, profile: Face | Circle | Ellipse, op: Extrude) -> EntityId:
+        offset = self._extrude_offset(op)
+        if isinstance(profile, Face):
+            lid_ids: list[EntityId] = []
+            for point_id in profile.point_ids:
+                point = self._require_point(point_id)
+                lid_id, _created = self._point_at(
+                    point.xyz_mm.x_mm + offset.x_mm,
+                    point.xyz_mm.y_mm + offset.y_mm,
+                    point.xyz_mm.z_mm + offset.z_mm,
+                    requested=None,
+                    tolerance_mm=0.0,
+                )
+                lid_ids.append(lid_id)
+            cap = self._add_face(AddFace(point_ids=tuple(lid_ids)))
+            return cap.entity_id
+        center = self._require_point(profile.center_id)
+        lid_id, _created = self._point_at(
+            center.xyz_mm.x_mm + offset.x_mm,
+            center.xyz_mm.y_mm + offset.y_mm,
+            center.xyz_mm.z_mm + offset.z_mm,
+            requested=None,
+            tolerance_mm=0.0,
+        )
+        return lid_id
 
     def _add_circle(self, op: AddCircle) -> AddCircle:
         self._require_point(op.center_id)
@@ -1227,7 +1293,10 @@ class Document:
         if isinstance(entity, Arc):
             return (entity.start_id, entity.mid_id, entity.end_id)
         if isinstance(entity, Solid):
-            return self._point_ids_of(self.entity(entity.face_id))
+            ids = list(self._point_ids_of(self.entity(entity.face_id)))
+            if entity.cap_id is not None:
+                ids.extend(self._point_ids_of(self.entity(entity.cap_id)))
+            return tuple(dict.fromkeys(ids))
         return ()
 
     def _require_on_edge(self, px: float, py: float, qx: float, qy: float) -> None:
@@ -1481,8 +1550,11 @@ class Document:
         extras: list[EntityId] = []
         for entity_id in entity_ids:
             entity = self.entity(entity_id)
-            if isinstance(entity, Solid) and entity.face_id not in entity_ids:
-                extras.append(entity.face_id)
+            if isinstance(entity, Solid):
+                if entity.face_id not in entity_ids:
+                    extras.append(entity.face_id)
+                if entity.cap_id is not None and entity.cap_id not in entity_ids:
+                    extras.append(entity.cap_id)
         ordered = list(dict.fromkeys([*extras, *entity_ids]))
         non_solids = [
             entity_id
@@ -1514,7 +1586,7 @@ class Document:
         for entity_id in non_solids + solids:
             entity = self.entity(entity_id)
             if isinstance(entity, Point):
-                mapped_point(entity.entity_id)
+                entity_map[entity.entity_id] = mapped_point(entity.entity_id)
                 continue
             new_id = self._allocate_id(None)
             entity_map[entity_id] = new_id
@@ -1581,11 +1653,19 @@ class Document:
                     raise DocumentError(
                         "polar/linear array could not clone the solid profile"
                     )
+                cap_id = None
+                if entity.cap_id is not None:
+                    cap_id = entity_map.get(entity.cap_id)
+                    if cap_id is None:
+                        raise DocumentError(
+                            "polar/linear array could not clone the solid cap"
+                        )
                 self._entities[new_id] = Solid(
                     entity_id=new_id,
                     face_id=profile_id,
                     distance_mm=entity.distance_mm,
                     direction_xyz=entity.direction_xyz,
+                    cap_id=cap_id,
                     label=None,
                 )
 
@@ -1594,6 +1674,15 @@ class Document:
             if entity_id not in self._entities:
                 raise DocumentError(f"unknown entity id {entity_id}")
         doomed: set[EntityId] = set(op.entity_ids)
+        changed = True
+        while changed:
+            changed = False
+            for entity in self._entities.values():
+                if entity.entity_id not in doomed:
+                    continue
+                if isinstance(entity, Solid) and entity.cap_id and entity.cap_id not in doomed:
+                    doomed.add(entity.cap_id)
+                    changed = True
         changed = True
         while changed:
             changed = False
@@ -1635,6 +1724,17 @@ class Document:
                 raise DocumentError(f"cannot tag unknown entity id {entity_id}")
         members = self._tags.setdefault(op.name, set())
         members.update(op.entity_ids)
+        return op
+
+    def _set_label(self, op: SetLabel) -> SetLabel:
+        entity = self.entity(op.entity_id)
+        if entity.label == op.label:
+            return op
+        if entity.label is not None:
+            self._labels.pop(entity.label, None)
+        self._reject_taken_label(op.label)
+        self._register_label(op.entity_id, op.label)
+        self._entities[op.entity_id] = replace(entity, label=op.label)
         return op
 
     def _allocate_id(self, requested: EntityId | None) -> EntityId:
@@ -1693,7 +1793,10 @@ def _referenced_ids(entity: Entity) -> frozenset[EntityId]:
     if isinstance(entity, Box):
         return frozenset()
     if isinstance(entity, Solid):
-        return frozenset({entity.face_id})
+        refs = {entity.face_id}
+        if entity.cap_id is not None:
+            refs.add(entity.cap_id)
+        return frozenset(refs)
     if isinstance(entity, (Circle, Ellipse)):
         return frozenset({entity.center_id})
     return frozenset({entity.start_id, entity.mid_id, entity.end_id})
