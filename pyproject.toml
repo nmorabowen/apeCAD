@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apeCAD"
+version = "0.0.0"
+description = "Spatial scratchpad and intent document for ape* structural workflows."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Nicolas Mora Bowen", email = "nmorabowen@gmail.com" },
+]
+license = { text = "MIT" }
+keywords = ["CAD", "geometry", "structural", "scratchpad", "intent"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pyright>=1.1.360",
+    "ruff>=0.5",
+    "pytest>=8",
+    "pytest-cov>=5",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/nmorabowen/apeCAD"
+"Bug Tracker" = "https://github.com/nmorabowen/apeCAD/issues"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"apeCAD" = ["py.typed"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "-ra",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"

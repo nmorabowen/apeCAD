@@ -1,0 +1,12 @@
+---
+description: Always think and reply in English regardless of user language
+alwaysApply: true
+---
+
+# Language
+
+The user may write in English or Spanish.
+
+Always think and reply in English, regardless of the language used in the user message.
+
+Do not switch the response language to match Spanish (or any other language) unless the user explicitly asks for a reply in that language.
