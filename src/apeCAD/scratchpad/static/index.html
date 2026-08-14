@@ -235,9 +235,17 @@
     </div>
     <div class="group">
       <div class="group-tools">
-        <button data-tool="trim" class="icon-btn" title="Trim a line to another">
+        <button data-tool="trim" class="icon-btn" title="Trim a free end to a cutter (T)">
           <svg viewBox="0 0 24 24"><path d="M4 20 L12 12"/><path d="M12 12 L20 4" stroke-dasharray="2.2 2"/><path d="M5 8 L16 19"/></svg>
           <span>Trim</span>
+        </button>
+        <button data-tool="extend" class="icon-btn" title="Extend a short end to a boundary (E)">
+          <svg viewBox="0 0 24 24"><path d="M4 18 L11 11"/><path d="M11 11 L18 4" stroke-dasharray="2.2 2"/><path d="M11 11 L14 8"/><path d="M16 6 L20 2 L16 2"/><path d="M20 2 L20 6"/></svg>
+          <span>Extend</span>
+        </button>
+        <button data-tool="break" class="icon-btn" title="Break two crossing lines">
+          <svg viewBox="0 0 24 24"><path d="M4 18 L20 6"/><path d="M6 6 L18 18"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>
+          <span>Break</span>
         </button>
         <button data-tool="node" class="icon-btn" title="Insert a node on a line or face">
           <svg viewBox="0 0 24 24"><path d="M4 18 L20 6"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>
@@ -246,6 +254,10 @@
         <button data-tool="face-lines" class="icon-btn" title="Face from selected lines">
           <svg viewBox="0 0 24 24"><path d="M5 18 L12 5 L19 18 Z" fill="currentColor" fill-opacity="0.25"/><path d="M5 18 L12 5 L19 18 Z"/></svg>
           <span>Face</span>
+        </button>
+        <button data-tool="join" class="icon-btn" title="Join connected lines into a polyline (J)">
+          <svg viewBox="0 0 24 24"><path d="M4 16 L10 10 L14 14 L20 8"/><circle cx="10" cy="10" r="1.5" fill="currentColor" stroke="none"/><circle cx="14" cy="14" r="1.5" fill="currentColor" stroke="none"/></svg>
+          <span>Join</span>
         </button>
         <button data-tool="chamfer" class="icon-btn" title="Chamfer a corner (type distance)">
           <svg viewBox="0 0 24 24"><path d="M4 20 V8 L8 4 H20"/><path d="M4 8 L8 4"/></svg>
@@ -341,6 +353,6 @@
       <span id="coords">X 0 &nbsp; Y 0 &nbsp; Z 0</span>
     </div>
   </div>
-  <script type="module" src="/app.js?v=10"></script>
+  <script type="module" src="/app.js?v=12"></script>
 </body>
 </html>

@@ -15,8 +15,8 @@
 | Bezier | Four cubic control points |
 
 Ops: `AddFace`, `Extrude`, `AddCircle`, `AddArc`, `AddEllipse`,
-`AddBezier`, `Translate`, `InsertNode`, `TrimLine`,
-`AddFaceFromLines`, `Rotate`, `Mirror`, `ChamferCorner`,
+`AddBezier`, `Translate`, `InsertNode`, `TrimLine`, `BreakCrossing`,
+`AddFaceFromLines`, `JoinPolyline`, `Rotate`, `Mirror`, `ChamferCorner`,
 `FilletCorner`, `Sew`, `Simplify`, `ArrayLinear`, `ArrayPolar`,
 `Delete`.
 `Box` stays as sugar. Regular polygon is a `Face`.
@@ -26,8 +26,13 @@ extruded without baking into a polyline.
 `InsertNode` drops a shared Point onto a `Line`, `Face`, or `Polyline`
 edge (reuse a Point within 1 mm). `Translate` / `Rotate` / `Mirror`
 move the defining points of the named entities. `TrimLine` retargets
-one end of a line onto a cut point. `AddFaceFromLines` needs ≥3 lines
-that form one cycle. `ChamferCorner` and `FilletCorner` cut a convex
+one end of a line onto a cut point (shorten *or* lengthen). The
+scratchpad trims/extends against the infinite cutter so near-misses
+still meet; click the stub to remove or the short end to grow.
+`BreakCrossing` inserts one shared node on two crossing lines.
+`JoinPolyline` consumes a connected chain of lines/polylines (shared
+point ids; sew first if ends only coincide) and records one polyline,
+open or closed. `AddFaceFromLines` needs ≥3 lines that form one cycle. `ChamferCorner` and `FilletCorner` cut a convex
 Face/Polyline vertex. `Sew` merges coincident points. `Simplify`
 drops unshared collinear vertices. Arrays clone the selection.
 `Delete` removes the named entities, anything that still referenced
@@ -53,8 +58,8 @@ them, and unused endpoints left behind.
   resize; collapse to hide the dock
 - Select tool: click a primitive; drag L→R window (inside) or R→L
   crossing (intersects); Shift adds; Esc returns to Select, then clears
-- Modify: Trim, Node, Face (from lines), Chamfer, Fillet, Sew, Simplify,
-  Delete (Del)
+- Modify: Trim (T), Extend (E), Break, Node, Face (from lines), Join (J),
+  Chamfer, Fillet, Sew, Simplify, Delete (Del)
 - Transform: Move, Rotate, Mirror, Array (linear), Polar
 - Extrude the selected face, circle, or ellipse
 - Live readout: X Y Z, ΔX ΔY, length, angle; dimension chips on the stroke

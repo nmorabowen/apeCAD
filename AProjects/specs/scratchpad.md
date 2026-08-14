@@ -24,8 +24,9 @@ No Node, no Qt, no TypeScript build. Vanilla JS is enough for v0.
 
 Line, rectangle (face), circle, arc, ellipse, polygon, Bézier, box
 (face then extrude). Select (click, window, crossing). Move, rotate,
-mirror, array, polar, trim, insert-node, face-from-lines, chamfer,
-fillet, sew, simplify, delete (Del). Undo / redo / clear. Save JSON.
+mirror, array, polar, trim (T), extend (E), break, insert-node,
+face-from-lines, join (J), chamfer, fillet, sew, simplify, delete (Del).
+Undo / redo / clear. Save JSON.
 SNAP / ORTHO / GRID. Live millimetre readout (X Y Z, Δ, length, angle).
 Left dock: model tree, properties below; drag to resize; collapse.
 Command line at the bottom: prompts plus typed length/angle (Enter).

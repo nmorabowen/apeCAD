@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from apeCAD import Arc, Document, DocumentError, Face, Line, Point
-from apeCAD.geometry import XYZ, project_on_segment, segments_intersect_xy
+from apeCAD import Arc, Document, DocumentError, Face, Line, Point, Polyline
+from apeCAD.geometry import XYZ, line_intersect_xy, project_on_segment, segments_intersect_xy
 
 
 def _square() -> tuple[Document, tuple[Line, Line, Line, Line], Face]:
@@ -104,6 +104,27 @@ def test_insert_node_rejects_endpoint() -> None:
         document.insert_node(ab.entity_id, 0.0, 0.0)
 
 
+def test_line_intersect_xy_implied() -> None:
+    hit = line_intersect_xy(
+        XYZ(0.0, 0.0, 0.0),
+        XYZ(10.0, 0.0, 0.0),
+        XYZ(5.0, 1.0, 0.0),
+        XYZ(5.0, 4.0, 0.0),
+    )
+    assert hit is not None
+    point, t, u = hit
+    assert point.x_mm == pytest.approx(5.0)
+    assert point.y_mm == pytest.approx(0.0)
+    assert t == pytest.approx(0.5)
+    assert u == pytest.approx(-1.0 / 3.0)
+    assert segments_intersect_xy(
+        XYZ(0.0, 0.0, 0.0),
+        XYZ(10.0, 0.0, 0.0),
+        XYZ(5.0, 1.0, 0.0),
+        XYZ(5.0, 4.0, 0.0),
+    ) is None
+
+
 def test_trim_line_keeps_the_named_end() -> None:
     document = Document()
     a = document.add_point(0.0, 0.0, 0.0)
@@ -115,6 +136,99 @@ def test_trim_line_keeps_the_named_end() -> None:
     assert updated.start_id == a.entity_id
     assert updated.end_id == cut.entity_id
     assert cut.xyz_mm.x_mm == pytest.approx(5.0)
+
+
+def test_trim_line_can_lengthen() -> None:
+    document = Document()
+    a = document.add_point(0.0, 0.0, 0.0)
+    b = document.add_point(4000.0, 0.0, 0.0)
+    line = document.add_line(a.entity_id, b.entity_id)
+    far = document.trim_line(line.entity_id, a.entity_id, 10000.0, 0.0)
+    updated = document.entity(line.entity_id)
+    assert isinstance(updated, Line)
+    assert updated.end_id == far.entity_id
+    assert far.xyz_mm.x_mm == pytest.approx(10000.0)
+
+
+def test_break_crossing_shares_the_node() -> None:
+    document = Document()
+    a = document.add_point(0.0, 0.0, 0.0)
+    b = document.add_point(10000.0, 0.0, 0.0)
+    c = document.add_point(5000.0, -4000.0, 0.0)
+    d = document.add_point(5000.0, 4000.0, 0.0)
+    across = document.add_line(a.entity_id, b.entity_id)
+    down = document.add_line(c.entity_id, d.entity_id)
+    node = document.break_crossing(across.entity_id, down.entity_id)
+    assert node.xyz_mm.x_mm == pytest.approx(5000.0)
+    assert node.xyz_mm.y_mm == pytest.approx(0.0)
+    assert len(document.lines()) == 4
+    users = [
+        line
+        for line in document.lines()
+        if node.entity_id in (line.start_id, line.end_id)
+    ]
+    assert len(users) == 4
+    loaded = Document.from_json(document.to_json())
+    assert loaded.entity(node.entity_id)
+    assert len(loaded.lines()) == 4
+
+
+def test_join_polyline_open_chain() -> None:
+    document = Document()
+    a = document.add_point(0.0, 0.0, 0.0)
+    b = document.add_point(1000.0, 0.0, 0.0)
+    c = document.add_point(1000.0, 800.0, 0.0)
+    ab = document.add_line(a.entity_id, b.entity_id, label="path")
+    bc = document.add_line(b.entity_id, c.entity_id)
+    joined = document.join_polyline((ab.entity_id, bc.entity_id))
+    assert isinstance(joined, Polyline)
+    assert joined.closed is False
+    assert joined.point_ids in (
+        (a.entity_id, b.entity_id, c.entity_id),
+        (c.entity_id, b.entity_id, a.entity_id),
+    )
+    assert joined.label == "path"
+    assert document.lines() == ()
+    loaded = Document.from_json(document.to_json())
+    assert loaded.entity_by_label("path").entity_id == joined.entity_id
+
+
+def test_join_polyline_closes_a_loop() -> None:
+    document, (ab, bc, cd, da), _face = _square()
+    joined = document.join_polyline((ab.entity_id, bc.entity_id, cd.entity_id, da.entity_id))
+    assert joined.closed is True
+    assert len(joined.point_ids) == 4
+    assert len(document.lines()) == 0
+
+
+def test_join_polyline_rejects_a_branch() -> None:
+    document = Document()
+    a = document.add_point(0.0, 0.0, 0.0)
+    b = document.add_point(1000.0, 0.0, 0.0)
+    c = document.add_point(1000.0, 800.0, 0.0)
+    d = document.add_point(2000.0, 0.0, 0.0)
+    ab = document.add_line(a.entity_id, b.entity_id)
+    bc = document.add_line(b.entity_id, c.entity_id)
+    bd = document.add_line(b.entity_id, d.entity_id)
+    with pytest.raises(DocumentError, match="branch"):
+        document.join_polyline((ab.entity_id, bc.entity_id, bd.entity_id))
+
+
+def test_join_polyline_and_line() -> None:
+    document = Document()
+    a = document.add_point(0.0, 0.0, 0.0)
+    b = document.add_point(1000.0, 0.0, 0.0)
+    c = document.add_point(2000.0, 0.0, 0.0)
+    d = document.add_point(3000.0, 0.0, 0.0)
+    poly = document.add_polyline((a.entity_id, b.entity_id, c.entity_id))
+    extra = document.add_line(c.entity_id, d.entity_id)
+    joined = document.join_polyline((poly.entity_id, extra.entity_id))
+    assert joined.point_ids in (
+        (a.entity_id, b.entity_id, c.entity_id, d.entity_id),
+        (d.entity_id, c.entity_id, b.entity_id, a.entity_id),
+    )
+    assert document.polylines() == (joined,)
+    assert document.lines() == ()
 
 
 def test_add_face_from_lines_orders_the_loop() -> None:

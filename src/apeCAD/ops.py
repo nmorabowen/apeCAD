@@ -228,6 +228,19 @@ class TrimLine:
 
 
 @dataclass(frozen=True, slots=True)
+class BreakCrossing:
+    line_a_id: EntityId
+    line_b_id: EntityId
+    entity_id: EntityId | None = None
+    new_line_a_id: EntityId | None = None
+    new_line_b_id: EntityId | None = None
+
+    def __post_init__(self) -> None:
+        if self.line_a_id == self.line_b_id:
+            raise DocumentError("break needs two different lines")
+
+
+@dataclass(frozen=True, slots=True)
 class AddFaceFromLines:
     line_ids: tuple[EntityId, ...]
     label: str | None = None
@@ -239,6 +252,20 @@ class AddFaceFromLines:
             raise DocumentError("face from lines needs at least three lines")
         if len(set(self.line_ids)) != len(self.line_ids):
             raise DocumentError("face from lines cannot reuse a line")
+
+
+@dataclass(frozen=True, slots=True)
+class JoinPolyline:
+    entity_ids: tuple[EntityId, ...]
+    label: str | None = None
+    entity_id: EntityId | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "label", _optional_label(self.label))
+        if len(self.entity_ids) < 2:
+            raise DocumentError("join needs at least two lines or polylines")
+        if len(set(self.entity_ids)) != len(self.entity_ids):
+            raise DocumentError("join cannot reuse an entity")
 
 
 @dataclass(frozen=True, slots=True)
@@ -398,7 +425,9 @@ Op = (
     | Translate
     | InsertNode
     | TrimLine
+    | BreakCrossing
     | AddFaceFromLines
+    | JoinPolyline
     | Rotate
     | Mirror
     | ChamferCorner
@@ -523,10 +552,26 @@ def op_to_dict(op: Op) -> dict[str, object]:
             "z_mm": op.z_mm,
             "entity_id": op.entity_id,
         }
+    if isinstance(op, BreakCrossing):
+        return {
+            "op": "BreakCrossing",
+            "line_a_id": op.line_a_id,
+            "line_b_id": op.line_b_id,
+            "entity_id": op.entity_id,
+            "new_line_a_id": op.new_line_a_id,
+            "new_line_b_id": op.new_line_b_id,
+        }
     if isinstance(op, AddFaceFromLines):
         return {
             "op": "AddFaceFromLines",
             "line_ids": list(op.line_ids),
+            "label": op.label,
+            "entity_id": op.entity_id,
+        }
+    if isinstance(op, JoinPolyline):
+        return {
+            "op": "JoinPolyline",
+            "entity_ids": list(op.entity_ids),
             "label": op.label,
             "entity_id": op.entity_id,
         }
@@ -718,9 +763,23 @@ def _parse_op(payload: dict[str, object]) -> Op:
             z_mm=_as_float("z_mm", payload.get("z_mm", 0.0)),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
         )
+    if kind == "BreakCrossing":
+        return BreakCrossing(
+            line_a_id=_as_entity_id("line_a_id", payload["line_a_id"]),
+            line_b_id=_as_entity_id("line_b_id", payload["line_b_id"]),
+            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            new_line_a_id=_as_optional_entity_id(payload.get("new_line_a_id")),
+            new_line_b_id=_as_optional_entity_id(payload.get("new_line_b_id")),
+        )
     if kind == "AddFaceFromLines":
         return AddFaceFromLines(
             line_ids=_as_id_tuple("line_ids", payload["line_ids"]),
+            label=_as_optional_str(payload.get("label")),
+            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+        )
+    if kind == "JoinPolyline":
+        return JoinPolyline(
+            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
         )

@@ -160,6 +160,45 @@ def test_delete_via_op_api(server: ScratchpadServer) -> None:
     assert gone["points"] == []
 
 
+def test_break_crossing_via_op_api(server: ScratchpadServer) -> None:
+    _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 0, "y_mm": 0, "z_mm": 0})
+    _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 10000, "y_mm": 0, "z_mm": 0})
+    _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 5000, "y_mm": -4000, "z_mm": 0})
+    _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 5000, "y_mm": 4000, "z_mm": 0})
+    _call(server, "/api/op", "POST", {"op": "AddLine", "start_id": 1, "end_id": 2})
+    _call(server, "/api/op", "POST", {"op": "AddLine", "start_id": 3, "end_id": 4})
+    broken = _call(
+        server,
+        "/api/op",
+        "POST",
+        {"op": "BreakCrossing", "line_a_id": 5, "line_b_id": 6},
+    )
+    lines = broken["lines"]
+    assert isinstance(lines, list)
+    assert len(lines) == 4
+    assert broken["created_id"] is not None
+
+
+def test_join_polyline_via_op_api(server: ScratchpadServer) -> None:
+    _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 0, "y_mm": 0, "z_mm": 0})
+    _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 1000, "y_mm": 0, "z_mm": 0})
+    _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 1000, "y_mm": 800, "z_mm": 0})
+    _call(server, "/api/op", "POST", {"op": "AddLine", "start_id": 1, "end_id": 2})
+    _call(server, "/api/op", "POST", {"op": "AddLine", "start_id": 2, "end_id": 3})
+    joined = _call(
+        server,
+        "/api/op",
+        "POST",
+        {"op": "JoinPolyline", "entity_ids": [4, 5]},
+    )
+    assert joined["created_id"] is not None
+    assert joined["lines"] == []
+    polylines = joined["polylines"]
+    assert isinstance(polylines, list)
+    assert len(polylines) == 1
+    assert polylines[0]["closed"] is False
+
+
 def test_bad_op_is_400(server: ScratchpadServer) -> None:
     port = server.server_address[1]
     request = Request(
