@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>apeCAD scratchpad</title>
+  <style>
+    :root {
+      --bg: #14171c;
+      --panel: #1d2229;
+      --line: #2c333c;
+      --text: #e8edf2;
+      --muted: #8b97a4;
+      --accent: #6cb3ff;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font: 12px/1.4 "Segoe UI", system-ui, sans-serif;
+      display: flex; flex-direction: column; }
+    #ribbon {
+      display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap;
+      padding: 6px 10px 4px; background: var(--panel); border-bottom: 1px solid var(--line);
+    }
+    .group {
+      display: flex; flex-direction: column; gap: 4px;
+      padding-right: 10px; border-right: 1px solid var(--line);
+    }
+    .group:last-of-type { border-right: none; }
+    .group-tools { display: flex; gap: 3px; align-items: stretch; }
+    .group-label { color: var(--muted); font-size: 10px; text-align: center; letter-spacing: 0.04em; }
+    button, input {
+      background: #10141a; color: var(--text); border: 1px solid var(--line);
+      border-radius: 4px; padding: 4px 8px; font: inherit;
+    }
+    .icon-btn {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 2px; min-width: 48px; padding: 4px 6px; color: var(--text);
+    }
+    .icon-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none;
+      stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-btn span { font-size: 10px; color: var(--muted); }
+    button.active { border-color: var(--accent); color: var(--accent); }
+    button.active span { color: var(--accent); }
+    button:hover { border-color: #4a5562; }
+    label { color: var(--muted); display: flex; gap: 6px; align-items: center; }
+    input[type="number"] { width: 68px; }
+    input[type="text"] { width: 90px; }
+    #status { color: var(--accent); font-variant-numeric: tabular-nums; align-self: center; }
+    #workspace { display: flex; flex: 1; min-height: 0; }
+    #dock {
+      width: 260px; flex: none; min-width: 0; max-width: 50%;
+      display: flex; flex-direction: column;
+      background: var(--panel); border-right: none;
+    }
+    #dock-head, #props h2 {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px; margin: 0; padding: 8px 10px 6px;
+      font-size: 11px; color: var(--muted); font-weight: 600;
+      letter-spacing: 0.06em; text-transform: uppercase;
+    }
+    #props h2 { padding: 6px 10px 6px; }
+    .dock-btn {
+      display: flex; align-items: center; justify-content: center;
+      width: 22px; height: 22px; padding: 0; flex: none;
+      color: var(--muted);
+    }
+    .dock-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .dock-btn:hover { color: var(--accent); border-color: var(--accent); }
+    #tree-wrap { flex: 1; min-height: 80px; overflow: auto; padding: 0 8px 8px; }
+    #props {
+      flex: none; height: 200px; min-height: 88px; overflow: auto;
+      padding: 0 10px 8px;
+    }
+    .split {
+      flex: none; background: var(--line); user-select: none;
+    }
+    .split:hover, .split.dragging { background: var(--accent); }
+    .split-x { width: 5px; cursor: col-resize; touch-action: none; }
+    .split-y { height: 5px; cursor: row-resize; touch-action: none; }
+    #dock-expand {
+      display: none; flex: none; width: 22px; height: auto;
+      border-radius: 0; border: none; border-right: 1px solid var(--line);
+      background: var(--panel); color: var(--muted);
+    }
+    #dock-expand svg { width: 14px; height: 14px; stroke: currentColor; fill: none;
+      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    #workspace.dock-collapsed #dock,
+    #workspace.dock-collapsed #split-x { display: none; }
+    #workspace.dock-collapsed #dock-expand { display: flex; align-items: center; justify-content: center; }
+    .tree-item {
+      display: flex; gap: 8px; padding: 3px 6px; border-radius: 3px; cursor: pointer;
+    }
+    .tree-item:hover { background: #10141a; }
+    .tree-item.selected { background: #10141a; color: var(--accent); }
+    .tree-kind { color: var(--muted); width: 64px; flex: none; }
+    .prop { display: grid; grid-template-columns: 88px 1fr; gap: 4px 8px; margin: 4px 0; }
+    .prop dt { color: var(--muted); }
+    .prop dd { margin: 0; font-variant-numeric: tabular-nums; }
+    #stage { position: relative; min-width: 0; flex: 1; }
+    #view { display: block; width: 100%; height: 100%; outline: none; }
+    #dims { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .dim {
+      position: absolute; transform: translate(-50%, -130%);
+      background: #10141ae6; border: 1px solid var(--accent); color: var(--accent);
+      padding: 1px 6px; border-radius: 3px; font-variant-numeric: tabular-nums;
+      white-space: nowrap; font-size: 12px;
+    }
+    .dim.committed { border-color: #8b97a4; color: #c5d0da; }
+    #marquee {
+      position: absolute; pointer-events: none; z-index: 2;
+      border: 1px solid var(--accent); background: rgba(108, 179, 255, 0.12);
+    }
+    #marquee.crossing {
+      border-style: dashed; border-color: #f0c674;
+      background: rgba(240, 198, 116, 0.12);
+    }
+    #split-console { height: 5px; cursor: row-resize; touch-action: none; }
+    #console {
+      flex: none; display: flex; flex-direction: column;
+      height: 92px; min-height: 56px; max-height: 40%;
+      background: #0d1014; border-top: none;
+      font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+    }
+    #console-log {
+      flex: 1; min-height: 0; overflow: auto;
+      padding: 4px 10px 2px; color: var(--muted); font-size: 12px;
+    }
+    #console-log div { white-space: pre-wrap; }
+    #console-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 3px 10px 6px; border-top: 1px solid var(--line);
+    }
+    #console-prompt {
+      color: var(--accent); flex: none; max-width: 58%;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #console-input {
+      flex: 1; min-width: 72px; border: none; background: transparent;
+      padding: 2px 0; outline: none; font: inherit; color: var(--text);
+    }
+    #console-input::placeholder { color: #5c6770; }
+    #coords { color: #c5d0da; flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="ribbon">
+    <div class="group">
+      <div class="group-tools">
+        <button data-tool="select" class="icon-btn active" title="Select (Esc)">
+          <svg viewBox="0 0 24 24"><path d="M5 3 l10 10 -4 1 3 7 -2.2 1 -3-7 -4 4 z"/></svg>
+          <span>Select</span>
+        </button>
+      </div>
+      <div class="group-label">Select</div>
+    </div>
+    <div class="group">
+      <div class="group-tools">
+        <button data-tool="line" class="icon-btn" title="Line">
+          <svg viewBox="0 0 24 24"><path d="M4 18 L20 6"/><circle cx="4" cy="18" r="1.6" fill="currentColor" stroke="none"/><circle cx="20" cy="6" r="1.6" fill="currentColor" stroke="none"/></svg>
+          <span>Line</span>
+        </button>
+        <button data-tool="rect" class="icon-btn" title="Rectangle">
+          <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12"/></svg>
+          <span>Rect</span>
+        </button>
+        <button data-tool="circle" class="icon-btn" title="Circle">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>
+          <span>Circle</span>
+        </button>
+        <button data-tool="arc" class="icon-btn" title="Arc">
+          <svg viewBox="0 0 24 24"><path d="M5 16 A8 8 0 0 1 19 10"/></svg>
+          <span>Arc</span>
+        </button>
+        <button data-tool="ellipse" class="icon-btn" title="Ellipse">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="5"/></svg>
+          <span>Ellipse</span>
+        </button>
+        <button data-tool="polygon" class="icon-btn" title="Polygon">
+          <svg viewBox="0 0 24 24"><path d="M12 3 L20 8.5 L17 18 L7 18 L4 8.5 Z"/></svg>
+          <span>Poly</span>
+        </button>
+        <button data-tool="bezier" class="icon-btn" title="Bézier">
+          <svg viewBox="0 0 24 24"><path d="M4 18 C8 4, 16 20, 20 6"/><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.2" fill="currentColor" stroke="none"/></svg>
+          <span>Bezier</span>
+        </button>
+      </div>
+      <div class="group-label">Sketch</div>
+    </div>
+    <div class="group">
+      <div class="group-tools">
+        <button data-tool="box" class="icon-btn" title="Box (rect then height)">
+          <svg viewBox="0 0 24 24"><path d="M4 8 L12 4 L20 8 L20 16 L12 20 L4 16 Z"/><path d="M4 8 L12 12 L20 8"/><path d="M12 12 L12 20"/></svg>
+          <span>Box</span>
+        </button>
+        <button data-tool="extrude" class="icon-btn" title="Extrude selected profile">
+          <svg viewBox="0 0 24 24"><rect x="5" y="14" width="14" height="6"/><path d="M12 14 L12 4"/><path d="M8 8 L12 4 L16 8"/></svg>
+          <span>Extrude</span>
+        </button>
+      </div>
+      <div class="group-label">Solid</div>
+    </div>
+    <div class="group">
+      <div class="group-tools">
+        <button data-tool="move" class="icon-btn" title="Move selection">
+          <svg viewBox="0 0 24 24"><path d="M12 3 V21 M3 12 H21"/><path d="M8 7 L12 3 L16 7"/><path d="M8 17 L12 21 L16 17"/><path d="M7 8 L3 12 L7 16"/><path d="M17 8 L21 12 L17 16"/></svg>
+          <span>Move</span>
+        </button>
+        <button data-tool="rotate" class="icon-btn" title="Rotate selection">
+          <svg viewBox="0 0 24 24"><path d="M20 12 A8 8 0 1 1 12 4"/><path d="M12 4 L16 5 L13 8"/></svg>
+          <span>Rotate</span>
+        </button>
+        <button data-tool="mirror" class="icon-btn" title="Mirror selection">
+          <svg viewBox="0 0 24 24"><path d="M12 3 V21" stroke-dasharray="2.2 2"/><path d="M5 8 L10 12 L5 16 Z" fill="currentColor" fill-opacity="0.25"/><path d="M19 8 L14 12 L19 16 Z" fill="currentColor" fill-opacity="0.25"/><path d="M5 8 L10 12 L5 16 Z M19 8 L14 12 L19 16 Z"/></svg>
+          <span>Mirror</span>
+        </button>
+        <button data-tool="array" class="icon-btn" title="Linear array (n = count)">
+          <svg viewBox="0 0 24 24"><rect x="3" y="8" width="5" height="8"/><rect x="10" y="8" width="5" height="8"/><rect x="17" y="8" width="5" height="8"/></svg>
+          <span>Array</span>
+        </button>
+        <button data-tool="polar" class="icon-btn" title="Polar array (n = count)">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><circle cx="12" cy="4.5" r="1.4"/><circle cx="19" cy="12" r="1.4"/><circle cx="12" cy="19.5" r="1.4"/><circle cx="5" cy="12" r="1.4"/></svg>
+          <span>Polar</span>
+        </button>
+      </div>
+      <div class="group-label">Transform</div>
+    </div>
+    <div class="group">
+      <div class="group-tools">
+        <button data-tool="trim" class="icon-btn" title="Trim a line to another">
+          <svg viewBox="0 0 24 24"><path d="M4 20 L12 12"/><path d="M12 12 L20 4" stroke-dasharray="2.2 2"/><path d="M5 8 L16 19"/></svg>
+          <span>Trim</span>
+        </button>
+        <button data-tool="node" class="icon-btn" title="Insert a node on a line or face">
+          <svg viewBox="0 0 24 24"><path d="M4 18 L20 6"/><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/></svg>
+          <span>Node</span>
+        </button>
+        <button data-tool="face-lines" class="icon-btn" title="Face from selected lines">
+          <svg viewBox="0 0 24 24"><path d="M5 18 L12 5 L19 18 Z" fill="currentColor" fill-opacity="0.25"/><path d="M5 18 L12 5 L19 18 Z"/></svg>
+          <span>Face</span>
+        </button>
+        <button data-tool="chamfer" class="icon-btn" title="Chamfer a corner (type distance)">
+          <svg viewBox="0 0 24 24"><path d="M4 20 V8 L8 4 H20"/><path d="M4 8 L8 4"/></svg>
+          <span>Chamfer</span>
+        </button>
+        <button data-tool="fillet" class="icon-btn" title="Fillet a corner (type radius)">
+          <svg viewBox="0 0 24 24"><path d="M4 20 V10 A6 6 0 0 1 10 4 H20"/></svg>
+          <span>Fillet</span>
+        </button>
+        <button data-tool="sew" class="icon-btn" title="Sew coincident points in the selection">
+          <svg viewBox="0 0 24 24"><circle cx="8" cy="12" r="2.2"/><circle cx="16" cy="12" r="2.2"/><path d="M10 12 H14"/></svg>
+          <span>Sew</span>
+        </button>
+        <button data-tool="simplify" class="icon-btn" title="Drop collinear vertices">
+          <svg viewBox="0 0 24 24"><path d="M4 18 L10 12 L14 12 L20 6"/><circle cx="10" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>
+          <span>Simplify</span>
+        </button>
+        <button data-tool="delete" class="icon-btn" title="Delete selection (Del)">
+          <svg viewBox="0 0 24 24"><path d="M8 5 H16 M5 7 H19 M8 7 V19 H16 V7"/><path d="M10 10 V16 M14 10 V16"/></svg>
+          <span>Delete</span>
+        </button>
+      </div>
+      <div class="group-label">Modify</div>
+    </div>
+    <div class="group">
+      <div class="group-tools">
+        <button id="proj" class="icon-btn" title="Parallel / perspective (O)">
+          <svg viewBox="0 0 24 24"><path d="M3 18 L8 6 L13 18"/><path d="M16 6 L16 18"/><path d="M16 12 L21 6"/><path d="M16 12 L21 18"/></svg>
+          <span>Parallel</span>
+        </button>
+        <button id="snap" class="icon-btn active" title="SNAP (F3)">
+          <svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10"/><path d="M12 3 V7 M12 17 V21 M3 12 H7 M17 12 H21"/></svg>
+          <span>SNAP</span>
+        </button>
+        <button id="ortho" class="icon-btn" title="ORTHO (F8)">
+          <svg viewBox="0 0 24 24"><path d="M4 20 H20 M4 20 V4"/><path d="M4 12 H14 M14 20 V12"/></svg>
+          <span>ORTHO</span>
+        </button>
+        <button id="grid" class="icon-btn active" title="GRID (F9)">
+          <svg viewBox="0 0 24 24"><path d="M5 5 H19 V19 H5 Z"/><path d="M12 5 V19 M5 12 H19"/></svg>
+          <span>GRID</span>
+        </button>
+      </div>
+      <div class="group-label">View</div>
+    </div>
+    <div class="group">
+      <div class="group-tools" style="align-items:center">
+        <label>n <input id="sides" type="number" min="2" max="64" step="1" value="6" /></label>
+        <label>label <input id="label" type="text" placeholder="optional" /></label>
+        <button id="undo">Undo</button>
+        <button id="redo">Redo</button>
+        <button id="clear">Clear</button>
+        <button id="save">Save</button>
+      </div>
+      <div class="group-label">Document</div>
+    </div>
+    <span id="status">SNAP · GRID</span>
+  </div>
+  <div id="workspace">
+    <aside id="dock">
+      <div id="dock-head">
+        <span>Model</span>
+        <button type="button" id="dock-toggle" class="dock-btn" title="Collapse panel" aria-label="Collapse panel">
+          <svg viewBox="0 0 24 24"><path d="M15 6 L9 12 L15 18"/></svg>
+        </button>
+      </div>
+      <div id="tree-wrap">
+        <div id="tree">No entities.</div>
+      </div>
+      <div id="split-y" class="split split-y" title="Resize properties"></div>
+      <div id="props">
+        <h2>Properties</h2>
+        <div id="prop-body">Nothing selected.</div>
+      </div>
+    </aside>
+    <div id="split-x" class="split split-x" title="Resize panel"></div>
+    <button type="button" id="dock-expand" title="Show model panel" aria-label="Show model panel">
+      <svg viewBox="0 0 24 24"><path d="M9 6 L15 12 L9 18"/></svg>
+    </button>
+    <div id="stage">
+      <canvas id="view" tabindex="0"></canvas>
+      <div id="dims"></div>
+      <div id="marquee" hidden></div>
+    </div>
+  </div>
+  <div id="split-console" class="split split-y" title="Resize command line"></div>
+  <div id="console">
+    <div id="console-log"></div>
+    <div id="console-row">
+      <span id="console-prompt">Command:</span>
+      <input id="console-input" type="text" spellcheck="false" autocomplete="off"
+        placeholder="length mm · angle ° · Enter" />
+      <span id="coords">X 0 &nbsp; Y 0 &nbsp; Z 0</span>
+    </div>
+  </div>
+  <script type="module" src="/app.js?v=10"></script>
+</body>
+</html>

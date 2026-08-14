@@ -17,6 +17,11 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0005](0005-studio-is-consumer.md) | Studio is pick/show; apeCAD does not author inside Studio | Accepted |
 | [0006](0006-one-source-of-truth.md) | One writer: the Python ops API; JSON is a file format | Accepted |
 | [0007](0007-clean-room-inspiration.md) | Chili3D / SolveSpace / ArcCAD are principle sources only | Accepted |
+| [0008](0008-face-extrude-mouse-nav.md) | Face + extrude is the solid; navigation is mouse | Accepted |
+| [0009](0009-sketch-palette-live-dims.md) | Sketch palette and live dimensions | Accepted |
+| [0010](0010-selection-inspector-ribbon.md) | Selection, inspector, and a command ribbon | Accepted |
+| [0011](0011-window-select-modify-nodes.md) | Window selection, modify ops, and insert-node | Accepted |
+| [0012](0012-kernel-free-modify-transform.md) | Kernel-free modify and transform | Accepted |
 
 ## Template
 

@@ -18,8 +18,34 @@ This repository is **private**.
 
 ## Status
 
-Pre-alpha (`0.0.0`). The package installs and exports `__version__`. The
-product contract lives in [`AProjects/`](AProjects/README.md).
+Pre-alpha (`0.0.0`). The v0 `Document`, `to_frame()`, and a localhost
+scratchpad are implemented. The product contract lives in
+[`AProjects/`](AProjects/README.md).
+
+```python
+from apeCAD import Document
+
+cad = Document()
+a = cad.add_point(0, 0, 0, label="A")
+b = cad.add_point(6000, 0, 0, label="B")
+cad.add_line(a.entity_id, b.entity_id, label="beam_B1")
+cad.add_box((0, 0, 0), (6000, 4000, 200), label="slab_L2")
+print(cad.to_json())
+```
+
+## Scratchpad
+
+```bash
+python -m apeCAD
+```
+
+Opens `http://127.0.0.1:8765`. Draw lines and boxes on the XY plane
+(z = 0). The canvas posts ops to the Python document. Save JSON from
+the toolbar when you want a file snapshot.
+
+```bash
+python -m apeCAD --no-browser --port 8765
+```
 
 ## Layout
 
