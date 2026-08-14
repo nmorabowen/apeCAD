@@ -24,7 +24,14 @@ from apeCAD.entities import (
 )
 from apeCAD.errors import DocumentError
 from apeCAD.frame import FrameGraph, document_to_frame
-from apeCAD.geometry import XYZ, collinear_xy, mirror_xy, project_on_segment, rotate_xy
+from apeCAD.geometry import (
+    XYZ,
+    collinear_xy,
+    line_intersect_xy,
+    mirror_xy,
+    project_on_segment,
+    rotate_xy,
+)
 from apeCAD.ops import (
     SCHEMA_ID,
     UNITS,
@@ -40,11 +47,13 @@ from apeCAD.ops import (
     AddPolyline,
     ArrayLinear,
     ArrayPolar,
+    BreakCrossing,
     ChamferCorner,
     Delete,
     Extrude,
     FilletCorner,
     InsertNode,
+    JoinPolyline,
     Mirror,
     Op,
     Rotate,
@@ -252,6 +261,16 @@ class Document:
             Point,
         )
 
+    def break_crossing(
+        self,
+        line_a_id: EntityId,
+        line_b_id: EntityId,
+    ) -> Point:
+        return self._require_produced(
+            self._apply(BreakCrossing(line_a_id=line_a_id, line_b_id=line_b_id)),
+            Point,
+        )
+
     def add_face_from_lines(
         self,
         line_ids: tuple[EntityId, ...] | list[EntityId],
@@ -261,6 +280,17 @@ class Document:
         return self._require_produced(
             self._apply(AddFaceFromLines(line_ids=tuple(line_ids), label=label)),
             Face,
+        )
+
+    def join_polyline(
+        self,
+        entity_ids: tuple[EntityId, ...] | list[EntityId],
+        *,
+        label: str | None = None,
+    ) -> Polyline:
+        return self._require_produced(
+            self._apply(JoinPolyline(entity_ids=tuple(entity_ids), label=label)),
+            Polyline,
         )
 
     def rotate(
@@ -542,8 +572,12 @@ class Document:
             return self._insert_node(op)
         if isinstance(op, TrimLine):
             return self._trim_line(op)
+        if isinstance(op, BreakCrossing):
+            return self._break_crossing(op)
         if isinstance(op, AddFaceFromLines):
             return self._add_face_from_lines(op)
+        if isinstance(op, JoinPolyline):
+            return self._join_polyline(op)
         if isinstance(op, Rotate):
             return self._rotate(op)
         if isinstance(op, Mirror):
@@ -1058,6 +1092,53 @@ class Document:
             self._entities[line.entity_id] = replace(line, start_id=cut_id)
         return replace(op, entity_id=cut_id)
 
+    def _break_crossing(self, op: BreakCrossing) -> BreakCrossing:
+        line_a = self.entity(op.line_a_id)
+        line_b = self.entity(op.line_b_id)
+        if not isinstance(line_a, Line) or not isinstance(line_b, Line):
+            raise DocumentError("break needs two lines")
+        a1 = self._require_point(line_a.start_id)
+        a2 = self._require_point(line_a.end_id)
+        b1 = self._require_point(line_b.start_id)
+        b2 = self._require_point(line_b.end_id)
+        hit = line_intersect_xy(a1.xyz_mm, a2.xyz_mm, b1.xyz_mm, b2.xyz_mm)
+        if hit is None:
+            raise DocumentError("those lines are parallel")
+        point, t, u = hit
+        if t <= 1e-6 or t >= 1.0 - 1e-6 or u <= 1e-6 or u >= 1.0 - 1e-6:
+            raise DocumentError("lines do not cross")
+        first = self._insert_node_on_line(
+            InsertNode(
+                target_id=op.line_a_id,
+                x_mm=point.x_mm,
+                y_mm=point.y_mm,
+                z_mm=0.0,
+                entity_id=op.entity_id,
+                new_line_id=op.new_line_a_id,
+            ),
+            line_a,
+        )
+        line_b_now = self.entity(op.line_b_id)
+        if not isinstance(line_b_now, Line):
+            raise DocumentError("internal error: second line vanished")
+        second = self._insert_node_on_line(
+            InsertNode(
+                target_id=op.line_b_id,
+                x_mm=point.x_mm,
+                y_mm=point.y_mm,
+                z_mm=0.0,
+                entity_id=first.entity_id,
+                new_line_id=op.new_line_b_id,
+            ),
+            line_b_now,
+        )
+        return replace(
+            op,
+            entity_id=first.entity_id,
+            new_line_a_id=first.new_line_id,
+            new_line_b_id=second.new_line_id,
+        )
+
     def _add_face_from_lines(self, op: AddFaceFromLines) -> AddFaceFromLines:
         lines: list[Line] = []
         for line_id in op.line_ids:
@@ -1068,6 +1149,48 @@ class Document:
         loop = _loop_from_lines(lines)
         face_op = self._add_face(AddFace(point_ids=loop, label=op.label, entity_id=op.entity_id))
         return replace(op, entity_id=face_op.entity_id)
+
+    def _join_polyline(self, op: JoinPolyline) -> JoinPolyline:
+        segments: list[tuple[EntityId, EntityId]] = []
+        consumed: list[EntityId] = []
+        for entity_id in op.entity_ids:
+            entity = self.entity(entity_id)
+            if isinstance(entity, Line):
+                segments.append((entity.start_id, entity.end_id))
+            elif isinstance(entity, Polyline):
+                ids = entity.point_ids
+                for index in range(len(ids) - 1):
+                    segments.append((ids[index], ids[index + 1]))
+                if entity.closed:
+                    segments.append((ids[-1], ids[0]))
+            else:
+                raise DocumentError(
+                    f"entity {entity_id} is not a line or polyline"
+                )
+            consumed.append(entity_id)
+        point_ids, closed = _chain_from_segments(segments)
+        inherited: list[str] = []
+        for entity_id in consumed:
+            source = self._entities[entity_id]
+            if source.label is not None:
+                inherited.append(source.label)
+        label = op.label if op.label is not None else (
+            inherited[0] if len(inherited) == 1 else None
+        )
+        owner = self._labels.get(label) if label is not None else None
+        if owner is not None and owner not in consumed:
+            raise DocumentError(f"label {label!r} already belongs to entity {owner}")
+        for entity_id in consumed:
+            self._drop_entity(entity_id)
+        entity_id = self._allocate_id(op.entity_id)
+        self._register_label(entity_id, label)
+        self._entities[entity_id] = Polyline(
+            entity_id=entity_id,
+            point_ids=point_ids,
+            closed=closed,
+            label=label,
+        )
+        return replace(op, entity_id=entity_id, label=label)
 
     def _point_at(
         self,
@@ -1601,7 +1724,9 @@ def _entity_id_of(
     | AddBezier
     | InsertNode
     | TrimLine
+    | BreakCrossing
     | AddFaceFromLines
+    | JoinPolyline
     | ChamferCorner
     | FilletCorner,
 ) -> EntityId:
@@ -1661,6 +1786,59 @@ def _loop_from_lines(lines: list[Line]) -> tuple[EntityId, ...]:
     if len(loop) != len(lines):
         raise DocumentError("selected lines must form one closed loop")
     return tuple(loop)
+
+
+def _chain_from_segments(
+    segments: list[tuple[EntityId, EntityId]],
+) -> tuple[tuple[EntityId, ...], bool]:
+    if len(segments) < 2:
+        raise DocumentError("join needs at least two segments")
+    adj: dict[EntityId, list[EntityId]] = {}
+    seen: set[frozenset[EntityId]] = set()
+    for start_id, end_id in segments:
+        if start_id == end_id:
+            raise DocumentError("join cannot use a zero-length segment")
+        edge = frozenset((start_id, end_id))
+        if edge in seen:
+            raise DocumentError("join found a duplicated segment")
+        seen.add(edge)
+        adj.setdefault(start_id, []).append(end_id)
+        adj.setdefault(end_id, []).append(start_id)
+    if any(len(neighbors) > 2 for neighbors in adj.values()):
+        raise DocumentError("join needs a single chain (a branch was selected)")
+    ends = [node for node, neighbors in adj.items() if len(neighbors) == 1]
+    if len(ends) == 2:
+        closed = False
+        start = ends[0]
+    elif len(ends) == 0:
+        if any(len(neighbors) != 2 for neighbors in adj.values()):
+            raise DocumentError("selected entities are not one connected chain")
+        closed = True
+        start = segments[0][0]
+    else:
+        raise DocumentError("selected entities are not one connected chain")
+    chain: list[EntityId] = [start]
+    prev: EntityId | None = None
+    current = start
+    for _ in range(len(segments)):
+        nxt: EntityId | None = None
+        for candidate in adj[current]:
+            if candidate != prev:
+                nxt = candidate
+                break
+        if nxt is None:
+            break
+        if closed and nxt == start:
+            break
+        chain.append(nxt)
+        prev = current
+        current = nxt
+    if closed:
+        if len(chain) != len(segments):
+            raise DocumentError("selected entities are not one connected chain")
+    elif len(chain) != len(segments) + 1:
+        raise DocumentError("selected entities are not one connected chain")
+    return tuple(chain), closed
 
 
 def _compact_ids(

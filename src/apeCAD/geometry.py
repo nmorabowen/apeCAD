@@ -58,13 +58,17 @@ def project_on_segment(
     return ax + t * vx, ay + t * vy, t
 
 
-def segments_intersect_xy(
+def line_intersect_xy(
     a1: XYZ,
     a2: XYZ,
     b1: XYZ,
     b2: XYZ,
-) -> XYZ | None:
-    """Intersection of two XY segments, or None if they miss or are parallel."""
+) -> tuple[XYZ, float, float] | None:
+    """Intersection of two infinite XY lines.
+
+    Returns the point and parameters *t* on AB, *u* on CD (*t* = 0 at A,
+    *t* = 1 at B). None if the lines are parallel or a segment is zero.
+    """
     ax, ay = a1.x_mm, a1.y_mm
     bx, by = a2.x_mm - ax, a2.y_mm - ay
     cx, cy = b1.x_mm, b1.y_mm
@@ -74,9 +78,23 @@ def segments_intersect_xy(
         return None
     t = ((cx - ax) * dy - (cy - ay) * dx) / denom
     u = ((cx - ax) * by - (cy - ay) * bx) / denom
+    return XYZ(ax + t * bx, ay + t * by, 0.0), t, u
+
+
+def segments_intersect_xy(
+    a1: XYZ,
+    a2: XYZ,
+    b1: XYZ,
+    b2: XYZ,
+) -> XYZ | None:
+    """Intersection of two XY segments, or None if they miss or are parallel."""
+    hit = line_intersect_xy(a1, a2, b1, b2)
+    if hit is None:
+        return None
+    point, t, u = hit
     if t < 1e-9 or t > 1.0 - 1e-9 or u < 1e-9 or u > 1.0 - 1e-9:
         return None
-    return XYZ(ax + t * bx, ay + t * by, 0.0)
+    return point
 
 
 def rotate_xy(

@@ -25,6 +25,7 @@ let tool = "select";
 let pending = null;
 let lastPointer = null;
 let selectedIds = new Set();
+let cutterIds = new Set();
 let marqueeOrigin = null;
 let sceneState = {
   points: [], lines: [], boxes: [], polylines: [], faces: [], solids: [],
@@ -404,7 +405,9 @@ function mark(object, entityId) {
 }
 
 function accentFor(entityId, base) {
-  return entityId != null && selectedIds.has(entityId) ? 0x6cb3ff : base;
+  if (entityId != null && selectedIds.has(entityId)) return 0x6cb3ff;
+  if (entityId != null && cutterIds.has(entityId)) return 0xf0c674;
+  return base;
 }
 
 function addVolume(group, origin, size, color, opacity, entityId = null) {
@@ -944,7 +947,7 @@ function applyWindowSelect(origin, event) {
     : "Nothing in the window.");
 }
 
-function segmentsIntersectMm(a1, a2, b1, b2) {
+function lineIntersectMm(a1, a2, b1, b2) {
   const ax = a1.x_mm;
   const ay = a1.y_mm;
   const bx = a2.x_mm - ax;
@@ -957,8 +960,14 @@ function segmentsIntersectMm(a1, a2, b1, b2) {
   if (Math.abs(denom) < 1e-12) return null;
   const t = ((cx - ax) * dy - (cy - ay) * dx) / denom;
   const u = ((cx - ax) * by - (cy - ay) * bx) / denom;
-  if (t <= 1e-9 || t >= 1 - 1e-9 || u <= 1e-9 || u >= 1 - 1e-9) return null;
-  return { x_mm: ax + t * bx, y_mm: ay + t * by, z_mm: 0, t };
+  return { x_mm: ax + t * bx, y_mm: ay + t * by, z_mm: 0, t, u };
+}
+
+function segmentsIntersectMm(a1, a2, b1, b2) {
+  const hit = lineIntersectMm(a1, a2, b1, b2);
+  if (!hit) return null;
+  if (hit.t <= 1e-9 || hit.t >= 1 - 1e-9 || hit.u <= 1e-9 || hit.u >= 1 - 1e-9) return null;
+  return hit;
 }
 
 function projectT(point, start, end) {
@@ -967,6 +976,141 @@ function projectT(point, start, end) {
   const length2 = vx * vx + vy * vy;
   if (length2 === 0) return 0;
   return ((point.x_mm - start.x_mm) * vx + (point.y_mm - start.y_mm) * vy) / length2;
+}
+
+function lineRows() {
+  return catalog().filter((row) => row.kind === "Line");
+}
+
+function cutterCandidates(victimId) {
+  const pinned = [...cutterIds].filter((id) => id !== victimId);
+  const source = pinned.length
+    ? pinned.map((id) => findRecord(id)).filter((row) => row && row.kind === "Line")
+    : lineRows().filter((row) => row.id !== victimId);
+  return source;
+}
+
+function seedCuttersFromSelection() {
+  cutterIds = new Set([...selectedIds].filter((id) => {
+    const row = findRecord(id);
+    return row && row.kind === "Line";
+  }));
+}
+
+function solveTrimOrExtend(victimId, click, mode) {
+  const row = findRecord(victimId);
+  if (!row || row.kind !== "Line" || !click) return null;
+  const a1 = pointById(row.item.start_id);
+  const a2 = pointById(row.item.end_id);
+  if (!a1 || !a2) return null;
+  const tClick = projectT(click, a1, a2);
+  const hits = [];
+  for (const cutter of cutterCandidates(victimId)) {
+    const b1 = pointById(cutter.item.start_id);
+    const b2 = pointById(cutter.item.end_id);
+    if (!b1 || !b2) continue;
+    const hit = lineIntersectMm(a1, a2, b1, b2);
+    if (!hit) continue;
+    const onCutter = hit.u > 1e-6 && hit.u < 1 - 1e-6;
+    hits.push({ ...hit, cutterId: cutter.id, onCutter });
+  }
+  const prefer = (left, right) => {
+    if (left.onCutter !== right.onCutter) return left.onCutter ? -1 : 1;
+    return 0;
+  };
+  if (mode === "trim") {
+    const onVictim = hits.filter((hit) => hit.t > 1e-4 && hit.t < 1 - 1e-4);
+    if (!onVictim.length) return null;
+    const tMin = Math.min(...onVictim.map((hit) => hit.t));
+    const tMax = Math.max(...onVictim.map((hit) => hit.t));
+    let chosen = null;
+    let keepId = null;
+    if (tClick <= tMin + 1e-9) {
+      chosen = onVictim.filter((hit) => Math.abs(hit.t - tMin) < 1e-9).sort(prefer)[0];
+      keepId = row.item.end_id;
+    } else if (tClick >= tMax - 1e-9) {
+      chosen = onVictim.filter((hit) => Math.abs(hit.t - tMax) < 1e-9).sort(prefer)[0];
+      keepId = row.item.start_id;
+    } else {
+      return null;
+    }
+    const keepStart = keepId === row.item.start_id;
+    return {
+      mode: "trim",
+      lineId: victimId,
+      keepId,
+      cutterId: chosen.cutterId,
+      cut: { x_mm: chosen.x_mm, y_mm: chosen.y_mm, z_mm: 0 },
+      keepA: keepStart ? a1 : a2,
+      discardA: keepStart ? a2 : a1,
+    };
+  }
+  const beyond = hits.filter((hit) => hit.t < -1e-4 || hit.t > 1 + 1e-4);
+  if (!beyond.length) return null;
+  const towardStart = tClick < 0.5;
+  const candidates = beyond.filter((hit) => (towardStart ? hit.t < 0 : hit.t > 1));
+  if (!candidates.length) return null;
+  candidates.sort((left, right) => {
+    const pin = prefer(left, right);
+    if (pin !== 0) return pin;
+    return towardStart ? right.t - left.t : left.t - right.t;
+  });
+  const chosen = candidates[0];
+  const from = towardStart ? a1 : a2;
+  const grow = Math.hypot(chosen.x_mm - from.x_mm, chosen.y_mm - from.y_mm);
+  if (grow > 100000) return null;
+  return {
+    mode: "extend",
+    lineId: victimId,
+    keepId: towardStart ? row.item.end_id : row.item.start_id,
+    cutterId: chosen.cutterId,
+    cut: { x_mm: chosen.x_mm, y_mm: chosen.y_mm, z_mm: 0 },
+    from,
+    keepA: towardStart ? a2 : a1,
+  };
+}
+
+function solveBreak(firstId, secondId) {
+  if (firstId == null || secondId == null || firstId === secondId) return null;
+  const a = findRecord(firstId);
+  const b = findRecord(secondId);
+  if (!a || !b || a.kind !== "Line" || b.kind !== "Line") return null;
+  const a1 = pointById(a.item.start_id);
+  const a2 = pointById(a.item.end_id);
+  const b1 = pointById(b.item.start_id);
+  const b2 = pointById(b.item.end_id);
+  if (!a1 || !a2 || !b1 || !b2) return null;
+  const hit = lineIntersectMm(a1, a2, b1, b2);
+  if (!hit) return null;
+  if (hit.t <= 1e-6 || hit.t >= 1 - 1e-6 || hit.u <= 1e-6 || hit.u >= 1 - 1e-6) return null;
+  return { lineA: firstId, lineB: secondId, cut: { x_mm: hit.x_mm, y_mm: hit.y_mm, z_mm: 0 } };
+}
+
+async function commitTrimPreview(preview) {
+  await refreshFrom(await api("/api/op", "POST", {
+    op: "TrimLine",
+    line_id: preview.lineId,
+    keep_id: preview.keepId,
+    x_mm: preview.cut.x_mm,
+    y_mm: preview.cut.y_mm,
+    z_mm: 0,
+  }));
+  setHint(preview.mode === "extend"
+    ? "Extended. Click another end, or Esc."
+    : "Trimmed. Click another part, or Esc.");
+  if (lastPointer) updateGhost(lastPointer);
+}
+
+async function commitBreak(preview) {
+  const after = await api("/api/op", "POST", {
+    op: "BreakCrossing",
+    line_a_id: preview.lineA,
+    line_b_id: preview.lineB,
+  });
+  await refreshFrom(after);
+  pending = null;
+  if (after.created_id != null) setSelection(after.created_id);
+  setHint("Broke at the crossing. Click two more lines, or Esc.");
 }
 
 async function finishMove(end) {
@@ -991,34 +1135,6 @@ async function finishMove(end) {
   ghosts.clear();
   ghostDims = [];
   setHint(`Moved ${selectedIds.size} entities.`);
-}
-
-async function finishTrim(cutterId) {
-  const target = findRecord(pending.lineId);
-  const cutter = findRecord(cutterId);
-  if (!target || target.kind !== "Line" || !cutter || cutter.kind !== "Line") {
-    throw new Error("trim needs two lines");
-  }
-  const a1 = pointById(target.item.start_id);
-  const a2 = pointById(target.item.end_id);
-  const b1 = pointById(cutter.item.start_id);
-  const b2 = pointById(cutter.item.end_id);
-  if (!a1 || !a2 || !b1 || !b2) throw new Error("trim is missing endpoints");
-  const hit = segmentsIntersectMm(a1, a2, b1, b2);
-  if (!hit) throw new Error("those lines do not intersect");
-  const tClick = projectT(pending.click, a1, a2);
-  const keepId = tClick < hit.t ? target.item.start_id : target.item.end_id;
-  await refreshFrom(await api("/api/op", "POST", {
-    op: "TrimLine",
-    line_id: target.id,
-    keep_id: keepId,
-    x_mm: hit.x_mm,
-    y_mm: hit.y_mm,
-    z_mm: 0,
-  }));
-  pending = null;
-  ghosts.clear();
-  setHint("Line trimmed.");
 }
 
 async function finishInsertNode(targetId, xyz) {
@@ -1051,6 +1167,25 @@ async function commitFaceFromLines() {
   await refreshFrom(after);
   if (after.created_id != null) setSelection(after.created_id);
   setHint("Face from lines.");
+}
+
+async function commitJoin() {
+  const ids = [...selectedIds].filter((id) => {
+    const row = findRecord(id);
+    return row && (row.kind === "Line" || row.kind === "Polyline");
+  });
+  if (ids.length < 2) {
+    setHint("Select two or more connected lines (or polylines), then Join. Sew first if ends only coincide.");
+    return;
+  }
+  const after = await api("/api/op", "POST", {
+    op: "JoinPolyline",
+    entity_ids: ids,
+    label: labelValue(),
+  });
+  await refreshFrom(after);
+  if (after.created_id != null) setSelection(after.created_id);
+  setHint("Joined into a polyline.");
 }
 
 async function commitSew() {
@@ -1270,6 +1405,10 @@ function setTool(next) {
     commitFaceFromLines().catch((error) => setHint(error.message));
     return;
   }
+  if (next === "join") {
+    commitJoin().catch((error) => setHint(error.message));
+    return;
+  }
   if (next === "sew") {
     commitSew().catch((error) => setHint(error.message));
     return;
@@ -1282,16 +1421,33 @@ function setTool(next) {
     commitDelete().catch((error) => setHint(error.message));
     return;
   }
+  const previous = tool;
   tool = next;
   pending = null;
   clearTyped();
   ghosts.clear();
   ghostDims = [];
+  if (next === "trim" || next === "extend") {
+    seedCuttersFromSelection();
+  } else {
+    cutterIds.clear();
+  }
   for (const button of document.querySelectorAll("button[data-tool]")) {
     button.classList.toggle("active", button.dataset.tool === tool);
   }
   refreshToggles();
-  setHint(toolHints[tool] || "");
+  if (next === "trim") {
+    setHint(cutterIds.size
+      ? `Trim (T): click the part to remove. ${cutterIds.size} cutter(s) pinned. Shift pins more.`
+      : "Trim (T): click the part to remove. Shift pins a cutter. All lines cut if none pinned.");
+  } else if (next === "extend") {
+    setHint(cutterIds.size
+      ? `Extend (E): click the end to grow. ${cutterIds.size} boundary line(s) pinned.`
+      : "Extend (E): click the end to grow. Shift pins a boundary. All lines if none pinned.");
+  } else {
+    setHint(toolHints[tool] || "");
+  }
+  if (next === "trim" || next === "extend" || previous === "trim" || previous === "extend") rebuild();
 }
 
 async function reload() {
@@ -1453,15 +1609,33 @@ async function ensurePoint(xyz) {
 }
 
 function ghostLine(a, b) {
+  ghostStroke(a, b, 0x6cb3ff, true);
+}
+
+function ghostStroke(a, b, color, dashed) {
+  const material = dashed
+    ? new THREE.LineDashedMaterial({ color, dashSize: 120, gapSize: 80 })
+    : new THREE.LineBasicMaterial({ color });
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(a.x_mm, a.y_mm, a.z_mm),
-      new THREE.Vector3(b.x_mm, b.y_mm, b.z_mm),
+      new THREE.Vector3(a.x_mm, a.y_mm, a.z_mm || 0),
+      new THREE.Vector3(b.x_mm, b.y_mm, b.z_mm || 0),
     ]),
-    new THREE.LineDashedMaterial({ color: 0x6cb3ff, dashSize: 120, gapSize: 80 }),
+    material,
   );
-  line.computeLineDistances();
+  if (dashed) line.computeLineDistances();
   ghosts.add(line);
+}
+
+function drawTrimPreview(preview) {
+  if (preview.mode === "extend") {
+    ghostStroke(preview.from, preview.cut, 0x7dce7d, true);
+    ghostStroke(preview.keepA, preview.from, 0x6cb3ff, false);
+  } else {
+    ghostStroke(preview.discardA, preview.cut, 0xff6b6b, true);
+    ghostStroke(preview.keepA, preview.cut, 0x6cb3ff, false);
+  }
+  drawSnapMarker(preview.cut, "node");
 }
 
 function ghostRect(a, b, height = 0) {
@@ -1524,6 +1698,20 @@ function updateGhost(event) {
   }
   const hit = hitWorkplane(event);
   if (hit && hit.snap) drawSnapMarker(hit, hit.snap);
+  if ((tool === "trim" || tool === "extend") && !pending) {
+    const picked = pickEntity(event);
+    const preview = picked ? solveTrimOrExtend(picked, hit, tool) : null;
+    if (preview) drawTrimPreview(preview);
+    setCoords(hit);
+    return;
+  }
+  if (tool === "break" && pending && pending.kind === "break") {
+    const picked = pickEntity(event);
+    const preview = solveBreak(pending.lineId, picked);
+    if (preview) drawSnapMarker(preview.cut, "node");
+    setCoords(hit);
+    return;
+  }
   if (!pending) {
     setCoords(hit);
     return;
@@ -1891,25 +2079,54 @@ async function onClick(event) {
       await finishCorner("fillet", event);
       return;
     }
-    if (tool === "trim") {
+    if (tool === "trim" || tool === "extend") {
       const picked = pickEntity(event);
       const row = findRecord(picked);
+      if (event.shiftKey && row && row.kind === "Line") {
+        if (cutterIds.has(picked)) cutterIds.delete(picked);
+        else cutterIds.add(picked);
+        rebuild();
+        const noun = tool === "extend" ? "boundary" : "cutter";
+        setHint(cutterIds.size
+          ? `${tool === "extend" ? "Extend" : "Trim"}: ${cutterIds.size} ${noun}(s). Click a part.`
+          : `${tool === "extend" ? "Extend" : "Trim"}: all lines. Click a part.`);
+        return;
+      }
+      if (!row || row.kind !== "Line") {
+        setHint(tool === "extend"
+          ? "Extend: click the end to grow, or Shift-click a boundary."
+          : "Trim: click the part to remove, or Shift-click a cutter.");
+        return;
+      }
+      const click = hitWorkplane(event);
+      const preview = solveTrimOrExtend(picked, click, tool);
+      if (!preview) {
+        setHint(tool === "extend"
+          ? "Extend: click the short end toward a boundary (implied intersection is OK)."
+          : "Trim: click a free end — the stub past the nearest cutter.");
+        return;
+      }
+      await commitTrimPreview(preview);
+      return;
+    }
+    if (tool === "break") {
+      const picked = pickEntity(event);
+      const row = findRecord(picked);
+      if (!row || row.kind !== "Line") {
+        setHint("Break: click the first line.");
+        return;
+      }
       if (!pending) {
-        if (!row || row.kind !== "Line") {
-          setHint("Trim: click the line to shorten.");
-          return;
-        }
-        const click = hitWorkplane(event);
-        if (!click) return;
-        pending = { kind: "trim", lineId: picked, click };
-        setHint("Trim: click the cutting line.");
+        pending = { kind: "break", lineId: picked };
+        setHint("Break: click the crossing line.");
         return;
       }
-      if (!row || row.kind !== "Line" || picked === pending.lineId) {
-        setHint("Trim: click a different cutting line.");
+      const preview = solveBreak(pending.lineId, picked);
+      if (!preview) {
+        setHint("Break: those lines do not cross. Click another line.");
         return;
       }
-      await finishTrim(picked);
+      await commitBreak(preview);
       return;
     }
     if (tool === "node") {
@@ -2130,7 +2347,9 @@ const toolHints = {
   mirror: "Mirror: select, then two clicks for the mirror axis.",
   array: "Array: select, click spacing to the next copy. n = total count.",
   polar: "Polar: select, click the centre. n = count. Length = sweep ° (default 360).",
-  trim: "Trim: click the line to shorten, then the cutting line.",
+  trim: "Trim (T): click the part to remove. Shift pins a cutter. Implied intersection is OK.",
+  extend: "Extend (E): click the short end to grow to a boundary. Shift pins a boundary.",
+  break: "Break: click two crossing lines to insert a shared node.",
   node: "Node: click a line, face, or polyline to insert a shared point.",
   chamfer: "Chamfer: type a distance, then click a face or polyline corner.",
   fillet: "Fillet: type a radius, then click a face or polyline corner.",
@@ -2268,10 +2487,45 @@ window.addEventListener("keydown", (event) => {
     if (event.key === "Delete" && consoleInput.value === "") {
       event.preventDefault();
       commitDelete().catch((error) => setHint(error.message));
+      return;
+    }
+    if (consoleInput.value === "" && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      if (event.key === "t" || event.key === "T") {
+        event.preventDefault();
+        setTool("trim");
+        return;
+      }
+      if (event.key === "e" || event.key === "E") {
+        event.preventDefault();
+        setTool("extend");
+        return;
+      }
+      if (event.key === "j" || event.key === "J") {
+        event.preventDefault();
+        setTool("join");
+        return;
+      }
     }
     return;
   }
   if (isTypingField(event)) return;
+  if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (event.key === "t" || event.key === "T") {
+      event.preventDefault();
+      setTool("trim");
+      return;
+    }
+    if (event.key === "e" || event.key === "E") {
+      event.preventDefault();
+      setTool("extend");
+      return;
+    }
+    if (event.key === "j" || event.key === "J") {
+      event.preventDefault();
+      setTool("join");
+      return;
+    }
+  }
   if (event.key === "Delete") {
     event.preventDefault();
     commitDelete().catch((error) => setHint(error.message));
