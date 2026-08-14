@@ -1,7 +1,7 @@
 # Spec — scratchpad client
 
 **Status:** Implemented (2026-08-14)  
-**ADRs:** 0002, 0003, 0005, 0006
+**ADRs:** 0002, 0003, 0005, 0006, 0013
 
 ## Goal
 
@@ -30,6 +30,8 @@ Undo / redo / clear. Save JSON.
 SNAP / ORTHO / GRID. Live millimetre readout (X Y Z, Δ, length, angle).
 Left dock: model tree, properties below; drag to resize; collapse.
 Command line at the bottom: prompts plus typed length/angle (Enter).
+View cube (upper right): Z-up named faces; click face / edge / corner;
+ISO and Fit. Camera is not in the ops log.
 
 ## Out of scope
 

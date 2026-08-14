@@ -99,6 +99,13 @@
     .prop dd { margin: 0; font-variant-numeric: tabular-nums; }
     #stage { position: relative; min-width: 0; flex: 1; }
     #view { display: block; width: 100%; height: 100%; outline: none; }
+    #viewcube-wrap {
+      position: absolute; top: 8px; right: 8px; z-index: 3;
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    #viewcube { width: 108px; height: 108px; display: block; cursor: pointer; }
+    #viewcube-actions { display: flex; gap: 4px; }
+    #viewcube-actions button { padding: 2px 7px; font-size: 10px; }
     #dims { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
     .dim {
       position: absolute; transform: translate(-50%, -130%);
@@ -339,6 +346,13 @@
     </button>
     <div id="stage">
       <canvas id="view" tabindex="0"></canvas>
+      <div id="viewcube-wrap">
+        <canvas id="viewcube" width="108" height="108" title="View cube — click a face, edge, or corner"></canvas>
+        <div id="viewcube-actions">
+          <button type="button" id="view-iso" title="Isometric from the Right–Front–Top corner">ISO</button>
+          <button type="button" id="view-fit" title="Fit the draft in the view">Fit</button>
+        </div>
+      </div>
       <div id="dims"></div>
       <div id="marquee" hidden></div>
     </div>
@@ -353,6 +367,6 @@
       <span id="coords">X 0 &nbsp; Y 0 &nbsp; Z 0</span>
     </div>
   </div>
-  <script type="module" src="/app.js?v=12"></script>
+  <script type="module" src="/app.js?v=15"></script>
 </body>
 </html>

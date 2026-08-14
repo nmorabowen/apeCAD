@@ -1,7 +1,7 @@
 # Spec — modelling helpers (scratchpad + intent)
 
 **Status:** Implemented in part (2026-08-14)  
-**ADRs:** 0003, 0004, 0008, 0009, 0010, 0011, 0012
+**ADRs:** 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013
 
 ## In the document (library base)
 
@@ -41,6 +41,7 @@ them, and unused endpoints left behind.
 ## In the scratchpad (now)
 
 - Parallel and perspective cameras
+- View cube: Top +Z, Front −Y, Right +X; ISO = +X −Y +Z (Right–Front–Top); Fit frames points
 - LMB draw, MMB orbit, RMB pan, wheel zoom (no Orbit tool)
 - Ghost line / rectangle / extrusion while drawing
 - SNAP (F3): master snap on/off (nodes + grid)
