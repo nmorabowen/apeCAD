@@ -22,6 +22,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0010](0010-selection-inspector-ribbon.md) | Selection, inspector, and a command ribbon | Accepted |
 | [0011](0011-window-select-modify-nodes.md) | Window selection, modify ops, and insert-node | Accepted |
 | [0012](0012-kernel-free-modify-transform.md) | Kernel-free modify and transform | Accepted |
+| [0013](0013-view-cube.md) | View cube is a client compass, not a document op | Accepted |
 
 ## Template
 

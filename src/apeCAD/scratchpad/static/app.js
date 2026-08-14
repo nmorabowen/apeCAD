@@ -44,11 +44,14 @@ renderer.setPixelRatio(window.devicePixelRatio);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x14171c);
 
+const WORLD_UP = new THREE.Vector3(0, 0, 1);
+const ISO_DIR = new THREE.Vector3(1, -1, 1);
+
 const persp = new THREE.PerspectiveCamera(50, 1, 10, 2_000_000);
-persp.up.set(0, 0, 1);
+persp.up.copy(WORLD_UP);
 persp.position.set(12000, 9000, 14000);
 const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 10, 2_000_000);
-orthoCam.up.set(0, 0, 1);
+orthoCam.up.copy(WORLD_UP);
 orthoCam.position.copy(persp.position);
 
 const controls = new OrbitControls(orthoCam, canvas);
@@ -56,6 +59,9 @@ controls.target.set(2000, 1500, 0);
 controls.mouseButtons.LEFT = -1;
 controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
 controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+// Keep orbit off the Z pole so lookAt(up=+Z) stays well-defined after Top/Bottom.
+controls.minPolarAngle = 0.04;
+controls.maxPolarAngle = Math.PI - 0.04;
 controls.update();
 
 scene.add(new THREE.AmbientLight(0xffffff, 0.7));
@@ -75,41 +81,48 @@ function camera() {
   return useOrtho ? orthoCam : persp;
 }
 
+function applyCameraPose(position, target) {
+  const src = camera();
+  const dst = useOrtho ? persp : orthoCam;
+  src.position.copy(position);
+  src.up.copy(WORLD_UP);
+  src.lookAt(target);
+  dst.position.copy(src.position);
+  dst.up.copy(WORLD_UP);
+  dst.quaternion.copy(src.quaternion);
+  controls.target.copy(target);
+}
+
 function syncCameras() {
+  const src = camera();
+  const dst = useOrtho ? persp : orthoCam;
+  src.up.copy(WORLD_UP);
+  dst.position.copy(src.position);
+  dst.quaternion.copy(src.quaternion);
+  dst.up.copy(WORLD_UP);
   const width = Math.max(canvas.clientWidth, 1);
   const height = Math.max(canvas.clientHeight, 1);
   const aspect = width / height;
   persp.aspect = aspect;
   persp.updateProjectionMatrix();
-  const dist = persp.position.distanceTo(controls.target);
+  const dist = src.position.distanceTo(controls.target);
   const half = Math.max(dist * Math.tan((persp.fov * Math.PI) / 360), 500);
   orthoCam.left = -half * aspect;
   orthoCam.right = half * aspect;
   orthoCam.top = half;
   orthoCam.bottom = -half;
-  if (useOrtho) {
-    orthoCam.position.copy(persp.position);
-    orthoCam.up.copy(persp.up);
-    orthoCam.lookAt(controls.target);
-  } else {
-    persp.position.copy(orthoCam.position);
-    persp.up.copy(orthoCam.up);
-    persp.lookAt(controls.target);
-  }
   orthoCam.updateProjectionMatrix();
   renderer.setSize(width, height, false);
 }
 
 function setProjection(nextOrtho) {
   useOrtho = nextOrtho;
-  if (useOrtho) {
-    orthoCam.position.copy(persp.position);
-    orthoCam.up.copy(persp.up);
-  } else {
-    persp.position.copy(orthoCam.position);
-    persp.up.copy(orthoCam.up);
-  }
-  controls.object = camera();
+  const src = useOrtho ? persp : orthoCam;
+  const dst = camera();
+  dst.position.copy(src.position);
+  dst.quaternion.copy(src.quaternion);
+  dst.up.copy(WORLD_UP);
+  controls.object = dst;
   projButton.querySelector("span").textContent = useOrtho ? "Parallel" : "Perspective";
   syncCameras();
   controls.update();
@@ -120,6 +133,214 @@ setProjection(true);
 if (typeof ResizeObserver === "function") {
   new ResizeObserver(() => syncCameras()).observe(document.getElementById("stage"));
 }
+
+const cubeCanvas = document.getElementById("viewcube");
+const cubeRenderer = new THREE.WebGLRenderer({
+  canvas: cubeCanvas,
+  antialias: true,
+  alpha: true,
+});
+cubeRenderer.setPixelRatio(window.devicePixelRatio);
+cubeRenderer.setClearColor(0x000000, 0);
+const cubeScene = new THREE.Scene();
+const cubeCam = new THREE.OrthographicCamera(-1.35, 1.35, 1.35, -1.35, 0.1, 20);
+cubeCam.up.copy(WORLD_UP);
+const cubeGroup = new THREE.Group();
+cubeScene.add(cubeGroup);
+
+function makeFaceTexture(label) {
+  const canvasFace = document.createElement("canvas");
+  canvasFace.width = 256;
+  canvasFace.height = 256;
+  const ctx = canvasFace.getContext("2d");
+  ctx.fillStyle = "#1d2229";
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = "#2c333c";
+  ctx.lineWidth = 10;
+  ctx.strokeRect(6, 6, 244, 244);
+  ctx.fillStyle = "#e8edf2";
+  ctx.font = "bold 52px Segoe UI, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, 128, 128);
+  const texture = new THREE.CanvasTexture(canvasFace);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+const CUBE_FACE = 1.12;
+function addCubeFace(nx, ny, nz, ux, uy, uz, label) {
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(CUBE_FACE, CUBE_FACE),
+    new THREE.MeshBasicMaterial({ map: makeFaceTexture(label) }),
+  );
+  const normal = new THREE.Vector3(nx, ny, nz);
+  mesh.position.copy(normal).multiplyScalar(CUBE_FACE / 2);
+  mesh.up.set(ux, uy, uz);
+  mesh.lookAt(mesh.position.clone().add(normal));
+  cubeGroup.add(mesh);
+}
+addCubeFace(1, 0, 0, 0, 0, 1, "RIGHT");
+addCubeFace(-1, 0, 0, 0, 0, 1, "LEFT");
+addCubeFace(0, 1, 0, 0, 0, 1, "BACK");
+addCubeFace(0, -1, 0, 0, 0, 1, "FRONT");
+addCubeFace(0, 0, 1, 0, 1, 0, "TOP");
+addCubeFace(0, 0, -1, 0, 1, 0, "BOTTOM");
+
+const cubePick = new THREE.Mesh(
+  new THREE.BoxGeometry(CUBE_FACE, CUBE_FACE, CUBE_FACE),
+  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+);
+cubeGroup.add(cubePick);
+cubeGroup.add(new THREE.LineSegments(
+  new THREE.EdgesGeometry(cubePick.geometry),
+  new THREE.LineBasicMaterial({ color: 0x6cb3ff }),
+));
+
+let viewAnim = null;
+
+function syncCube() {
+  const cam = camera();
+  cubeCam.up.copy(cam.up);
+  cubeCam.position.set(0, 0, 0);
+  cubeCam.quaternion.copy(cam.quaternion);
+  cubeCam.translateZ(3.2);
+  cubeCam.updateMatrixWorld();
+  const size = Math.max(cubeCanvas.clientWidth, 1);
+  cubeRenderer.setSize(size, size, false);
+  cubeRenderer.render(cubeScene, cubeCam);
+}
+
+function pickCube(event) {
+  const rect = cubeCanvas.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return null;
+  const ndc = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(ndc, cubeCam);
+  const hits = raycaster.intersectObject(cubePick, true);
+  return hits[0] || null;
+}
+
+function viewDirFromCubePoint(point) {
+  const local = cubePick.worldToLocal(point.clone());
+  const snap = (value) => (Math.abs(value) < 0.42 ? 0 : Math.sign(value));
+  let x = snap(local.x);
+  let y = snap(local.y);
+  let z = snap(local.z);
+  if (x === 0 && y === 0 && z === 0) {
+    const ax = Math.abs(local.x);
+    const ay = Math.abs(local.y);
+    const az = Math.abs(local.z);
+    if (ax >= ay && ax >= az) x = Math.sign(local.x) || 1;
+    else if (ay >= az) y = Math.sign(local.y) || 1;
+    else z = Math.sign(local.z) || 1;
+  }
+  return new THREE.Vector3(x, y, z).normalize();
+}
+
+function stableViewDir(dir) {
+  const next = dir.clone().normalize();
+  if (Math.hypot(next.x, next.y) < 0.04 && Math.abs(next.z) > 0.98) {
+    // Nudge Top/Bottom off the orbit pole; approach from Front so +Y is screen-up.
+    next.set(0, next.z > 0 ? -0.045 : 0.045, Math.sign(next.z) || 1).normalize();
+  }
+  return next;
+}
+
+function slerpOffset(fromOffset, toOffset, t) {
+  const fromLen = fromOffset.length();
+  const toLen = toOffset.length();
+  const len = fromLen + (toLen - fromLen) * t;
+  const fromN = fromOffset.clone().normalize();
+  const toN = toOffset.clone().normalize();
+  if (fromN.dot(toN) < -0.999) {
+    const axis = new THREE.Vector3().crossVectors(fromN, WORLD_UP);
+    if (axis.lengthSq() < 1e-8) axis.set(1, 0, 0);
+    axis.normalize();
+    return fromN.clone().applyAxisAngle(axis, Math.PI * t).multiplyScalar(len);
+  }
+  const q = new THREE.Quaternion().setFromUnitVectors(fromN, toN);
+  const qT = new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(), q, t);
+  return fromN.clone().applyQuaternion(qT).multiplyScalar(len);
+}
+
+function goToView(dir, extras = {}) {
+  const fromTarget = controls.target.clone();
+  const toTarget = (extras.target || controls.target).clone();
+  const fromOffset = camera().position.clone().sub(fromTarget);
+  const dist = extras.dist != null ? extras.dist : Math.max(fromOffset.length(), 500);
+  const toOffset = stableViewDir(dir).multiplyScalar(dist);
+  viewAnim = {
+    fromOffset,
+    toOffset,
+    fromTarget,
+    toTarget,
+    t0: performance.now(),
+    ms: 220,
+  };
+}
+
+function tickViewAnim() {
+  if (!viewAnim) return;
+  const u = Math.min(1, (performance.now() - viewAnim.t0) / viewAnim.ms);
+  const s = u * u * (3 - 2 * u);
+  const target = viewAnim.fromTarget.clone().lerp(viewAnim.toTarget, s);
+  const offset = slerpOffset(viewAnim.fromOffset, viewAnim.toOffset, s);
+  applyCameraPose(target.clone().add(offset), target);
+  syncCameras();
+  if (u >= 1) {
+    controls.update();
+    syncCameras();
+    viewAnim = null;
+  }
+}
+
+function fitView() {
+  const box = new THREE.Box3();
+  for (const point of sceneState.points || []) {
+    box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0));
+  }
+  if (box.isEmpty()) {
+    goToView(ISO_DIR, { target: new THREE.Vector3(2000, 1500, 0), dist: 18000 });
+    return;
+  }
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const radius = Math.max(size.length() * 0.55, 800);
+  let dir = camera().position.clone().sub(controls.target);
+  if (dir.lengthSq() < 1e-8) dir.copy(ISO_DIR);
+  const dist = radius / Math.max(Math.tan((persp.fov * Math.PI) / 360), 0.05);
+  goToView(dir, { target: center, dist });
+}
+
+let cubePointer = null;
+cubeCanvas.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  cubePointer = { x: event.clientX, y: event.clientY };
+});
+cubeCanvas.addEventListener("pointerup", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  const origin = cubePointer;
+  cubePointer = null;
+  if (!origin) return;
+  if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 6) return;
+  const hit = pickCube(event);
+  if (!hit) return;
+  goToView(viewDirFromCubePoint(hit.point));
+});
+cubeCanvas.addEventListener("pointermove", (event) => {
+  cubeCanvas.style.cursor = pickCube(event) ? "pointer" : "default";
+});
+cubeCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
+document.getElementById("view-iso").addEventListener("click", () => {
+  goToView(ISO_DIR);
+});
+document.getElementById("view-fit").addEventListener("click", () => fitView());
 
 function setHint(text) {
   const next = text && text.trim() !== "" ? text : "Command:";
@@ -2611,7 +2832,9 @@ document.getElementById("dock-expand").addEventListener("click", () => {
 });
 
 function tick() {
+  tickViewAnim();
   renderer.render(scene, camera());
+  syncCube();
   projectDims();
   requestAnimationFrame(tick);
 }

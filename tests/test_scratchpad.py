@@ -47,6 +47,7 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     with urlopen(f"http://127.0.0.1:{port}/") as response:
         html = response.read().decode("utf-8")
     assert "apeCAD scratchpad" in html
+    assert 'id="viewcube"' in html
     assert (STATIC_DIR / "app.js").is_file()
 
 
