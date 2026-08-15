@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from typing import TypeVar, cast
 
+from apeCAD.brep import BrepIndex, build_brep
 from apeCAD.entities import (
     Arc,
     Bezier,
@@ -475,6 +476,10 @@ class Document:
     def beziers(self) -> tuple[Bezier, ...]:
         return tuple(e for e in self._iter_entities() if isinstance(e, Bezier))
 
+    def brep(self) -> BrepIndex:
+        """Evaluated vertex/edge/face/solid graph (ADR 0018)."""
+        return build_brep(self._entities)
+
     def tags(self) -> dict[str, frozenset[EntityId]]:
         return {name: frozenset(ids) for name, ids in sorted(self._tags.items())}
 
@@ -668,7 +673,7 @@ class Document:
         face_op = self._add_face(AddFace(point_ids=tuple(point_ids)))
         extrude_op = self._extrude(
             Extrude(
-                face_id=face_op.entity_id,
+                face_id=_entity_id_of(face_op),
                 distance_mm=size.z_mm,
                 direction_xyz=XYZ(0.0, 0.0, 1.0),
                 label=op.label,
@@ -700,7 +705,7 @@ class Document:
         self._reject_taken_label(op.label)
         cap_id = self._extrude_cap(face, op)
         wall_ids: tuple[EntityId, ...] = ()
-        if isinstance(face, Face) and cap_id is not None:
+        if isinstance(face, Face):
             cap = self._entities.get(cap_id)
             if isinstance(cap, Face):
                 wall_ids = self._extrude_walls(face, cap)
@@ -744,7 +749,7 @@ class Document:
                 )
                 lid_ids.append(lid_id)
             cap = self._add_face(AddFace(point_ids=tuple(lid_ids)))
-            return cap.entity_id
+            return _entity_id_of(cap)
         center = self._require_point(profile.center_id)
         lid_id, _created = self._point_at(
             center.xyz_mm.x_mm + offset.x_mm,
@@ -753,7 +758,19 @@ class Document:
             requested=None,
             tolerance_mm=0.0,
         )
-        return lid_id
+        if isinstance(profile, Circle):
+            cap_circle = self._add_circle(
+                AddCircle(center_id=lid_id, radius_mm=profile.radius_mm)
+            )
+            return _entity_id_of(cap_circle)
+        cap_ellipse = self._add_ellipse(
+            AddEllipse(
+                center_id=lid_id,
+                radius_x_mm=profile.radius_x_mm,
+                radius_y_mm=profile.radius_y_mm,
+            )
+        )
+        return _entity_id_of(cap_ellipse)
 
     def _extrude_walls(self, profile: Face, cap: Face) -> tuple[EntityId, ...]:
         base = profile.point_ids
@@ -767,7 +784,7 @@ class Document:
             wall = self._add_face(
                 AddFace(point_ids=(base[index], base[nxt], lid[nxt], lid[index]))
             )
-            walls.append(wall.entity_id)
+            walls.append(_entity_id_of(wall))
         return tuple(walls)
 
     def _add_circle(self, op: AddCircle) -> AddCircle:
@@ -1717,7 +1734,7 @@ class Document:
         if existing is not None:
             return existing
         op = self._add_line(AddLine(start_id=start_id, end_id=end_id))
-        entity = self._entities[op.entity_id]
+        entity = self._entities[_entity_id_of(op)]
         assert isinstance(entity, Line)
         return entity
 

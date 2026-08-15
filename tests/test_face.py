@@ -67,10 +67,14 @@ def test_circle_is_an_extrudable_profile() -> None:
     assert isinstance(solid, Solid)
     assert solid.face_id == circle.entity_id
     assert solid.cap_id is not None
-    lid = document.entity(solid.cap_id)
+    cap = document.entity(solid.cap_id)
+    assert isinstance(cap, Circle)
+    assert cap.radius_mm == 1500.0
+    lid = document.entity(cap.center_id)
     assert isinstance(lid, Point)
     assert lid.xyz_mm.z_mm == pytest.approx(400.0)
     assert len(document.points()) == 2
+    assert len(document.circles()) == 2
     frame = document.to_frame()
     assert frame.volumes[0].size_xyz_mm.z_mm == 400.0
     assert frame.volumes[0].size_xyz_mm.x_mm == 3000.0
