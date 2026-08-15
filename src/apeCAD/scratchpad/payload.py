@@ -103,4 +103,5 @@ def scene_payload(document: Document) -> dict[str, object]:
             for bezier in document.beziers()
         ],
         "tags": {name: sorted(ids) for name, ids in document.tags().items()},
+        "brep": document.brep().to_payload(),
     }

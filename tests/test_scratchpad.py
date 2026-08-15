@@ -105,11 +105,14 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     assert "appendHiddenSpan" in app
     assert "pickByFilter" in app
     assert "setSelectFilter" in app
+    assert "convertSelectionToFilter" in app
+    assert "updatePreselect" in app
     assert 'selectFilter === "element"' in app
     assert "addSolidPrism" in app
     assert "addSolidVolumeFallback" in app
     assert "addVertexDot" in app
     assert "wall_ids" in app
+    assert "sceneState.brep" in app
 
 
 def test_add_point_via_op_api(server: ScratchpadServer) -> None:
@@ -228,6 +231,13 @@ def test_face_and_extrude_via_op_api(server: ScratchpadServer) -> None:
     assert len(faces) == 6
     assert len(solids[0]["wall_ids"]) == 4
     assert len(after_solid["lines"]) == 12
+    brep = after_solid["brep"]
+    assert isinstance(brep, dict)
+    solid_id = str(solids[0]["entity_id"])
+    children = brep["children"]
+    assert isinstance(children, dict)
+    assert len(children[solid_id]) == 6
+    assert len(brep["solid"]) == len(after_solid["points"]) + len(after_solid["lines"]) + 6
 
 
 def test_translate_and_insert_node_via_op_api(server: ScratchpadServer) -> None:

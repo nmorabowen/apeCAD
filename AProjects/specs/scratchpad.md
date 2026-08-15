@@ -1,7 +1,7 @@
 # Spec — scratchpad client
 
 **Status:** Implemented (2026-08-14)  
-**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017
+**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018
 
 ## Goal
 
@@ -23,7 +23,7 @@ No Node, no Qt, no TypeScript build. Vanilla JS is enough for v0.
 ## Tools
 
 Line (chains until Esc), polyline (Enter to finish, click start to close), rectangle (face), circle, arc, ellipse, polygon, Bézier, box
-(face then extrude). Select (click, window, crossing; filter Point / Line / Face / Solid / Element). Move, rotate,
+(face then extrude). Select (click, window, crossing; filter Point / Line / Face / Solid / Element; hover preselects the B-rep hit). Move, rotate,
 mirror, array, polar, trim (T), extend (E), break, insert-node,
 face-from-lines, join (J), chamfer, fillet, sew, simplify, delete (Del).
 Undo / redo / clear. Save JSON.

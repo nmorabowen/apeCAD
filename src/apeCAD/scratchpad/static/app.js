@@ -56,7 +56,11 @@ let pending = null;
 let lastPointer = null;
 let selectedIds = new Set();
 let selectFilter = "element";
-let brepParent = new Map();
+let brepChildrenOf = new Map();
+let brepParentsOf = new Map();
+let brepRootOf = new Map();
+let brepSolidOf = new Map();
+let preselectKey = "";
 let hiddenIds = new Set();
 let cutterIds = new Set();
 let marqueeOrigin = null;
@@ -672,8 +676,14 @@ scene.add(contact);
 scene.add(new THREE.AxesHelper(3000));
 const draft = new THREE.Group();
 const ghosts = new THREE.Group();
+const preselects = new THREE.Group();
 scene.add(draft);
 scene.add(ghosts);
+scene.add(preselects);
+
+function isOverlayGroup(group) {
+  return group === ghosts || group === preselects;
+}
 
 function sendBehind(object, order) {
   object.renderOrder = order;
@@ -688,6 +698,7 @@ function sendBehind(object, order) {
 rebuildGrid();
 draft.renderOrder = 1;
 ghosts.renderOrder = 2;
+preselects.renderOrder = 3;
 
 function camera() {
   return useOrtho ? orthoCam : persp;
@@ -1281,8 +1292,16 @@ function isPicked(entityId) {
 function selectionTints(entityId) {
   if (entityId == null) return false;
   if (isPicked(entityId)) return true;
-  const owner = owningSolidId(entityId);
-  return owner != null && isPicked(owner);
+  const seen = new Set();
+  const stack = [...(brepParentsOf.get(entityId) || [])];
+  while (stack.length) {
+    const parentId = stack.pop();
+    if (seen.has(parentId)) continue;
+    seen.add(parentId);
+    if (isPicked(parentId)) return true;
+    stack.push(...(brepParentsOf.get(parentId) || []));
+  }
+  return false;
 }
 
 function curveFor(entityId) {
@@ -1292,7 +1311,7 @@ function curveFor(entityId) {
 }
 
 function lineOverlay(entityId) {
-  return selectFilter === "line" || isPicked(entityId);
+  return selectFilter === "line" || selectionTints(entityId);
 }
 
 function clayMat(preview, opacity, entityId = null) {
@@ -1318,7 +1337,7 @@ function addEdgeOverlay(group, mesh, entityId, preview) {
 
 function addCurve(group, pts, color = curveIdle(), entityId = null) {
   if (pts.length < 2) return;
-  if (group !== ghosts && !prefs.showCurves) return;
+  if (!isOverlayGroup(group) && !prefs.showCurves) return;
   const overlay = group !== ghosts && lineOverlay(entityId);
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(
@@ -1455,7 +1474,7 @@ function mark(object, entityId) {
 }
 
 function addVolume(group, origin, size, color, opacity, entityId = null) {
-  const preview = group === ghosts;
+  const preview = isOverlayGroup(group);
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(size[0], size[1], size[2]),
     clayMat(preview, opacity, entityId),
@@ -1468,7 +1487,7 @@ function addVolume(group, origin, size, color, opacity, entityId = null) {
 }
 
 function addCylinder(group, cx, cy, radius, originZ, height, color, opacity, entityId = null) {
-  const preview = group === ghosts;
+  const preview = isOverlayGroup(group);
   const mesh = new THREE.Mesh(
     new THREE.CylinderGeometry(radius, radius, Math.max(Math.abs(height), 1), 48),
     clayMat(preview, opacity, entityId),
@@ -1483,7 +1502,7 @@ function addCylinder(group, cx, cy, radius, originZ, height, color, opacity, ent
 
 function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entityId = null, color = null } = {}) {
   if (pts.length < 3) return;
-  const preview = group === ghosts;
+  const preview = isOverlayGroup(group);
   const z = (Number.isFinite(pts[0].z_mm) ? pts[0].z_mm : 0) + 20;
   if (fill && (preview || prefs.showFaces)) {
     const vertices = [];
@@ -1533,7 +1552,7 @@ function xyzMm(point) {
 
 function addPlanarFace(group, pts, entityId) {
   if (pts.length < 3) return;
-  const preview = group === ghosts;
+  const preview = isOverlayGroup(group);
   const world = pts.map(xyzMm);
   if (preview || prefs.showFaces) {
     const vertices = [];
@@ -1616,7 +1635,7 @@ function addVertexDot(group, point) {
     "position",
     new THREE.Float32BufferAttribute([point.x_mm, point.y_mm, point.z_mm], 3),
   );
-  const picked = isPicked(point.entity_id);
+  const picked = selectionTints(point.entity_id);
   const material = new THREE.PointsMaterial({
     color: picked ? CURVE_PICK : EDGE_COLOR,
     size: selectFilter === "point" || picked ? 11 : 8,
@@ -1634,7 +1653,7 @@ function addVertexDot(group, point) {
 function rebuild() {
   draft.clear();
   committedDims = [];
-  indexBrepParents();
+  indexBrep();
   const byId = new Map((sceneState.points || []).map((point) => [point.entity_id, point]));
   for (const line of sceneState.lines || []) {
     if (hiddenIds.has(line.entity_id)) continue;
@@ -1773,9 +1792,11 @@ function rebuild() {
     if (!prefs.showCurves || hiddenIds.has(point.entity_id)) continue;
     addVertexDot(draft, point);
   }
-  indexBrepParents();
+  indexBrep();
   refreshDocks();
   rebuildGrid();
+  if (lastPointer && tool === "select") updatePreselect(lastPointer);
+  else clearPreselect();
 }
 
 async function refreshFrom(payload) {
@@ -1785,7 +1806,7 @@ async function refreshFrom(payload) {
   } catch (error) {
     console.error(error);
     try {
-      indexBrepParents();
+      indexBrep();
       refreshDocks();
     } catch (_ignored) { /* docks need a valid catalog */ }
     setHint(`draw error: ${error.message}`);
@@ -1829,7 +1850,7 @@ function lineConnecting(a, b) {
   )) || null;
 }
 
-function brepChildren(row) {
+function brepChildrenLocal(row) {
   const byId = new Map(catalog().map((item) => [item.id, item]));
   const take = (id) => byId.get(id) || null;
   if (row.kind === "Solid") {
@@ -1871,6 +1892,13 @@ function brepChildren(row) {
   return [];
 }
 
+function brepChildren(row) {
+  if (brepChildrenOf.has(row.id)) {
+    return (brepChildrenOf.get(row.id) || []).map(findRecord).filter(Boolean);
+  }
+  return brepChildrenLocal(row);
+}
+
 function collectNested(row, nested) {
   for (const child of brepChildren(row)) {
     nested.add(child.id);
@@ -1891,35 +1919,84 @@ function brepRoots() {
     .sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) || a.id - b.id);
 }
 
-function indexBrepParents() {
-  brepParent = new Map();
+function indexBrep() {
+  brepChildrenOf = new Map();
+  brepParentsOf = new Map();
+  brepRootOf = new Map();
+  brepSolidOf = new Map();
+  const raw = sceneState.brep;
+  if (raw && raw.children && raw.root) {
+    for (const [key, kids] of Object.entries(raw.children)) {
+      brepChildrenOf.set(Number(key), (kids || []).map(Number));
+    }
+    for (const [key, pars] of Object.entries(raw.parents || {})) {
+      brepParentsOf.set(Number(key), (pars || []).map(Number));
+    }
+    for (const [key, value] of Object.entries(raw.root)) {
+      brepRootOf.set(Number(key), Number(value));
+    }
+    for (const [key, value] of Object.entries(raw.solid || {})) {
+      brepSolidOf.set(Number(key), Number(value));
+    }
+    return;
+  }
   for (const row of catalog()) {
-    for (const child of brepChildren(row)) {
-      if (child && child.id != null) brepParent.set(child.id, row.id);
+    const kids = brepChildrenLocal(row);
+    brepChildrenOf.set(row.id, kids.map((child) => child.id));
+    for (const child of kids) {
+      const pars = brepParentsOf.get(child.id) || [];
+      if (!pars.includes(row.id)) pars.push(row.id);
+      brepParentsOf.set(child.id, pars);
     }
   }
+  for (const row of catalog()) {
+    brepRootOf.set(row.id, walkRoot(row.id));
+    const owner = walkSolid(row.id);
+    if (owner != null) brepSolidOf.set(row.id, owner);
+  }
+}
+
+function walkRoot(id) {
+  const seen = new Set();
+  let current = id;
+  while (true) {
+    const pars = brepParentsOf.get(current) || [];
+    if (!pars.length) return current;
+    const solid = pars.find((pid) => {
+      const row = findRecord(pid);
+      return row && FILTER_KINDS.solid.has(row.kind);
+    });
+    const nxt = solid != null ? solid : pars[0];
+    if (seen.has(nxt)) return current;
+    seen.add(current);
+    current = nxt;
+  }
+}
+
+function walkSolid(id) {
+  const row = findRecord(id);
+  if (row && FILTER_KINDS.solid.has(row.kind)) return id;
+  const stack = [...(brepParentsOf.get(id) || [])];
+  const seen = new Set();
+  while (stack.length) {
+    const pid = stack.pop();
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    const parent = findRecord(pid);
+    if (parent && FILTER_KINDS.solid.has(parent.kind)) return pid;
+    stack.push(...(brepParentsOf.get(pid) || []));
+  }
+  return null;
 }
 
 function rootId(id) {
-  let current = id;
-  const seen = new Set();
-  while (brepParent.has(current) && !seen.has(current)) {
-    seen.add(current);
-    current = brepParent.get(current);
-  }
-  return current;
+  return brepRootOf.has(id) ? brepRootOf.get(id) : id;
 }
 
 function owningSolidId(id) {
-  let current = id;
-  const seen = new Set();
-  while (current != null && !seen.has(current)) {
-    const row = findRecord(current);
-    if (row && FILTER_KINDS.solid.has(row.kind)) return current;
-    seen.add(current);
-    current = brepParent.get(current);
-  }
-  return null;
+  const row = findRecord(id);
+  if (row && FILTER_KINDS.solid.has(row.kind)) return id;
+  return brepSolidOf.has(id) ? brepSolidOf.get(id) : null;
 }
 
 const collapsedTree = new Set();
@@ -2458,6 +2535,8 @@ function facePickPolygons() {
   }
   for (const solid of sceneState.solids || []) {
     if (hiddenIds.has(solid.entity_id)) continue;
+    const cap = findRecord(solid.cap_id);
+    if (cap && FILTER_KINDS.face.has(cap.kind)) continue;
     const profile = findRecord(solid.face_id);
     if (!profile || (profile.kind !== "Circle" && profile.kind !== "Ellipse")) continue;
     if (hiddenIds.has(profile.id)) continue;
@@ -2539,7 +2618,7 @@ function pickClosestElement(event) {
 }
 
 function pickByFilter(event, filter) {
-  indexBrepParents();
+  indexBrep();
   if (filter === "point") return pickClosestPoint(event);
   if (filter === "line") return pickClosestLine(event);
   if (filter === "face") return pickClosestFace(event);
@@ -2560,9 +2639,19 @@ function pickEntity(event) {
 }
 
 function filterSelectionIds(ids) {
-  indexBrepParents();
+  indexBrep();
   if (selectFilter === "element") {
     return [...new Set(ids.map((id) => rootId(id)))];
+  }
+  if (selectFilter === "solid") {
+    const solids = new Set();
+    for (const id of ids) {
+      const row = findRecord(id);
+      if (row && FILTER_KINDS.solid.has(row.kind)) solids.add(id);
+      const owner = owningSolidId(id);
+      if (owner != null) solids.add(owner);
+    }
+    return [...solids];
   }
   const kinds = FILTER_KINDS[selectFilter];
   return ids.filter((id) => {
@@ -2571,9 +2660,54 @@ function filterSelectionIds(ids) {
   });
 }
 
+function convertSelectionToFilter(filter) {
+  indexBrep();
+  const next = new Set();
+  if (filter === "element") {
+    for (const id of selectedIds) next.add(rootId(id));
+    return next;
+  }
+  const kinds = FILTER_KINDS[filter];
+  for (const id of selectedIds) {
+    const row = findRecord(id);
+    if (!row) continue;
+    if (kinds.has(row.kind)) {
+      next.add(id);
+      continue;
+    }
+    const stack = [...(brepChildrenOf.get(id) || [])];
+    const seen = new Set();
+    while (stack.length) {
+      const childId = stack.pop();
+      if (seen.has(childId)) continue;
+      seen.add(childId);
+      const child = findRecord(childId);
+      if (child && kinds.has(child.kind)) next.add(childId);
+      stack.push(...(brepChildrenOf.get(childId) || []));
+    }
+    if (filter === "solid") {
+      const owner = owningSolidId(id);
+      if (owner != null) next.add(owner);
+    } else {
+      const up = [...(brepParentsOf.get(id) || [])];
+      const seenUp = new Set();
+      while (up.length) {
+        const parentId = up.pop();
+        if (seenUp.has(parentId)) continue;
+        seenUp.add(parentId);
+        const parent = findRecord(parentId);
+        if (parent && kinds.has(parent.kind)) next.add(parentId);
+        up.push(...(brepParentsOf.get(parentId) || []));
+      }
+    }
+  }
+  return next;
+}
+
 function setSelectFilter(next) {
   if (!SELECT_FILTERS.includes(next)) return;
   selectFilter = next;
+  selectedIds = convertSelectionToFilter(next);
   for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
     button.classList.toggle("active", button.dataset.filter === selectFilter);
   }
@@ -2632,6 +2766,18 @@ function segmentHitsRect(a, b, rect) {
   return false;
 }
 
+function pointInPolygon2d(point, pts) {
+  let inside = false;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) {
+    const a = pts[i];
+    const b = pts[j];
+    const crosses = ((a.y > point.y) !== (b.y > point.y))
+      && (point.x < ((b.x - a.x) * (point.y - a.y)) / ((b.y - a.y) || 1e-12) + a.x);
+    if (crosses) inside = !inside;
+  }
+  return inside;
+}
+
 function shapeQualifies(pts, closed, crossing, rect) {
   if (!pts.length) return false;
   if (!crossing) return pts.every((point) => inRect(point, rect));
@@ -2639,6 +2785,15 @@ function shapeQualifies(pts, closed, crossing, rect) {
   const last = closed ? pts.length : pts.length - 1;
   for (let i = 0; i < last; i += 1) {
     if (segmentHitsRect(pts[i], pts[(i + 1) % pts.length], rect)) return true;
+  }
+  if (closed) {
+    const corners = [
+      { x: rect.left, y: rect.top },
+      { x: rect.right, y: rect.top },
+      { x: rect.right, y: rect.bottom },
+      { x: rect.left, y: rect.bottom },
+    ];
+    if (corners.some((corner) => pointInPolygon2d(corner, pts))) return true;
   }
   return false;
 }
@@ -2728,7 +2883,7 @@ function updateMarquee(event) {
   marqueeEl.style.height = `${Math.abs(y1 - y0)}px`;
 }
 
-function applyWindowSelect(origin, event) {
+function windowHits(origin, event) {
   const crossing = event.clientX < origin.x;
   const rect = {
     left: Math.min(origin.x, event.clientX),
@@ -2736,14 +2891,123 @@ function applyWindowSelect(origin, event) {
     top: Math.min(origin.y, event.clientY),
     bottom: Math.max(origin.y, event.clientY),
   };
+  return filterSelectionIds(entitiesInWindow(rect, crossing));
+}
+
+function applyWindowSelect(origin, event) {
+  const crossing = event.clientX < origin.x;
+  const hits = windowHits(origin, event);
   hideMarquee();
-  const hits = filterSelectionIds(entitiesInWindow(rect, crossing));
   if (!event.shiftKey) selectedIds.clear();
   for (const id of hits) selectedIds.add(id);
   rebuild();
   setHint(hits.length
     ? `${crossing ? "Crossing" : "Window"}: ${selectedIds.size} selected.`
     : "Nothing in the window.");
+}
+
+function descendantIds(id) {
+  const out = [];
+  const stack = [...(brepChildrenOf.get(id) || [])];
+  const seen = new Set();
+  while (stack.length) {
+    const childId = stack.pop();
+    if (seen.has(childId)) continue;
+    seen.add(childId);
+    out.push(childId);
+    stack.push(...(brepChildrenOf.get(childId) || []));
+  }
+  return out;
+}
+
+function addHoverDot(point) {
+  const p = xyzMm(point);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute([p.x_mm, p.y_mm, p.z_mm], 3));
+  const dot = new THREE.Points(geometry, new THREE.PointsMaterial({
+    color: CURVE_HOVER,
+    size: 12,
+    sizeAttenuation: false,
+    depthTest: false,
+    depthWrite: false,
+  }));
+  dot.renderOrder = 22;
+  dot.raycast = () => {};
+  preselects.add(dot);
+}
+
+function drawPreselectEntity(id, shown) {
+  if (shown.has(id)) return;
+  shown.add(id);
+  const row = findRecord(id);
+  if (!row) return;
+  const asSolid = FILTER_KINDS.solid.has(row.kind)
+    || (selectFilter === "element" && owningSolidId(id) === id);
+  if (asSolid) {
+    for (const childId of descendantIds(id)) {
+      const child = findRecord(childId);
+      if (child && FILTER_KINDS.face.has(child.kind)) drawPreselectEntity(childId, shown);
+    }
+    if (row.kind === "Solid") {
+      const profile = findRecord(row.item.face_id);
+      const height = Math.abs(row.item.distance_mm);
+      if (profile && profile.kind === "Circle") {
+        const center = pointById(profile.item.center_id);
+        if (center) {
+          const originZ = row.item.distance_mm >= 0 ? center.z_mm : center.z_mm - height;
+          addCylinder(
+            preselects, center.x_mm, center.y_mm, profile.item.radius_mm,
+            originZ, height, CURVE_HOVER, 0.28, row.id,
+          );
+        }
+      }
+    }
+    return;
+  }
+  if (row.kind === "Point") {
+    addHoverDot(row.item);
+    return;
+  }
+  if (FILTER_KINDS.line.has(row.kind)) {
+    const shape = curveWorldPoints(row);
+    if (shape) addCurve(preselects, shape.closed ? shape.pts.concat([shape.pts[0]]) : shape.pts, CURVE_HOVER, row.id);
+    return;
+  }
+  if (FILTER_KINDS.face.has(row.kind)) {
+    const pts = profileWorldPoints(row);
+    if (pts.length >= 3) addPlanarFace(preselects, pts, row.id);
+  }
+}
+
+function clearPreselect() {
+  preselectKey = "";
+  preselects.clear();
+  canvas.style.cursor = "";
+}
+
+function updatePreselect(event) {
+  if (tool !== "select" || !event) {
+    clearPreselect();
+    return;
+  }
+  indexBrep();
+  let ids = [];
+  if (marqueeOrigin && Math.hypot(event.clientX - marqueeOrigin.x, event.clientY - marqueeOrigin.y) > 5) {
+    ids = windowHits(marqueeOrigin, event);
+  } else {
+    const picked = pickByFilter(event, selectFilter);
+    if (picked != null) ids = [picked];
+  }
+  const key = `${selectFilter}:${ids.slice().sort((a, b) => a - b).join(",")}`;
+  canvas.style.cursor = ids.length ? "pointer" : "";
+  if (key === preselectKey) return;
+  preselectKey = key;
+  preselects.clear();
+  const shown = new Set();
+  for (const id of ids) {
+    if (selectedIds.has(id)) continue;
+    drawPreselectEntity(id, shown);
+  }
 }
 
 function lineIntersectMm(a1, a2, b1, b2) {
@@ -4417,6 +4681,7 @@ canvas.addEventListener("pointerdown", (event) => {
 canvas.addEventListener("pointermove", (event) => {
   lastPointer = event;
   if (marqueeOrigin) updateMarquee(event);
+  updatePreselect(event);
   updateGhost(event);
 });
 canvas.addEventListener("pointerup", (event) => {
@@ -4827,7 +5092,7 @@ async function redoDocument() {
 }
 
 function selectAll() {
-  indexBrepParents();
+  indexBrep();
   const ids = selectFilter === "element"
     ? brepRoots().map((row) => row.id)
     : catalog().filter((row) => FILTER_KINDS[selectFilter].has(row.kind)).map((row) => row.id);

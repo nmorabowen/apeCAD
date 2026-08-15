@@ -27,6 +27,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0015](0015-selection-filter.md) | Viewport selection filter | Amended by 0017 |
 | [0016](0016-extrude-wall-faces.md) | Extrude walls are selectable faces | Accepted |
 | [0017](0017-face-loop-lines.md) | Face loops write Line records | Accepted |
+| [0018](0018-brep-selection.md) | B-rep topology is the selection graph | Accepted |
 
 ## Template
 
