@@ -419,6 +419,7 @@ def test_delete_solid_keeps_profile() -> None:
     assert document.entity(face.entity_id)
     assert len(document.faces()) == 1
     assert len(document.points()) == 4
+    assert len(document.lines()) == 4
     if cap_id is not None:
         with pytest.raises(DocumentError, match="unknown entity"):
             document.entity(cap_id)

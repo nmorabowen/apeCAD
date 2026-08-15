@@ -47,7 +47,9 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     with urlopen(f"http://127.0.0.1:{port}/") as response:
         html = response.read().decode("utf-8")
     assert "apeCAD scratchpad" in html
-    assert 'id="viewcube"' in html
+    assert 'id="sel-filters"' in html
+    assert 'data-filter="point"' in html
+    assert 'data-filter="element"' in html
     assert 'id="menubar"' in html
     assert 'id="rail"' in html
     assert 'id="props"' in html
@@ -101,6 +103,13 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     assert "makeGridHelper" in app
     assert "updateClipPlanes" in app
     assert "appendHiddenSpan" in app
+    assert "pickByFilter" in app
+    assert "setSelectFilter" in app
+    assert 'selectFilter === "element"' in app
+    assert "addSolidPrism" in app
+    assert "addSolidVolumeFallback" in app
+    assert "addVertexDot" in app
+    assert "wall_ids" in app
 
 
 def test_add_point_via_op_api(server: ScratchpadServer) -> None:
@@ -169,11 +178,15 @@ def test_add_box_via_op_api_is_a_solid(server: ScratchpadServer) -> None:
     assert solids[0]["distance_mm"] == 200
     faces = payload["faces"]
     assert isinstance(faces, list)
-    assert len(faces) == 2
+    assert len(faces) == 6
+    assert len(solids[0]["wall_ids"]) == 4
     assert payload["created_id"] == solids[0]["entity_id"]
     points = payload["points"]
     assert isinstance(points, list)
     assert len(points) == 8
+    lines = payload["lines"]
+    assert isinstance(lines, list)
+    assert len(lines) == 12
 
 
 def test_face_and_extrude_via_op_api(server: ScratchpadServer) -> None:
@@ -194,6 +207,7 @@ def test_face_and_extrude_via_op_api(server: ScratchpadServer) -> None:
     faces = after_face["faces"]
     assert isinstance(faces, list)
     assert faces[0]["entity_id"] == 5
+    assert len(after_face["lines"]) == 4
     after_solid = _call(
         server,
         "/api/op",
@@ -211,7 +225,9 @@ def test_face_and_extrude_via_op_api(server: ScratchpadServer) -> None:
     assert len(points) == 8
     faces = after_solid["faces"]
     assert isinstance(faces, list)
-    assert len(faces) == 2
+    assert len(faces) == 6
+    assert len(solids[0]["wall_ids"]) == 4
+    assert len(after_solid["lines"]) == 12
 
 
 def test_translate_and_insert_node_via_op_api(server: ScratchpadServer) -> None:
