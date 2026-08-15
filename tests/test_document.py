@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from apeCAD import Document, DocumentError, Face, Line, Polyline, Solid
+from apeCAD import Document, DocumentError, Face, Line, Point, Polyline, Solid
 
 
 def _portal() -> Document:
@@ -96,11 +96,22 @@ def test_add_box_expands_to_face_and_extrude() -> None:
     cap = document.entity(solid.cap_id)
     assert isinstance(cap, Face)
     assert len(document.points()) == 8
-    assert len(document.faces()) == 2
+    assert len(document.faces()) == 6
+    assert len(solid.wall_ids) == 4
+    assert len(document.lines()) == 12
     assert len(document.ops()) == 1
     assert document.ops()[0].__class__.__name__ == "AddBox"
     loaded = Document.from_json(document.to_json())
-    assert isinstance(loaded.entity_by_label("slab_L2"), Solid)
+    restored = loaded.entity_by_label("slab_L2")
+    assert isinstance(restored, Solid)
+    assert len(restored.wall_ids) == 4
+    cap_face = loaded.entity(restored.cap_id)
+    assert isinstance(cap_face, Face)
+    assert len(loaded.lines()) == 12
+    for point_id in cap_face.point_ids:
+        lid = loaded.entity(point_id)
+        assert isinstance(lid, Point)
+        assert lid.xyz_mm.z_mm == 200.0
 
 
 def test_non_finite_coordinate_is_rejected() -> None:

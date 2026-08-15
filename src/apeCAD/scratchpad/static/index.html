@@ -169,6 +169,13 @@
       border-style: dashed; border-color: #d55e00;
       background: rgba(213, 94, 0, 0.12);
     }
+    #sel-filters {
+      position: absolute; left: 8px; bottom: 8px; z-index: 3;
+      display: flex; gap: 2px; padding: 3px;
+      background: #10141acc; border: 1px solid var(--line); border-radius: 4px;
+    }
+    #sel-filters .icon-btn { width: 28px; height: 28px; background: transparent; }
+    #sel-filters .icon-btn.active { background: #10141a; }
     #split-console { height: 5px; cursor: row-resize; touch-action: none; }
     body.console-collapsed #console-log { display: none; }
     #console {
@@ -384,6 +391,23 @@
       </div>
       <div id="dims"></div>
       <div id="marquee" hidden></div>
+      <div id="sel-filters" role="toolbar" aria-label="Selection filter">
+        <button type="button" data-filter="point" class="icon-btn" title="Points (1)">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="6" height="6"/><path d="M12 4 V8 M12 16 V20 M4 12 H8 M16 12 H20"/></svg>
+        </button>
+        <button type="button" data-filter="line" class="icon-btn" title="Lines (2)">
+          <svg viewBox="0 0 24 24"><path d="M5 18 L19 6"/><circle cx="5" cy="18" r="1.7" fill="currentColor" stroke="none"/><circle cx="19" cy="6" r="1.7" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <button type="button" data-filter="face" class="icon-btn" title="Faces (3)">
+          <svg viewBox="0 0 24 24"><path d="M5 18 L12 5 L19 18 Z" fill="currentColor" fill-opacity="0.25"/><path d="M5 18 L12 5 L19 18 Z"/></svg>
+        </button>
+        <button type="button" data-filter="solid" class="icon-btn" title="Solids (4)">
+          <svg viewBox="0 0 24 24"><path d="M4 8 L12 4 L20 8 L20 16 L12 20 L4 16 Z" fill="currentColor" fill-opacity="0.2"/><path d="M4 8 L12 4 L20 8 L20 16 L12 20 L4 16 Z"/><path d="M4 8 L12 12 L20 8 M12 12 L12 20"/></svg>
+        </button>
+        <button type="button" data-filter="element" class="icon-btn active" title="Whole element (5)">
+          <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" stroke-dasharray="2.4 2"/><path d="M7 10 L12 7 L17 10 L17 15 L12 18 L7 15 Z" fill="currentColor" fill-opacity="0.2"/><path d="M7 10 L12 7 L17 10 L17 15 L12 18 L7 15 Z"/></svg>
+        </button>
+      </div>
     </div>
   </div>
   <div id="split-console" class="split split-y" title="Resize command line"></div>
@@ -497,7 +521,8 @@
     <div class="dialog-body">
       <div>Ctrl+N new · Ctrl+O open · Ctrl+S save</div>
       <div>Ctrl+Z undo · Ctrl+Y redo · Ctrl+A select all · Del delete</div>
-      <div>Esc cancel / select · M move · T trim · E extend · J join · O perspective/parallel</div>
+      <div>Esc cancel / select · 1 point · 2 line · 3 face · 4 solid · 5 element</div>
+      <div>M move · T trim · E extend · J join · O perspective/parallel</div>
       <div>Line chains until Esc · Polyline: Enter finishes, C or click start closes</div>
       <div>F3 node snap · F7 grid snap · F8 ORTHO · F9 show grid · MMB orbit · RMB pan</div>
       <div>View menu: Perspective, Parallel, Top / Front / Right… · O toggles 3D lens</div>
@@ -505,6 +530,6 @@
       <div>F2 rename · right-click the model tree for duplicate / hide / delete</div>
     </div>
   </dialog>
-  <script type="module" src="/app.js?v=49"></script>
+  <script type="module" src="/app.js?v=53"></script>
 </body>
 </html>

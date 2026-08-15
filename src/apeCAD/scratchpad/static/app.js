@@ -5,6 +5,15 @@ import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 
 const SNAP_APERTURE_MM = 400;
+const PICK_POINT_PX = 12;
+const PICK_LINE_PX = 14;
+const SELECT_FILTERS = ["point", "line", "face", "solid", "element"];
+const FILTER_KINDS = {
+  point: new Set(["Point"]),
+  line: new Set(["Line", "Polyline", "Arc", "Bezier"]),
+  face: new Set(["Face", "Circle", "Ellipse"]),
+  solid: new Set(["Solid", "Box"]),
+};
 const GRID_DEFAULT_MINOR_MM = 100;
 const GRID_DEFAULT_MAJOR_MM = 1000;
 const GRID_EXTENT_MM = 40000;
@@ -46,6 +55,8 @@ let tool = "select";
 let pending = null;
 let lastPointer = null;
 let selectedIds = new Set();
+let selectFilter = "element";
+let brepParent = new Map();
 let hiddenIds = new Set();
 let cutterIds = new Set();
 let marqueeOrigin = null;
@@ -1135,6 +1146,12 @@ function refreshToggles() {
   if (gridSnapOn) parts.push(`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`);
   if (orthoOn) parts.push("ORTHO");
   if (gridOn) parts.push("GRID");
+  if (tool === "select") {
+    const names = {
+      point: "POINT", line: "LINE", face: "FACE", solid: "SOLID", element: "ELEMENT",
+    };
+    parts.push(names[selectFilter] || "ELEMENT");
+  }
   const typed = activeLength();
   if (typed !== null) parts.push(formatLength(typed));
   status.textContent = parts.join(" · ") || "free";
@@ -1261,15 +1278,26 @@ function isPicked(entityId) {
   return entityId != null && selectedIds.has(entityId);
 }
 
+function selectionTints(entityId) {
+  if (entityId == null) return false;
+  if (isPicked(entityId)) return true;
+  const owner = owningSolidId(entityId);
+  return owner != null && isPicked(owner);
+}
+
 function curveFor(entityId) {
-  if (isPicked(entityId)) return CURVE_PICK;
+  if (selectionTints(entityId)) return CURVE_PICK;
   if (entityId != null && cutterIds.has(entityId)) return CURVE_HOVER;
   return curveIdle();
 }
 
+function lineOverlay(entityId) {
+  return selectFilter === "line" || isPicked(entityId);
+}
+
 function clayMat(preview, opacity, entityId = null) {
   return new THREE.MeshLambertMaterial({
-    color: preview ? CURVE_PICK : (isPicked(entityId) ? CURVE_PICK : clayHex()),
+    color: preview || selectionTints(entityId) ? CURVE_PICK : clayHex(),
     transparent: preview || opacity < 0.99,
     opacity,
     side: THREE.DoubleSide,
@@ -1291,12 +1319,17 @@ function addEdgeOverlay(group, mesh, entityId, preview) {
 function addCurve(group, pts, color = curveIdle(), entityId = null) {
   if (pts.length < 2) return;
   if (group !== ghosts && !prefs.showCurves) return;
+  const overlay = group !== ghosts && lineOverlay(entityId);
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(
-      pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0)),
+      pts.map((point) => {
+        const p = xyzMm(point);
+        return new THREE.Vector3(p.x_mm, p.y_mm, p.z_mm);
+      }),
     ),
-    new THREE.LineBasicMaterial({ color }),
+    new THREE.LineBasicMaterial({ color, depthTest: !overlay }),
   );
+  line.renderOrder = overlay ? 12 : 0;
   mark(line, entityId);
   group.add(line);
 }
@@ -1487,30 +1520,139 @@ function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entityId = nu
   group.add(outline);
 }
 
+function xyzMm(point) {
+  const x = Number(point.x_mm);
+  const y = Number(point.y_mm);
+  const z = Number(point.z_mm);
+  return {
+    x_mm: Number.isFinite(x) ? x : 0,
+    y_mm: Number.isFinite(y) ? y : 0,
+    z_mm: Number.isFinite(z) ? z : 0,
+  };
+}
+
+function addPlanarFace(group, pts, entityId) {
+  if (pts.length < 3) return;
+  const preview = group === ghosts;
+  const world = pts.map(xyzMm);
+  if (preview || prefs.showFaces) {
+    const vertices = [];
+    const origin = world[0];
+    for (let i = 1; i < world.length - 1; i += 1) {
+      vertices.push(
+        origin.x_mm, origin.y_mm, origin.z_mm,
+        world[i].x_mm, world[i].y_mm, world[i].z_mm,
+        world[i + 1].x_mm, world[i + 1].y_mm, world[i + 1].z_mm,
+      );
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, clayMat(preview, preview ? 0.22 : 1, entityId));
+    mesh.renderOrder = 1;
+    mark(mesh, entityId);
+    group.add(mesh);
+  }
+  if ((preview || prefs.showEdges || prefs.showCurves) && (preview || selectFilter !== "line")) {
+    const loop = world.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm));
+    loop.push(loop[0].clone());
+    const outline = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(loop),
+      new THREE.LineBasicMaterial({
+        color: preview ? CURVE_PICK : (selectionTints(entityId) ? CURVE_PICK : EDGE_COLOR),
+      }),
+    );
+    mark(outline, entityId);
+    group.add(outline);
+  }
+}
+
+function addSolidPrism(group, solid, byId) {
+  const face = (sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
+  if (!face) return false;
+  const base = face.point_ids.map((id) => byId.get(id)).filter(Boolean);
+  const cap = (sceneState.faces || []).find((item) => item.entity_id === solid.cap_id);
+  const lid = cap
+    ? cap.point_ids.map((id) => byId.get(id)).filter(Boolean)
+    : [];
+  if (base.length < 3 || lid.length !== base.length) return false;
+  addPlanarFace(group, base, face.entity_id);
+  addPlanarFace(group, lid, cap.entity_id);
+  const walls = solid.wall_ids || [];
+  for (let i = 0; i < base.length; i += 1) {
+    const j = (i + 1) % base.length;
+    addPlanarFace(group, [base[i], base[j], lid[j], lid[i]], walls[i] ?? solid.entity_id);
+  }
+  return true;
+}
+
+function addSolidVolumeFallback(group, solid, byId) {
+  const face = (sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
+  if (!face) return;
+  const pts = face.point_ids.map((id) => byId.get(id)).filter(Boolean).map(xyzMm);
+  if (!pts.length) return;
+  const height = Math.abs(solid.distance_mm) || 1;
+  const xs = pts.map((p) => p.x_mm);
+  const ys = pts.map((p) => p.y_mm);
+  const zs = pts.map((p) => p.z_mm);
+  const originZ = solid.distance_mm >= 0 ? Math.min(...zs) : Math.min(...zs) - height;
+  addVolume(
+    group,
+    [Math.min(...xs), Math.min(...ys), originZ],
+    [
+      Math.max(Math.max(...xs) - Math.min(...xs), 1),
+      Math.max(Math.max(...ys) - Math.min(...ys), 1),
+      Math.max(height, 1),
+    ],
+    clayHex(),
+    1,
+    solid.entity_id,
+  );
+}
+
+function addVertexDot(group, point) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute([point.x_mm, point.y_mm, point.z_mm], 3),
+  );
+  const picked = isPicked(point.entity_id);
+  const material = new THREE.PointsMaterial({
+    color: picked ? CURVE_PICK : EDGE_COLOR,
+    size: selectFilter === "point" || picked ? 11 : 8,
+    sizeAttenuation: false,
+    depthTest: false,
+    depthWrite: false,
+  });
+  const dot = new THREE.Points(geometry, material);
+  dot.renderOrder = 20;
+  dot.raycast = () => {};
+  mark(dot, point.entity_id);
+  group.add(dot);
+}
+
 function rebuild() {
   draft.clear();
   committedDims = [];
+  indexBrepParents();
   const byId = new Map((sceneState.points || []).map((point) => [point.entity_id, point]));
-  for (const point of sceneState.points || []) {
-    if (!prefs.showCurves || hiddenIds.has(point.entity_id)) continue;
-    const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(80, 12, 12),
-      new THREE.MeshLambertMaterial({ color: curveFor(point.entity_id) }),
-    );
-    mesh.position.set(point.x_mm, point.y_mm, point.z_mm);
-    mark(mesh, point.entity_id);
-    draft.add(mesh);
-  }
   for (const line of sceneState.lines || []) {
     if (hiddenIds.has(line.entity_id)) continue;
     const start = byId.get(line.start_id);
     const end = byId.get(line.end_id);
     if (!start || !end) continue;
     if (prefs.showCurves) {
+      const overlay = lineOverlay(line.entity_id);
+      const a = xyzMm(start);
+      const b = xyzMm(end);
       const drawn = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(start.x_mm, start.y_mm, start.z_mm),
-        new THREE.Vector3(end.x_mm, end.y_mm, end.z_mm),
-      ]), new THREE.LineBasicMaterial({ color: curveFor(line.entity_id) }));
+        new THREE.Vector3(a.x_mm, a.y_mm, a.z_mm),
+        new THREE.Vector3(b.x_mm, b.y_mm, b.z_mm),
+      ]), new THREE.LineBasicMaterial({
+        color: curveFor(line.entity_id),
+        depthTest: !overlay,
+      }));
+      drawn.renderOrder = overlay ? 12 : 0;
       mark(drawn, line.entity_id);
       draft.add(drawn);
     }
@@ -1520,12 +1662,20 @@ function rebuild() {
     const pts = polyline.point_ids.map((id) => byId.get(id)).filter(Boolean);
     if (pts.length < 2) continue;
     if (!prefs.showCurves) continue;
-    const vectors = pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm));
+    const overlay = lineOverlay(polyline.entity_id);
+    const vectors = pts.map((point) => {
+      const p = xyzMm(point);
+      return new THREE.Vector3(p.x_mm, p.y_mm, p.z_mm);
+    });
     if (polyline.closed) vectors.push(vectors[0].clone());
     const drawn = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(vectors),
-      new THREE.LineBasicMaterial({ color: curveFor(polyline.entity_id) }),
+      new THREE.LineBasicMaterial({
+        color: curveFor(polyline.entity_id),
+        depthTest: !overlay,
+      }),
     );
+    drawn.renderOrder = overlay ? 12 : 0;
     mark(drawn, polyline.entity_id);
     draft.add(drawn);
   }
@@ -1533,6 +1683,7 @@ function rebuild() {
   for (const solid of sceneState.solids || []) {
     extruded.add(solid.face_id);
     if (solid.cap_id) extruded.add(solid.cap_id);
+    for (const wallId of solid.wall_ids || []) extruded.add(wallId);
   }
   for (const face of sceneState.faces || []) {
     if (hiddenIds.has(face.entity_id) || extruded.has(face.entity_id)) continue;
@@ -1548,8 +1699,11 @@ function rebuild() {
     const center = byId.get(circle.center_id);
     if (!center) continue;
     const loop = sampleCircle(center, circle.radius_mm);
+    const showFill = !extruded.has(circle.entity_id)
+      || selectedIds.has(circle.entity_id)
+      || selectFilter === "face";
     addFaceGraphic(draft, loop.slice(0, -1), {
-      fill: !extruded.has(circle.entity_id),
+      fill: showFill,
       opacity: 0.92,
       entityId: circle.entity_id,
     });
@@ -1567,8 +1721,11 @@ function rebuild() {
     const center = byId.get(ellipse.center_id);
     if (!center) continue;
     const loop = sampleEllipse(center, ellipse.radius_x_mm, ellipse.radius_y_mm);
+    const showFill = !extruded.has(ellipse.entity_id)
+      || selectedIds.has(ellipse.entity_id)
+      || selectFilter === "face";
     addFaceGraphic(draft, loop.slice(0, -1), {
-      fill: !extruded.has(ellipse.entity_id),
+      fill: showFill,
       opacity: 0.92,
       entityId: ellipse.entity_id,
     });
@@ -1586,7 +1743,6 @@ function rebuild() {
   for (const solid of sceneState.solids || []) {
     if (hiddenIds.has(solid.entity_id)) continue;
     const color = clayHex();
-    const face = (sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
     const circle = (sceneState.circles || []).find((item) => item.entity_id === solid.face_id);
     const ellipse = (sceneState.ellipses || []).find((item) => item.entity_id === solid.face_id);
     const height = Math.abs(solid.distance_mm);
@@ -1611,26 +1767,13 @@ function rebuild() {
       );
       continue;
     }
-    if (!face) continue;
-    const pts = face.point_ids.map((id) => byId.get(id)).filter(Boolean);
-    if (!pts.length) continue;
-    const xs = pts.map((p) => p.x_mm);
-    const ys = pts.map((p) => p.y_mm);
-    const zs = pts.map((p) => p.z_mm);
-    const originZ = solid.distance_mm >= 0 ? Math.min(...zs) : Math.min(...zs) - height;
-    addVolume(
-      draft,
-      [Math.min(...xs), Math.min(...ys), originZ],
-      [
-        Math.max(Math.max(...xs) - Math.min(...xs), 1),
-        Math.max(Math.max(...ys) - Math.min(...ys), 1),
-        Math.max(height, 1),
-      ],
-      color,
-      1,
-      solid.entity_id,
-    );
+    addSolidPrism(draft, solid, byId) || addSolidVolumeFallback(draft, solid, byId);
   }
+  for (const point of sceneState.points || []) {
+    if (!prefs.showCurves || hiddenIds.has(point.entity_id)) continue;
+    addVertexDot(draft, point);
+  }
+  indexBrepParents();
   refreshDocks();
   rebuildGrid();
 }
@@ -1641,6 +1784,10 @@ async function refreshFrom(payload) {
     rebuild();
   } catch (error) {
     console.error(error);
+    try {
+      indexBrepParents();
+      refreshDocks();
+    } catch (_ignored) { /* docks need a valid catalog */ }
     setHint(`draw error: ${error.message}`);
   }
 }
@@ -1691,6 +1838,10 @@ function brepChildren(row) {
     if (profile) kids.push(profile);
     const cap = take(row.item.cap_id);
     if (cap) kids.push(cap);
+    for (const wallId of row.item.wall_ids || []) {
+      const wall = take(wallId);
+      if (wall) kids.push(wall);
+    }
     return kids;
   }
   if (row.kind === "Face") {
@@ -1738,6 +1889,37 @@ function brepRoots() {
   return rows
     .filter((row) => !nested.has(row.id))
     .sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) || a.id - b.id);
+}
+
+function indexBrepParents() {
+  brepParent = new Map();
+  for (const row of catalog()) {
+    for (const child of brepChildren(row)) {
+      if (child && child.id != null) brepParent.set(child.id, row.id);
+    }
+  }
+}
+
+function rootId(id) {
+  let current = id;
+  const seen = new Set();
+  while (brepParent.has(current) && !seen.has(current)) {
+    seen.add(current);
+    current = brepParent.get(current);
+  }
+  return current;
+}
+
+function owningSolidId(id) {
+  let current = id;
+  const seen = new Set();
+  while (current != null && !seen.has(current)) {
+    const row = findRecord(current);
+    if (row && FILTER_KINDS.solid.has(row.kind)) return current;
+    seen.add(current);
+    current = brepParent.get(current);
+  }
+  return null;
 }
 
 const collapsedTree = new Set();
@@ -2109,7 +2291,7 @@ function propertyFields(row) {
   return fields;
 }
 
-function pickEntity(event) {
+function pickDrawnEntity(event) {
   const raycaster = new THREE.Raycaster();
   raycaster.params.Line = { threshold: 160 };
   raycaster.setFromCamera(ndcFromEvent(event), camera());
@@ -2117,11 +2299,294 @@ function pickEntity(event) {
   for (const hit of hits) {
     let object = hit.object;
     while (object) {
-      if (object.userData && object.userData.entityId != null) return object.userData.entityId;
+      if (object.userData && object.userData.entityId != null) {
+        return { id: object.userData.entityId, distance: hit.distance };
+      }
       object = object.parent;
     }
   }
   return null;
+}
+
+function projectedClient(point) {
+  const p = xyzMm(point);
+  const vector = new THREE.Vector3(p.x_mm, p.y_mm, p.z_mm).project(camera());
+  if (!Number.isFinite(vector.x) || !Number.isFinite(vector.y) || !Number.isFinite(vector.z)) {
+    return null;
+  }
+  if (vector.z < -1 || vector.z > 1) return null;
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: rect.left + (vector.x * 0.5 + 0.5) * rect.width,
+    y: rect.top + (-vector.y * 0.5 + 0.5) * rect.height,
+  };
+}
+
+function pixelDist(event, point) {
+  const projected = projectedClient(point);
+  if (!projected) return Number.POSITIVE_INFINITY;
+  return Math.hypot(projected.x - event.clientX, projected.y - event.clientY);
+}
+
+function pixelDistSegment(event, a, b) {
+  const pa = projectedClient(a);
+  const pb = projectedClient(b);
+  if (!pa || !pb) return Number.POSITIVE_INFINITY;
+  const dx = pb.x - pa.x;
+  const dy = pb.y - pa.y;
+  const len2 = dx * dx + dy * dy;
+  if (len2 < 1e-6) return Math.hypot(event.clientX - pa.x, event.clientY - pa.y);
+  let t = ((event.clientX - pa.x) * dx + (event.clientY - pa.y) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(event.clientX - (pa.x + t * dx), event.clientY - (pa.y + t * dy));
+}
+
+function pixelDistLoop(event, pts, closed) {
+  if (!pts.length) return Number.POSITIVE_INFINITY;
+  let best = Number.POSITIVE_INFINITY;
+  const last = closed ? pts.length : Math.max(pts.length - 1, 0);
+  for (let i = 0; i < last; i += 1) {
+    best = Math.min(best, pixelDistSegment(event, pts[i], pts[(i + 1) % pts.length]));
+  }
+  return best;
+}
+
+function eventRay(event) {
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(ndcFromEvent(event), camera());
+  return raycaster.ray;
+}
+
+function rayHitsPolygon(ray, pts) {
+  if (!pts || pts.length < 3) return null;
+  const a = new THREE.Vector3(pts[0].x_mm, pts[0].y_mm, pts[0].z_mm || 0);
+  const target = new THREE.Vector3();
+  let best = null;
+  for (let i = 1; i < pts.length - 1; i += 1) {
+    const b = new THREE.Vector3(pts[i].x_mm, pts[i].y_mm, pts[i].z_mm || 0);
+    const c = new THREE.Vector3(pts[i + 1].x_mm, pts[i + 1].y_mm, pts[i + 1].z_mm || 0);
+    if (ray.intersectTriangle(a, b, c, false, target)) {
+      const dist = ray.origin.distanceTo(target);
+      if (best == null || dist < best) best = dist;
+    }
+  }
+  return best;
+}
+
+function profileWorldPoints(row) {
+  if (row.kind === "Face") {
+    return (row.item.point_ids || []).map(pointById).filter(Boolean);
+  }
+  if (row.kind === "Circle") {
+    const center = pointById(row.item.center_id);
+    if (!center) return [];
+    return sampleCircle(center, row.item.radius_mm).slice(0, -1);
+  }
+  if (row.kind === "Ellipse") {
+    const center = pointById(row.item.center_id);
+    if (!center) return [];
+    return sampleEllipse(center, row.item.radius_x_mm, row.item.radius_y_mm).slice(0, -1);
+  }
+  return [];
+}
+
+function offsetPoints(pts, dx, dy, dz) {
+  return pts.map((point) => ({
+    x_mm: point.x_mm + dx,
+    y_mm: point.y_mm + dy,
+    z_mm: (point.z_mm || 0) + dz,
+  }));
+}
+
+function curveWorldPoints(row) {
+  if (row.kind === "Line") {
+    const start = pointById(row.item.start_id);
+    const end = pointById(row.item.end_id);
+    return start && end ? { pts: [start, end], closed: false } : null;
+  }
+  if (row.kind === "Polyline") {
+    const pts = (row.item.point_ids || []).map(pointById).filter(Boolean);
+    return pts.length >= 2 ? { pts, closed: Boolean(row.item.closed) } : null;
+  }
+  if (row.kind === "Bezier") {
+    const pts = (row.item.point_ids || []).map(pointById).filter(Boolean);
+    if (pts.length !== 4) return null;
+    return { pts: sampleBezier(pts), closed: false };
+  }
+  if (row.kind === "Arc") {
+    const start = pointById(row.item.start_id);
+    const mid = pointById(row.item.mid_id);
+    const end = pointById(row.item.end_id);
+    if (!start || !mid || !end) return null;
+    return { pts: sampleArc(start, mid, end), closed: false };
+  }
+  return null;
+}
+
+function pickClosestPoint(event) {
+  let best = null;
+  for (const point of sceneState.points || []) {
+    if (hiddenIds.has(point.entity_id)) continue;
+    const dist = pixelDist(event, point);
+    if (dist <= PICK_POINT_PX && (!best || dist < best.dist)) {
+      best = { id: point.entity_id, dist };
+    }
+  }
+  return best ? best.id : null;
+}
+
+function pickClosestLine(event) {
+  let best = null;
+  for (const row of catalog()) {
+    if (!FILTER_KINDS.line.has(row.kind) || hiddenIds.has(row.id)) continue;
+    const shape = curveWorldPoints(row);
+    if (!shape) continue;
+    const dist = pixelDistLoop(event, shape.pts, shape.closed);
+    if (dist <= PICK_LINE_PX && (!best || dist < best.dist)) {
+      best = { id: row.id, dist };
+    }
+  }
+  return best ? best.id : null;
+}
+
+function facePickPolygons() {
+  const polygons = [];
+  for (const row of catalog()) {
+    if (!FILTER_KINDS.face.has(row.kind) || hiddenIds.has(row.id)) continue;
+    const pts = profileWorldPoints(row);
+    if (pts.length >= 3) polygons.push({ id: row.id, pts });
+  }
+  for (const solid of sceneState.solids || []) {
+    if (hiddenIds.has(solid.entity_id)) continue;
+    const profile = findRecord(solid.face_id);
+    if (!profile || (profile.kind !== "Circle" && profile.kind !== "Ellipse")) continue;
+    if (hiddenIds.has(profile.id)) continue;
+    const pts = profileWorldPoints(profile);
+    if (pts.length < 3) continue;
+    const dir = solid.direction_xyz || [0, 0, 1];
+    const length = Math.hypot(dir[0] || 0, dir[1] || 0, dir[2] || 0) || 1;
+    const scale = solid.distance_mm / length;
+    polygons.push({
+      id: profile.id,
+      pts: offsetPoints(pts, (dir[0] || 0) * scale, (dir[1] || 0) * scale, (dir[2] || 0) * scale),
+    });
+  }
+  return polygons;
+}
+
+function pickClosestFace(event) {
+  const ray = eventRay(event);
+  let best = null;
+  for (const poly of facePickPolygons()) {
+    const rayDist = rayHitsPolygon(ray, poly.pts);
+    const edgeDist = pixelDistLoop(event, poly.pts, true);
+    let score = null;
+    if (rayDist != null) score = { ray: rayDist, px: 0 };
+    else if (edgeDist <= PICK_LINE_PX) score = { ray: Number.POSITIVE_INFINITY, px: edgeDist };
+    if (!score) continue;
+    if (
+      !best
+      || score.ray < best.ray - 1e-6
+      || (Math.abs(score.ray - best.ray) < 1e-6 && score.px < best.px)
+    ) {
+      best = { id: poly.id, ray: score.ray, px: score.px };
+    }
+  }
+  return best ? best.id : null;
+}
+
+function rayHitsSolid(ray, row) {
+  const pts = gatherPoints(row);
+  if (!pts.length) return null;
+  const box = new THREE.Box3();
+  for (const point of pts) {
+    box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0));
+  }
+  if (box.isEmpty()) return null;
+  const target = new THREE.Vector3();
+  if (!ray.intersectBox(box, target)) return null;
+  return ray.origin.distanceTo(target);
+}
+
+function pickClosestSolid(event) {
+  const drawn = pickDrawnEntity(event);
+  if (drawn) {
+    const row = findRecord(drawn.id);
+    if (row && FILTER_KINDS.solid.has(row.kind)) return drawn.id;
+    const owner = owningSolidId(drawn.id);
+    if (owner != null) return owner;
+  }
+  const ray = eventRay(event);
+  let best = null;
+  for (const row of catalog()) {
+    if (!FILTER_KINDS.solid.has(row.kind) || hiddenIds.has(row.id)) continue;
+    const dist = rayHitsSolid(ray, row);
+    if (dist != null && (!best || dist < best.dist)) best = { id: row.id, dist };
+  }
+  return best ? best.id : null;
+}
+
+function pickClosestElement(event) {
+  const line = pickClosestLine(event);
+  if (line != null) return rootId(line);
+  const point = pickClosestPoint(event);
+  if (point != null) return rootId(point);
+  const face = pickClosestFace(event);
+  if (face != null) return rootId(face);
+  const solid = pickClosestSolid(event);
+  if (solid != null) return rootId(solid);
+  return null;
+}
+
+function pickByFilter(event, filter) {
+  indexBrepParents();
+  if (filter === "point") return pickClosestPoint(event);
+  if (filter === "line") return pickClosestLine(event);
+  if (filter === "face") return pickClosestFace(event);
+  if (filter === "solid") return pickClosestSolid(event);
+  return pickClosestElement(event);
+}
+
+function pickEntity(event) {
+  if (tool === "select") return pickByFilter(event, selectFilter);
+  if (tool === "trim" || tool === "extend" || tool === "break") {
+    return pickClosestLine(event);
+  }
+  if (tool === "node") {
+    return pickClosestLine(event) || pickClosestFace(event);
+  }
+  const drawn = pickDrawnEntity(event);
+  return drawn ? drawn.id : null;
+}
+
+function filterSelectionIds(ids) {
+  indexBrepParents();
+  if (selectFilter === "element") {
+    return [...new Set(ids.map((id) => rootId(id)))];
+  }
+  const kinds = FILTER_KINDS[selectFilter];
+  return ids.filter((id) => {
+    const row = findRecord(id);
+    return row && kinds.has(row.kind);
+  });
+}
+
+function setSelectFilter(next) {
+  if (!SELECT_FILTERS.includes(next)) return;
+  selectFilter = next;
+  for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
+    button.classList.toggle("active", button.dataset.filter === selectFilter);
+  }
+  refreshToggles();
+  const labels = {
+    point: "points",
+    line: "lines",
+    face: "faces",
+    solid: "solids",
+    element: "whole elements",
+  };
+  setHint(`Select ${labels[selectFilter]} (1–5). Click, window, or crossing.`);
+  rebuild();
 }
 
 function pointById(id) {
@@ -2227,17 +2692,8 @@ function entityScreenShape(row) {
     return { pts: corners, closed: false };
   }
   if (row.kind === "Solid") {
-    const extents = profileExtents(row.item.face_id);
-    if (!extents) return null;
-    return {
-      pts: [
-        clientOf(extents.a.x_mm, extents.a.y_mm, 0),
-        clientOf(extents.b.x_mm, extents.a.y_mm, 0),
-        clientOf(extents.b.x_mm, extents.b.y_mm, 0),
-        clientOf(extents.a.x_mm, extents.b.y_mm, 0),
-      ],
-      closed: true,
-    };
+    const pts = gatherPoints(row).map((point) => clientOf(point.x_mm, point.y_mm, point.z_mm || 0));
+    return pts.length ? { pts, closed: false } : null;
   }
   return null;
 }
@@ -2281,7 +2737,7 @@ function applyWindowSelect(origin, event) {
     bottom: Math.max(origin.y, event.clientY),
   };
   hideMarquee();
-  const hits = entitiesInWindow(rect, crossing);
+  const hits = filterSelectionIds(entitiesInWindow(rect, crossing));
   if (!event.shiftKey) selectedIds.clear();
   for (const id of hits) selectedIds.add(id);
   rebuild();
@@ -3881,7 +4337,7 @@ async function commitWithEnter() {
 }
 
 const toolHints = {
-  select: "Select: click, or drag L→R window / R→L crossing. Shift adds. Delete removes.",
+  select: "Select: click, or drag L→R window / R→L crossing. Filter 1–5. Shift adds. Delete removes.",
   line: "Line: click to chain segments. Type a length, Enter to commit. Esc ends the chain.",
   polyline: "Polyline: click vertices. Enter finishes. Click start or type C to close.",
   rect: "Rect: two clicks for a rectangle on XY.",
@@ -3907,6 +4363,12 @@ const toolHints = {
 
 for (const button of document.querySelectorAll("button[data-tool]")) {
   button.addEventListener("click", () => setTool(button.dataset.tool));
+}
+for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
+  button.addEventListener("click", () => {
+    setTool("select");
+    setSelectFilter(button.dataset.filter);
+  });
 }
 
 projButton.addEventListener("click", () => {
@@ -4113,6 +4575,14 @@ window.addEventListener("keydown", (event) => {
   }
   if (isTypingField(event)) return;
   if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+    if (tool === "select") {
+      const filters = { 1: "point", 2: "line", 3: "face", 4: "solid", 5: "element" };
+      if (filters[event.key]) {
+        event.preventDefault();
+        setSelectFilter(filters[event.key]);
+        return;
+      }
+    }
     if (event.key === "t" || event.key === "T") {
       event.preventDefault();
       setTool("trim");
@@ -4357,7 +4827,11 @@ async function redoDocument() {
 }
 
 function selectAll() {
-  selectedIds = new Set(catalog().map((row) => row.id));
+  indexBrepParents();
+  const ids = selectFilter === "element"
+    ? brepRoots().map((row) => row.id)
+    : catalog().filter((row) => FILTER_KINDS[selectFilter].has(row.kind)).map((row) => row.id);
+  selectedIds = new Set(ids);
   rebuild();
   setHint(selectedIds.size ? `${selectedIds.size} selected.` : "Nothing to select.");
 }

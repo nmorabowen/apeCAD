@@ -1,13 +1,13 @@
 # Spec — modelling helpers (scratchpad + intent)
 
 **Status:** Implemented in part (2026-08-14)  
-**ADRs:** 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013
+**ADRs:** 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013, 0015, 0016, 0017
 
 ## In the document (library base)
 
 | Entity | Meaning |
 |---|---|
-| Face | Closed planar loop of point ids |
+| Face | Closed planar loop of point ids; each consecutive pair also has a `Line` (reused if it already exists) |
 | Solid | Face extruded by a signed distance; far-end vertices (and a cap face) are created |
 | Circle | Centre point + radius |
 | Arc | Three points (start, on-arc, end) |
@@ -37,7 +37,10 @@ open or closed. `AddFaceFromLines` needs ≥3 lines that form one cycle. `Chamfe
 Face/Polyline vertex. `Sew` merges coincident points. `Simplify`
 drops unshared collinear vertices. Arrays clone the selection.
 `Delete` removes the named entities, anything that still referenced
-them, and unused endpoints left behind.
+them, and unused endpoints left behind. Extrude of a Face also writes a
+wall Face per profile edge (`Solid.wall_ids`) so every side is selectable.
+A rectangular box therefore has six faces and twelve lines (shared edges
+are one record).
 
 ## In the scratchpad (now)
 
@@ -68,6 +71,11 @@ them, and unused endpoints left behind.
   Right-click: select, rename, duplicate, hide/show, fit, delete.
 - Select tool: click a primitive; click empty space to deselect; drag L→R window (inside) or R→L
   crossing (intersects); Shift adds; Esc returns to Select, then clears
+- Selection filter (viewport overlay; keys 1–5 on Select): Point, Line, Face, Solid, or
+  Element (default). Element maps the hit to the B-rep root (the whole object). Sub-object
+  modes pick that kind even when nested under a solid. Outliner clicks ignore the filter.
+  Ctrl+A respects it. `AddFace` writes Line records on the loop, so Line mode hits box
+  edges. Element prefers a nearer line over a solid behind it.
 - Modify: Trim (T), Extend (E), Break, Node, Face (from lines), Join (J),
   Chamfer, Fillet, Sew, Simplify, Delete (Del)
 - Transform: Move (M), Rotate, Mirror, Array (linear), Polar

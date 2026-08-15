@@ -688,6 +688,7 @@ class Document:
             point_ids=op.point_ids,
             label=op.label,
         )
+        self._ensure_loop_lines(op.point_ids)
         return replace(op, entity_id=entity_id)
 
     def _extrude(self, op: Extrude) -> Extrude:
@@ -698,6 +699,11 @@ class Document:
             )
         self._reject_taken_label(op.label)
         cap_id = self._extrude_cap(face, op)
+        wall_ids: tuple[EntityId, ...] = ()
+        if isinstance(face, Face) and cap_id is not None:
+            cap = self._entities.get(cap_id)
+            if isinstance(cap, Face):
+                wall_ids = self._extrude_walls(face, cap)
         entity_id = self._allocate_id(op.entity_id)
         self._register_label(entity_id, op.label)
         self._entities[entity_id] = Solid(
@@ -706,6 +712,7 @@ class Document:
             distance_mm=op.distance_mm,
             direction_xyz=op.direction_xyz,
             cap_id=cap_id,
+            wall_ids=wall_ids,
             label=op.label,
         )
         return replace(op, entity_id=entity_id)
@@ -747,6 +754,21 @@ class Document:
             tolerance_mm=0.0,
         )
         return lid_id
+
+    def _extrude_walls(self, profile: Face, cap: Face) -> tuple[EntityId, ...]:
+        base = profile.point_ids
+        lid = cap.point_ids
+        if len(base) != len(lid) or len(base) < 3:
+            return ()
+        walls: list[EntityId] = []
+        count = len(base)
+        for index in range(count):
+            nxt = (index + 1) % count
+            wall = self._add_face(
+                AddFace(point_ids=(base[index], base[nxt], lid[nxt], lid[index]))
+            )
+            walls.append(wall.entity_id)
+        return tuple(walls)
 
     def _add_circle(self, op: AddCircle) -> AddCircle:
         self._require_point(op.center_id)
@@ -1555,6 +1577,9 @@ class Document:
                     extras.append(entity.face_id)
                 if entity.cap_id is not None and entity.cap_id not in entity_ids:
                     extras.append(entity.cap_id)
+                for wall_id in entity.wall_ids:
+                    if wall_id not in entity_ids:
+                        extras.append(wall_id)
         ordered = list(dict.fromkeys([*extras, *entity_ids]))
         non_solids = [
             entity_id
@@ -1605,11 +1630,13 @@ class Document:
                     label=None,
                 )
             elif isinstance(entity, Face):
+                point_ids = tuple(mapped_point(pid) for pid in entity.point_ids)
                 self._entities[new_id] = Face(
                     entity_id=new_id,
-                    point_ids=tuple(mapped_point(pid) for pid in entity.point_ids),
+                    point_ids=point_ids,
                     label=None,
                 )
+                self._ensure_loop_lines(point_ids)
             elif isinstance(entity, Box):
                 self._entities[new_id] = Box(
                     entity_id=new_id,
@@ -1660,38 +1687,107 @@ class Document:
                         raise DocumentError(
                             "polar/linear array could not clone the solid cap"
                         )
+                wall_ids: list[EntityId] = []
+                for wall_id in entity.wall_ids:
+                    mapped_wall = entity_map.get(wall_id)
+                    if mapped_wall is None:
+                        raise DocumentError(
+                            "polar/linear array could not clone the solid wall"
+                        )
+                    wall_ids.append(mapped_wall)
                 self._entities[new_id] = Solid(
                     entity_id=new_id,
                     face_id=profile_id,
                     distance_mm=entity.distance_mm,
                     direction_xyz=entity.direction_xyz,
                     cap_id=cap_id,
+                    wall_ids=tuple(wall_ids),
                     label=None,
                 )
+
+    def _line_between(self, start_id: EntityId, end_id: EntityId) -> Line | None:
+        edge = {start_id, end_id}
+        for entity in self._entities.values():
+            if isinstance(entity, Line) and {entity.start_id, entity.end_id} == edge:
+                return entity
+        return None
+
+    def _ensure_line(self, start_id: EntityId, end_id: EntityId) -> Line:
+        existing = self._line_between(start_id, end_id)
+        if existing is not None:
+            return existing
+        op = self._add_line(AddLine(start_id=start_id, end_id=end_id))
+        entity = self._entities[op.entity_id]
+        assert isinstance(entity, Line)
+        return entity
+
+    def _ensure_loop_lines(self, point_ids: tuple[EntityId, ...]) -> None:
+        count = len(point_ids)
+        if count < 2:
+            return
+        for index, start_id in enumerate(point_ids):
+            end_id = point_ids[(index + 1) % count]
+            if start_id != end_id:
+                self._ensure_line(start_id, end_id)
+
+    def _live_face_uses_edge(
+        self,
+        start_id: EntityId,
+        end_id: EntityId,
+        doomed: set[EntityId],
+    ) -> bool:
+        edge = {start_id, end_id}
+        for entity in self._entities.values():
+            if entity.entity_id in doomed or not isinstance(entity, Face):
+                continue
+            ids = entity.point_ids
+            for index, point_id in enumerate(ids):
+                if {point_id, ids[(index + 1) % len(ids)]} == edge:
+                    return True
+        return False
+
+    def _expand_doomed(self, doomed: set[EntityId]) -> None:
+        changed = True
+        while changed:
+            changed = False
+            for entity in list(self._entities.values()):
+                if entity.entity_id not in doomed or not isinstance(entity, Solid):
+                    continue
+                if entity.cap_id is not None and entity.cap_id not in doomed:
+                    doomed.add(entity.cap_id)
+                    changed = True
+                for wall_id in entity.wall_ids:
+                    if wall_id not in doomed:
+                        doomed.add(wall_id)
+                        changed = True
+                for face_id in (entity.cap_id, *entity.wall_ids):
+                    if face_id is None:
+                        continue
+                    face = self._entities.get(face_id)
+                    if not isinstance(face, Face):
+                        continue
+                    ids = face.point_ids
+                    for index, start_id in enumerate(ids):
+                        end_id = ids[(index + 1) % len(ids)]
+                        if self._live_face_uses_edge(start_id, end_id, doomed):
+                            continue
+                        line = self._line_between(start_id, end_id)
+                        if line is not None and line.entity_id not in doomed:
+                            doomed.add(line.entity_id)
+                            changed = True
+            for entity in list(self._entities.values()):
+                if entity.entity_id in doomed:
+                    continue
+                if doomed.intersection(_referenced_ids(entity)):
+                    doomed.add(entity.entity_id)
+                    changed = True
 
     def _delete(self, op: Delete) -> Delete:
         for entity_id in op.entity_ids:
             if entity_id not in self._entities:
                 raise DocumentError(f"unknown entity id {entity_id}")
         doomed: set[EntityId] = set(op.entity_ids)
-        changed = True
-        while changed:
-            changed = False
-            for entity in self._entities.values():
-                if entity.entity_id not in doomed:
-                    continue
-                if isinstance(entity, Solid) and entity.cap_id and entity.cap_id not in doomed:
-                    doomed.add(entity.cap_id)
-                    changed = True
-        changed = True
-        while changed:
-            changed = False
-            for entity in self._entities.values():
-                if entity.entity_id in doomed:
-                    continue
-                if doomed.intersection(_referenced_ids(entity)):
-                    doomed.add(entity.entity_id)
-                    changed = True
+        self._expand_doomed(doomed)
         attached: set[EntityId] = set()
         for entity_id in doomed:
             attached.update(_referenced_ids(self._entities[entity_id]))
@@ -1796,6 +1892,7 @@ def _referenced_ids(entity: Entity) -> frozenset[EntityId]:
         refs = {entity.face_id}
         if entity.cap_id is not None:
             refs.add(entity.cap_id)
+        refs.update(entity.wall_ids)
         return frozenset(refs)
     if isinstance(entity, (Circle, Ellipse)):
         return frozenset({entity.center_id})

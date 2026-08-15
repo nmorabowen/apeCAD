@@ -79,8 +79,11 @@ def document_to_frame(document: Document) -> FrameGraph:
         for point in document.points()
     )
     points = {point.entity_id: point for point in document.points()}
+    solid_edges = _solid_edge_keys(document)
     members: list[FrameMember] = []
     for line in document.lines():
+        if frozenset((line.start_id, line.end_id)) in solid_edges:
+            continue
         members.append(
             _member_from_segment(
                 owner=line,
@@ -117,6 +120,25 @@ def _volumes_from_document(
         if volume is not None:
             volumes.append(volume)
     return volumes
+
+
+def _solid_edge_keys(document: Document) -> set[frozenset[EntityId]]:
+    keys: set[frozenset[EntityId]] = set()
+    for solid in document.solids():
+        face_ids = [solid.face_id, *solid.wall_ids]
+        if solid.cap_id is not None:
+            face_ids.append(solid.cap_id)
+        for face_id in face_ids:
+            face = document.entity(face_id)
+            if not isinstance(face, Face):
+                continue
+            ids = face.point_ids
+            count = len(ids)
+            if count < 2:
+                continue
+            for index, start_id in enumerate(ids):
+                keys.add(frozenset((start_id, ids[(index + 1) % count])))
+    return keys
 
 
 def _solid_as_volume(

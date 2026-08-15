@@ -60,6 +60,7 @@ class Solid:
     distance_mm: float
     direction_xyz: XYZ
     cap_id: EntityId | None = None
+    wall_ids: tuple[EntityId, ...] = ()
     label: str | None = None
 
 
