@@ -14,7 +14,7 @@ building in paragraphs. Downstream libraries consume that draft:
 The drawing window, when it exists, is a **client** of this package. The
 Python document is the spatial language.
 
-This repository is **private**.
+This repository is **public** (MIT).
 
 ## Status
 
