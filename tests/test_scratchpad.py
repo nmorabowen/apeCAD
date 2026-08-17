@@ -9,7 +9,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from apeCAD.document import Document
-from apeCAD.scratchpad.server import STATIC_DIR, ScratchpadServer
+from apeCAD.scratchpad.server import STATIC_DIR, ScratchpadServer, serve
 
 
 @pytest.fixture
@@ -40,6 +40,12 @@ def _call(
         loaded: object = json.loads(response.read().decode("utf-8"))
     assert isinstance(loaded, dict)
     return loaded
+
+
+def test_serve_refuses_busy_port(server: ScratchpadServer) -> None:
+    host, port = server.server_address[:2]
+    with pytest.raises(OSError, match="already in use"):
+        serve(host, port, open_browser=False)
 
 
 def test_static_index_is_served(server: ScratchpadServer) -> None:
