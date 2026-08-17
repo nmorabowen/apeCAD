@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,6 +19,14 @@ from apeCAD.scratchpad.payload import scene_payload
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    """Return True when something is already accepting TCP connections."""
+    probe_host = host if host not in ("", "0.0.0.0") else "127.0.0.1"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex((probe_host, port)) == 0
 
 
 class ScratchpadServer(ThreadingHTTPServer):
@@ -130,6 +139,11 @@ def serve(
     document: Document | None = None,
     open_browser: bool = True,
 ) -> ScratchpadServer:
+    if _port_in_use(host, port):
+        raise OSError(
+            f"port {port} already in use — another apeCAD instance may be running "
+            f"(stop it or pick --port N)"
+        )
     server = ScratchpadServer((host, port), document if document is not None else Document())
     url = f"http://{host}:{server.server_address[1]}"
     print(f"apeCAD scratchpad at {url}", flush=True)
