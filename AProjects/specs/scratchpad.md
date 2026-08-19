@@ -1,7 +1,7 @@
 # Spec — scratchpad client
 
 **Status:** Implemented (2026-08-14)  
-**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018
+**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018, 0019
 
 ## Goal
 
@@ -13,9 +13,10 @@ without prose. The browser does not own geometry, undo, or labels.
 
 ```
 python -m apeCAD
-        → stdlib HTTP on 127.0.0.1:8765
+        → stdlib HTTP on 127.0.0.1:8765 (preferred; next free port if busy)
         → Three.js canvas (CDN)
         → POST /api/op  (same JSON as Document.to_json ops)
+        → GET  /api/identity  ({name, pid, host, port, root})
 ```
 
 No Node, no Qt, no TypeScript build. Vanilla JS is enough for v0.
