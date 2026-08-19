@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import socket
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -19,6 +20,7 @@ from apeCAD.scratchpad.payload import scene_payload
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+PORT_SPAN = 16
 
 
 def _port_in_use(host: str, port: int) -> bool:
@@ -29,10 +31,36 @@ def _port_in_use(host: str, port: int) -> bool:
         return sock.connect_ex((probe_host, port)) == 0
 
 
+def _session_root() -> Path | None:
+    raw = os.environ.get("APE_HABITAT_ROOT") or os.environ.get("APECAD_SESSION_SKETCHES")
+    if not raw:
+        return None
+    return Path(raw).expanduser().resolve()
+
+
 class ScratchpadServer(ThreadingHTTPServer):
-    def __init__(self, address: tuple[str, int], document: Document) -> None:
+    allow_reuse_address = False
+
+    def __init__(
+        self,
+        address: tuple[str, int],
+        document: Document,
+        *,
+        root: Path | None = None,
+    ) -> None:
         self.document = document
+        self.root = root
         super().__init__(address, ScratchpadHandler)
+
+    def identity_payload(self) -> dict[str, object]:
+        host, port = self.server_address[:2]
+        return {
+            "name": "apeCAD",
+            "pid": os.getpid(),
+            "host": host,
+            "port": port,
+            "root": None if self.root is None else str(self.root),
+        }
 
 
 class ScratchpadHandler(BaseHTTPRequestHandler):
@@ -51,6 +79,9 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/scene":
             self._send_json(200, scene_payload(self.server.document))
+            return
+        if parsed.path == "/api/identity":
+            self._send_json(200, self.server.identity_payload())
             return
         self._send_json(404, {"error": f"unknown path {parsed.path}"})
 
@@ -132,19 +163,55 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def _bind(
+    host: str,
+    port: int,
+    document: Document,
+    *,
+    root: Path | None,
+    port_span: int,
+) -> ScratchpadServer:
+    if port == 0:
+        return ScratchpadServer((host, 0), document, root=root)
+    span = max(1, port_span)
+    last_error: OSError | None = None
+    for candidate in range(port, port + span):
+        if _port_in_use(host, candidate):
+            last_error = OSError(f"port {candidate} already in use")
+            continue
+        try:
+            return ScratchpadServer((host, candidate), document, root=root)
+        except OSError as exc:
+            last_error = exc
+    hint = (
+        f"no free port in {port}..{port + span - 1} — another apeCAD instance "
+        f"may be running (stop it or pick --port N)"
+    )
+    raise OSError(hint) from last_error
+
+
 def serve(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     *,
     document: Document | None = None,
     open_browser: bool = True,
+    port_span: int = 1,
+    root: Path | None = None,
 ) -> ScratchpadServer:
-    if _port_in_use(host, port):
-        raise OSError(
-            f"port {port} already in use — another apeCAD instance may be running "
-            f"(stop it or pick --port N)"
-        )
-    server = ScratchpadServer((host, port), document if document is not None else Document())
+    """Bind one scratchpad instance. Default port is preferred, not a machine lock.
+
+    CLI (`python -m apeCAD` with no `--port`) uses ``port_span`` so a second
+    process takes the next free port. An explicit ``--port N`` binds that port
+    or fails (``port_span=1``).
+    """
+    server = _bind(
+        host,
+        port,
+        document if document is not None else Document(),
+        root=_session_root() if root is None else root,
+        port_span=port_span,
+    )
     url = f"http://{host}:{server.server_address[1]}"
     print(f"apeCAD scratchpad at {url}", flush=True)
     if open_browser:
@@ -155,10 +222,23 @@ def serve(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="apeCAD spatial scratchpad")
     parser.add_argument("--host", default=DEFAULT_HOST)
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help=f"bind this port (default: {DEFAULT_PORT}, then next free in a span of {PORT_SPAN})",
+    )
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args(argv)
-    server = serve(args.host, args.port, open_browser=not args.no_browser)
+    if args.port is None:
+        server = serve(
+            args.host,
+            DEFAULT_PORT,
+            open_browser=not args.no_browser,
+            port_span=PORT_SPAN,
+        )
+    else:
+        server = serve(args.host, args.port, open_browser=not args.no_browser)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from pathlib import Path
 from threading import Thread
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -44,8 +45,41 @@ def _call(
 
 def test_serve_refuses_busy_port(server: ScratchpadServer) -> None:
     host, port = server.server_address[:2]
-    with pytest.raises(OSError, match="already in use"):
-        serve(host, port, open_browser=False)
+    with pytest.raises(OSError, match="already in use|no free port"):
+        serve(host, port, open_browser=False, port_span=1)
+
+
+def test_serve_binds_next_free_port(server: ScratchpadServer) -> None:
+    host, port = server.server_address[:2]
+    second = serve(host, port, open_browser=False, port_span=16)
+    thread = Thread(target=second.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert second.server_address[1] != port
+        with urlopen(f"http://127.0.0.1:{second.server_address[1]}/api/identity") as response:
+            payload: object = json.loads(response.read().decode("utf-8"))
+        assert isinstance(payload, dict)
+        assert payload["name"] == "apeCAD"
+        assert payload["port"] == second.server_address[1]
+    finally:
+        second.shutdown()
+        second.server_close()
+
+
+def test_identity_reports_session_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APE_HABITAT_ROOT", str(tmp_path))
+    bound = serve("127.0.0.1", 0, open_browser=False)
+    thread = Thread(target=bound.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://127.0.0.1:{bound.server_address[1]}/api/identity") as response:
+            payload: object = json.loads(response.read().decode("utf-8"))
+        assert isinstance(payload, dict)
+        assert payload["root"] == str(tmp_path.resolve())
+        assert payload["name"] == "apeCAD"
+    finally:
+        bound.shutdown()
+        bound.server_close()
 
 
 def test_static_index_is_served(server: ScratchpadServer) -> None:

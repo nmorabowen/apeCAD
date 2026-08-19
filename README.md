@@ -39,9 +39,10 @@ print(cad.to_json())
 python -m apeCAD
 ```
 
-Opens `http://127.0.0.1:8765`. Draw lines and boxes on the XY plane
-(z = 0). The canvas posts ops to the Python document. Save JSON from
-the toolbar when you want a file snapshot.
+Opens `http://127.0.0.1:8765` (or the next free port). Each process is
+one document instance, not a machine-wide singleton. Draw lines and
+boxes on the XY plane (z = 0). The canvas posts ops to the Python
+document. Save JSON from the toolbar when you want a file snapshot.
 
 ```bash
 python -m apeCAD --no-browser --port 8765
