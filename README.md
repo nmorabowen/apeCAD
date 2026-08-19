@@ -1,26 +1,42 @@
-# apeCAD
+<p align="center">
+  <img src="logo/og.png" alt="apeCAD — the spatial scratchpad" width="920">
+</p>
 
-Spatial scratchpad and intent document for the ape* structural toolchain.
+<p align="center">
+  <strong>A three-dimensional napkin.</strong><br>
+  Lines, boxes, and labels — so nobody has to describe a building in paragraphs.
+</p>
 
-apeCAD is a **standalone Python library**. It is not a SolidWorks clone and
-not a second Gmsh session. It exists so a human or an agent can put down a
-three-dimensional draft — lines, boxes, labels — instead of describing a
-building in paragraphs. Downstream libraries consume that draft:
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c64a1a?style=flat-square&labelColor=111111" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-f4f0e6?style=flat-square&labelColor=111111" alt="Python 3.11+">
+  <img src="https://img.shields.io/badge/status-pre--alpha-c64a1a?style=flat-square&labelColor=111111" alt="pre-alpha">
+</p>
 
-- **apeGmsh** realizes geometry and mesh.
-- **apeSteel** consumes the frame graph (nodes, members, section ids).
-- **apeGmsh.studio** shows and picks; it does not author CAD.
+<p align="center">
+  <img src="logo/icon.png" alt="apeCAD icon" width="160">
+  &nbsp;&nbsp;&nbsp;
+  <img src="logo/lockup.png" alt="apeCAD lockup" width="160">
+</p>
+<p align="center">
+  <img src="logo/wordmark.png" alt="APE CAD blueprint wordmark" width="560">
+</p>
 
-The drawing window, when it exists, is a **client** of this package. The
-Python document is the spatial language.
+---
 
-This repository is **public** (MIT).
+**apeCAD** is a standalone Python library: a spatial language that humans and agents share. You put down a draft. Downstream libraries consume it.
 
-## Status
+| This is | This is not |
+|---|---|
+| A 3D scratchpad — the explanation artifact | SolidWorks, FreeCAD, or a parametric modeller |
+| The Python **document** as source of truth | A second Gmsh session |
+| A client canvas that emits ops | Studio as CAD — Studio shows and picks |
 
-Pre-alpha (`0.0.0`). The v0 `Document`, `to_frame()`, and a localhost
-scratchpad are implemented. The product contract lives in
-[`AProjects/`](AProjects/README.md).
+apeGmsh realizes geometry and mesh. apeSteel takes the frame graph. apeGmsh.studio displays and selects. None of them author the draft.
+
+The drawing window is a **client**. The Python document is the language.
+
+## Quick start
 
 ```python
 from apeCAD import Document
@@ -33,30 +49,25 @@ cad.add_box((0, 0, 0), (6000, 4000, 200), label="slab_L2")
 print(cad.to_json())
 ```
 
+```text
+apeCAD document  →  apeGmsh   realize / mesh
+                 →  apeSteel  nodes, members, sections
+                 →  Studio    show / pick
+```
+
 ## Scratchpad
 
 ```bash
 python -m apeCAD
 ```
 
-Opens `http://127.0.0.1:8765` (or the next free port). Each process is
-one document instance, not a machine-wide singleton. Draw lines and
-boxes on the XY plane (z = 0). The canvas posts ops to the Python
-document. Save JSON from the toolbar when you want a file snapshot.
+Opens `http://127.0.0.1:8765` (or the next free port). One process, one document — not a machine-wide singleton. Sketch on the XY plane (`z = 0`). The canvas posts ops to Python. Save JSON when you want a file.
 
 ```bash
 python -m apeCAD --no-browser --port 8765
 ```
 
-## Layout
-
-```
-src/apeCAD/          public Python package
-tests/               pytest
-AProjects/           project memory, ADRs, specs, guides
-```
-
-## Install (development)
+## Install
 
 ```bash
 git clone https://github.com/nmorabowen/apeCAD.git
@@ -65,9 +76,15 @@ pip install -e ".[dev]"
 pytest
 ```
 
-Requires Python ≥ 3.11.
+Python ≥ 3.11. Pre-alpha (`0.0.0`). The contract lives in [`AProjects/`](AProjects/README.md).
 
-## Project memory
+## In this tree
 
-Read [`AProjects/README.md`](AProjects/README.md) first. Architecture
-decisions are append-only ADRs under [`AProjects/adrs/`](AProjects/adrs/README.md).
+```text
+logo/                mark, icons, wordmark
+src/apeCAD/          public Python package
+tests/
+AProjects/           ADRs, specs, memory — start here
+```
+
+Architecture decisions are append-only: [`AProjects/adrs/`](AProjects/adrs/README.md). Brand assets: [`logo/`](logo/README.md).

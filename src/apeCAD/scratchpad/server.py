@@ -77,6 +77,16 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         if parsed.path == "/app.js":
             self._send_file(STATIC_DIR / "app.js", "text/javascript; charset=utf-8")
             return
+        static_images = {
+            "/favicon.ico": ("favicon.ico", "image/x-icon"),
+            "/favicon-32.png": ("favicon-32.png", "image/png"),
+            "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+            "/icon-192.png": ("icon-192.png", "image/png"),
+        }
+        if parsed.path in static_images:
+            name, mime = static_images[parsed.path]
+            self._send_file(STATIC_DIR / name, mime)
+            return
         if parsed.path == "/api/scene":
             self._send_json(200, scene_payload(self.server.document))
             return

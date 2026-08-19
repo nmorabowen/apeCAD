@@ -91,6 +91,10 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     assert 'data-filter="point"' in html
     assert 'data-filter="element"' in html
     assert 'id="menubar"' in html
+    assert 'id="brand"' in html
+    assert 'rel="icon"' in html
+    assert (STATIC_DIR / "favicon-32.png").is_file()
+    assert (STATIC_DIR / "favicon.ico").is_file()
     assert 'id="rail"' in html
     assert 'id="props"' in html
     assert 'id="props-dock"' not in html
