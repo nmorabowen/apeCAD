@@ -1,196 +1,212 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>apeCAD — a three-dimensional napkin</title>
-  <meta name="description" content="Spatial scratchpad for ape* structural workflows. Lines, boxes, and labels — so nobody has to describe a building in paragraphs." />
-  <meta property="og:title" content="apeCAD" />
-  <meta property="og:description" content="A three-dimensional napkin. Spatial scratchpad for humans and agents." />
-  <meta property="og:image" content="assets/og.png" />
-  <meta name="theme-color" content="#000000" />
-  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
-  <link rel="icon" href="assets/favicon.ico" sizes="48x48" />
-  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
-  <style>
-    :root {
-      --void: #000;
-      --paper: #f4f0e6;
-      --vest: #c64a1a;
-      --muted: #8a8478;
-    }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      background: var(--void);
-      color: var(--paper);
-      font: 16px/1.5 ui-sans-serif, system-ui, sans-serif;
-    }
-    body {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 18px 28px;
-      border-bottom: 1px solid #1c1c1c;
-    }
-    header img.mark { width: 28px; height: 28px; display: block; }
-    header .name {
-      font: 13px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-    }
-    header a.gh {
-      margin-left: auto;
-      color: var(--muted);
-      text-decoration: none;
-      font: 12px/1 ui-monospace, Consolas, monospace;
-      letter-spacing: 0.06em;
-    }
-    header a.gh:hover { color: var(--paper); }
-    .hero {
-      flex: 1;
-      display: grid;
-      place-items: center;
-      padding: 32px 20px 48px;
-    }
-    .hero img.og {
-      width: min(920px, 100%);
-      height: auto;
-      display: block;
-    }
-    .copy {
-      max-width: 640px;
-      margin: 28px auto 0;
-      text-align: center;
-    }
-    .copy h1 {
-      margin: 0 0 8px;
-      font-size: clamp(1.4rem, 3vw, 1.85rem);
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-    .copy p {
-      margin: 0;
-      color: var(--muted);
-    }
-    .copy p em { color: var(--paper); font-style: normal; }
-    .actions {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 10px;
-      margin-top: 22px;
-    }
-    .actions a {
-      display: inline-block;
-      padding: 8px 14px;
-      border: 1px solid #3a3a3a;
-      color: var(--paper);
-      text-decoration: none;
-      font: 12px/1 ui-monospace, Consolas, monospace;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-    .actions a.primary {
-      border-color: var(--vest);
-      color: var(--paper);
-      background: #140804;
-    }
-    .actions a:hover { border-color: var(--paper); }
-    .ticks {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 1px;
-      max-width: 720px;
-      margin: 40px auto 0;
-      border: 1px solid #2a2a2a;
-    }
-    .ticks div {
-      padding: 14px 16px;
-      font: 12px/1.45 ui-monospace, Consolas, monospace;
-      color: var(--muted);
-    }
-    .ticks strong {
-      display: block;
-      color: var(--paper);
-      font-weight: 600;
-      margin-bottom: 4px;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      font-size: 11px;
-    }
-    .code {
-      max-width: 720px;
-      margin: 28px auto 0;
-      padding: 16px 18px;
-      border: 1px solid #2a2a2a;
-      overflow: auto;
-      text-align: left;
-    }
-    .code pre {
-      margin: 0;
-      font: 12px/1.55 ui-monospace, Consolas, monospace;
-      color: var(--paper);
-    }
-    .code .c { color: var(--muted); }
-    .code .k { color: var(--vest); }
-    footer {
-      padding: 18px 28px 28px;
-      color: var(--muted);
-      font: 11px/1.4 ui-monospace, Consolas, monospace;
-      letter-spacing: 0.04em;
-    }
-    footer a { color: var(--muted); }
-    footer a:hover { color: var(--paper); }
-    @media (max-width: 640px) {
-      .ticks { grid-template-columns: 1fr; }
-      header { padding: 14px 16px; }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <img class="mark" src="assets/icon.png" alt="" />
-    <span class="name">apeCAD</span>
-    <a class="gh" href="https://github.com/nmorabowen/apeCAD">github</a>
-  </header>
-  <main class="hero">
-    <div>
-      <img class="og" src="assets/og.png" alt="apeCAD — ape at the CAD desk, lit from the hidden screen" />
-      <div class="copy">
-        <h1>A three-dimensional napkin.</h1>
-        <p>Lines, boxes, and labels — so nobody has to describe a building in paragraphs. The Python <em>document</em> is the language. The window is a client.</p>
-        <div class="actions">
-          <a class="primary" href="https://github.com/nmorabowen/apeCAD">Repository</a>
-          <a href="https://github.com/nmorabowen/apeCAD#quick-start">Quick start</a>
-          <a href="https://github.com/nmorabowen/apeCAD/tree/main/AProjects">AProjects</a>
-        </div>
-      </div>
-      <div class="ticks">
-        <div><strong>Is</strong>Spatial scratchpad for humans and agents. apeGmsh, apeSteel, and Studio consume the draft.</div>
-        <div><strong>Is not</strong>SolidWorks, a second Gmsh, or Studio as CAD. Studio shows and picks.</div>
-        <div><strong>Status</strong>Pre-alpha 0.0.0 · Python 3.11+ · MIT</div>
-      </div>
-      <div class="code">
-        <pre><span class="k">from</span> apeCAD <span class="k">import</span> Document
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>apeCAD</title>
+    <meta
+      name="description"
+      content="apeCAD is a spatial scratchpad: a three-dimensional napkin. Humans and agents put down lines, boxes, and labels instead of describing a building in paragraphs."
+    />
+    <meta property="og:title" content="apeCAD" />
+    <meta
+      property="og:description"
+      content="A three-dimensional napkin. Not SolidWorks. Not a second Gmsh."
+    />
+    <meta property="og:url" content="https://nmorabowen.github.io/apeCAD/" />
+    <meta property="og:image" content="https://nmorabowen.github.io/apeCAD/brand/og.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#0b0a09" />
+    <link rel="icon" href="brand/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="brand/icon-32.png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="brand/apple-touch.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Allerta+Stencil&family=Cinzel:wght@700;900&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#manifesto">Skip to content</a>
 
-cad = Document()
-a = cad.add_point(<span class="c">0, 0, 0,</span> label=<span class="c">"A"</span>)
-b = cad.add_point(<span class="c">6000, 0, 0,</span> label=<span class="c">"B"</span>)
-cad.add_line(a.entity_id, b.entity_id, label=<span class="c">"beam_B1"</span>)
-print(cad.to_json())</pre>
+    <header class="hero">
+      <div class="hero-frame">
+        <p class="sheet-id">APE-CAD · SHEET 01 · PRE-ALPHA</p>
+        <div class="hero-grid">
+          <figure class="hero-bust">
+            <img
+              src="brand/mark-dark.png"
+              alt="Chimpanzee in a hard hat, lit from a hidden CAD screen"
+            />
+          </figure>
+          <div class="hero-type">
+            <p class="eyebrow">APE Ingeniería · spatial scratchpad</p>
+            <h1>
+              <span class="ape">APE</span>
+              <span class="rule" aria-hidden="true"></span>
+              <span class="cad">cad</span>
+            </h1>
+            <p class="lede">
+              A three-dimensional napkin. Lines, boxes, and labels — so nobody
+              has to describe a building in paragraphs.
+            </p>
+            <p class="hero-actions">
+              <a class="btn" href="https://github.com/nmorabowen/apeCAD">Repository</a>
+              <a class="btn ghost" href="#run">Scratchpad</a>
+            </p>
+          </div>
+        </div>
+        <p class="scroll-cue">Document · scroll down</p>
       </div>
-    </div>
-  </main>
-  <footer>
-    <a href="https://github.com/nmorabowen/apeCAD/blob/main/LICENSE">MIT</a>
-    · mark in <a href="https://github.com/nmorabowen/apeCAD/tree/main/logo">logo/</a>
-    · <a href="https://nmorabowen.github.io/apeGmsh/">apeGmsh</a>
-  </footer>
-</body>
+    </header>
+
+    <main>
+      <section id="manifesto" class="sheet">
+        <header class="sheet-head">
+          <span>00</span>
+          <h2>The draft is the explanation</h2>
+        </header>
+        <p class="manifesto">
+          apeCAD is a standalone Python library: a spatial language that humans
+          and agents share. You put down a labeled 3D draft. Downstream
+          libraries consume it. The drawing window is a client. The Python
+          document is the language.
+        </p>
+      </section>
+
+      <section class="triptych">
+        <article>
+          <img src="brand/mark-dark.png" alt="" />
+          <h3>Put down a draft</h3>
+          <p>Points, lines, boxes, labels. Not a paragraph about a building.</p>
+        </article>
+        <article>
+          <img src="brand/lockup-dark.png" alt="" />
+          <h3>The window is a client</h3>
+          <p>The scratchpad emits ops. It does not own geometry, undo, or names.</p>
+        </article>
+        <article>
+          <img src="brand/wordmark.png" alt="" />
+          <h3>Others realize it</h3>
+          <p>apeGmsh meshes. apeSteel takes the frame. Studio shows and picks.</p>
+        </article>
+      </section>
+
+      <section class="sheet split">
+        <header class="sheet-head">
+          <span>01</span>
+          <h2>Is / is not</h2>
+        </header>
+        <div class="spec">
+          <div>
+            <h3>Is</h3>
+            <ul>
+              <li>A 3D scratchpad — the explanation artifact</li>
+              <li>The Python <em>document</em> as source of truth</li>
+              <li>A localhost canvas that emits ops</li>
+              <li>A service to apeGmsh, apeSteel, Studio</li>
+              <li>Simple, versatile, and small</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Is not</h3>
+            <ul>
+              <li>SolidWorks, FreeCAD, or a parametric modeller</li>
+              <li>A second Gmsh session</li>
+              <li>Studio as CAD — Studio shows and picks</li>
+              <li>A solid kernel (no OCCT in v0)</li>
+              <li>A replacement for the apeGmsh geometry session</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="sheet">
+        <header class="sheet-head">
+          <span>02</span>
+          <h2>The language</h2>
+        </header>
+        <ol class="steps">
+          <li>
+            <strong>Document</strong>
+            In-memory Python object that <em>is</em> the draft. Labels are the
+            handles agents and Studio use.
+          </li>
+          <li>
+            <strong>Ops</strong>
+            Typed commands mutate the document. The scratchpad posts the same
+            JSON the API speaks.
+          </li>
+          <li>
+            <strong>Realize</strong>
+            If the draft is clean enough, apeGmsh makes geometry and mesh.
+            apeSteel consumes nodes, members, section ids. That is a bonus —
+            not the definition of success.
+          </li>
+        </ol>
+      </section>
+
+      <section id="run" class="sheet run">
+        <header class="sheet-head">
+          <span>03</span>
+          <h2>Door</h2>
+        </header>
+        <p>
+          One process, one document. Sketch on the XY plane
+          (<code>z = 0</code>). The canvas posts ops to Python.
+        </p>
+        <pre><code>git clone https://github.com/nmorabowen/apeCAD.git
+cd apeCAD
+pip install -e ".[dev]"
+python -m apeCAD</code></pre>
+        <p class="fine">
+          Opens <code>http://127.0.0.1:8765</code> (or the next free port).
+          <code>python -m apeCAD --no-browser --port 8765</code> if you already
+          have a tab.
+        </p>
+      </section>
+
+      <section class="sheet">
+        <header class="sheet-head">
+          <span>04</span>
+          <h2>Brain</h2>
+        </header>
+        <p>
+          Product and architecture live in
+          <a href="https://github.com/nmorabowen/apeCAD/tree/main/AProjects">AProjects/</a>
+          — ADRs, memory, specs. Locked: spatial scratchpad, Python document,
+          web client, kernel-free v0.
+        </p>
+        <p class="fine">
+          Status: pre-alpha <code>0.0.0</code>. MIT. Python ≥ 3.11. Brand in
+          <a href="https://github.com/nmorabowen/apeCAD/tree/main/logo">logo/</a>.
+        </p>
+      </section>
+    </main>
+
+    <footer class="titleblock">
+      <div>
+        <span class="k">Drawn</span>
+        <span>APE Ingeniería</span>
+      </div>
+      <div>
+        <span class="k">Title</span>
+        <span>apeCAD — spatial scratchpad</span>
+      </div>
+      <div>
+        <span class="k">Sheet</span>
+        <span>01 / 01</span>
+      </div>
+      <div>
+        <span class="k">Rev</span>
+        <span>0.0.0 · 2026</span>
+      </div>
+      <div class="titleblock-mark">
+        <img src="brand/wordmark.png" alt="APE CAD" />
+      </div>
+    </footer>
+  </body>
 </html>

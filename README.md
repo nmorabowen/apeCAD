@@ -8,10 +8,11 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c64a1a?style=flat-square&labelColor=111111" alt="MIT"></a>
-  <img src="https://img.shields.io/badge/python-3.11%2B-f4f0e6?style=flat-square&labelColor=111111" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/status-pre--alpha-c64a1a?style=flat-square&labelColor=111111" alt="pre-alpha">
-  <a href="https://nmorabowen.github.io/apeCAD/"><img src="https://img.shields.io/badge/site-pages-c64a1a?style=flat-square&labelColor=111111" alt="GitHub Pages"></a>
+  <a href="https://nmorabowen.github.io/apeCAD/">Site</a>
+  ·
+  <a href="AProjects/">AProjects</a>
+  ·
+  MIT · pre-alpha · Python 3.11+
 </p>
 
 <p align="center">
