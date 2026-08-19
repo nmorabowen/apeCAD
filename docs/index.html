@@ -158,14 +158,13 @@
           One process, one document. Sketch on the XY plane
           (<code>z = 0</code>). The canvas posts ops to Python.
         </p>
-        <pre><code>git clone https://github.com/nmorabowen/apeCAD.git
-cd apeCAD
-pip install -e ".[dev]"
+        <pre><code>pip install apeCAD
 python -m apeCAD</code></pre>
         <p class="fine">
           Opens <code>http://127.0.0.1:8765</code> (or the next free port).
           <code>python -m apeCAD --no-browser --port 8765</code> if you already
-          have a tab.
+          have a tab. Clone and <code>pip install -e ".[dev]"</code> only when
+          you are working on this tree.
         </p>
       </section>
 

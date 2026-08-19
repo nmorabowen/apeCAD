@@ -60,6 +60,7 @@ apeCAD document  →  apeGmsh   realize / mesh
 ## Scratchpad
 
 ```bash
+pip install apeCAD
 python -m apeCAD
 ```
 
@@ -72,13 +73,19 @@ python -m apeCAD --no-browser --port 8765
 ## Install
 
 ```bash
+pip install apeCAD
+```
+
+Python ≥ 3.11. Pre-alpha. To work on this tree:
+
+```bash
 git clone https://github.com/nmorabowen/apeCAD.git
 cd apeCAD
 pip install -e ".[dev]"
 pytest
 ```
 
-Python ≥ 3.11. Pre-alpha (`0.0.0`). The contract lives in [`AProjects/`](AProjects/README.md).
+The contract lives in [`AProjects/`](AProjects/README.md).
 
 ## In this tree
 
