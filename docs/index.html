@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>apeCAD — a three-dimensional napkin</title>
+  <meta name="description" content="Spatial scratchpad for ape* structural workflows. Lines, boxes, and labels — so nobody has to describe a building in paragraphs." />
+  <meta property="og:title" content="apeCAD" />
+  <meta property="og:description" content="A three-dimensional napkin. Spatial scratchpad for humans and agents." />
+  <meta property="og:image" content="assets/og.png" />
+  <meta name="theme-color" content="#000000" />
+  <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32" />
+  <link rel="icon" href="assets/favicon.ico" sizes="48x48" />
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+  <style>
+    :root {
+      --void: #000;
+      --paper: #f4f0e6;
+      --vest: #c64a1a;
+      --muted: #8a8478;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      background: var(--void);
+      color: var(--paper);
+      font: 16px/1.5 ui-sans-serif, system-ui, sans-serif;
+    }
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 18px 28px;
+      border-bottom: 1px solid #1c1c1c;
+    }
+    header img.mark { width: 28px; height: 28px; display: block; }
+    header .name {
+      font: 13px/1 ui-monospace, "Cascadia Mono", Consolas, monospace;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    header a.gh {
+      margin-left: auto;
+      color: var(--muted);
+      text-decoration: none;
+      font: 12px/1 ui-monospace, Consolas, monospace;
+      letter-spacing: 0.06em;
+    }
+    header a.gh:hover { color: var(--paper); }
+    .hero {
+      flex: 1;
+      display: grid;
+      place-items: center;
+      padding: 32px 20px 48px;
+    }
+    .hero img.og {
+      width: min(920px, 100%);
+      height: auto;
+      display: block;
+    }
+    .copy {
+      max-width: 640px;
+      margin: 28px auto 0;
+      text-align: center;
+    }
+    .copy h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.4rem, 3vw, 1.85rem);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .copy p {
+      margin: 0;
+      color: var(--muted);
+    }
+    .copy p em { color: var(--paper); font-style: normal; }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 22px;
+    }
+    .actions a {
+      display: inline-block;
+      padding: 8px 14px;
+      border: 1px solid #3a3a3a;
+      color: var(--paper);
+      text-decoration: none;
+      font: 12px/1 ui-monospace, Consolas, monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .actions a.primary {
+      border-color: var(--vest);
+      color: var(--paper);
+      background: #140804;
+    }
+    .actions a:hover { border-color: var(--paper); }
+    .ticks {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1px;
+      max-width: 720px;
+      margin: 40px auto 0;
+      border: 1px solid #2a2a2a;
+    }
+    .ticks div {
+      padding: 14px 16px;
+      font: 12px/1.45 ui-monospace, Consolas, monospace;
+      color: var(--muted);
+    }
+    .ticks strong {
+      display: block;
+      color: var(--paper);
+      font-weight: 600;
+      margin-bottom: 4px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 11px;
+    }
+    .code {
+      max-width: 720px;
+      margin: 28px auto 0;
+      padding: 16px 18px;
+      border: 1px solid #2a2a2a;
+      overflow: auto;
+      text-align: left;
+    }
+    .code pre {
+      margin: 0;
+      font: 12px/1.55 ui-monospace, Consolas, monospace;
+      color: var(--paper);
+    }
+    .code .c { color: var(--muted); }
+    .code .k { color: var(--vest); }
+    footer {
+      padding: 18px 28px 28px;
+      color: var(--muted);
+      font: 11px/1.4 ui-monospace, Consolas, monospace;
+      letter-spacing: 0.04em;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--paper); }
+    @media (max-width: 640px) {
+      .ticks { grid-template-columns: 1fr; }
+      header { padding: 14px 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img class="mark" src="assets/icon.png" alt="" />
+    <span class="name">apeCAD</span>
+    <a class="gh" href="https://github.com/nmorabowen/apeCAD">github</a>
+  </header>
+  <main class="hero">
+    <div>
+      <img class="og" src="assets/og.png" alt="apeCAD — ape at the CAD desk, lit from the hidden screen" />
+      <div class="copy">
+        <h1>A three-dimensional napkin.</h1>
+        <p>Lines, boxes, and labels — so nobody has to describe a building in paragraphs. The Python <em>document</em> is the language. The window is a client.</p>
+        <div class="actions">
+          <a class="primary" href="https://github.com/nmorabowen/apeCAD">Repository</a>
+          <a href="https://github.com/nmorabowen/apeCAD#quick-start">Quick start</a>
+          <a href="https://github.com/nmorabowen/apeCAD/tree/main/AProjects">AProjects</a>
+        </div>
+      </div>
+      <div class="ticks">
+        <div><strong>Is</strong>Spatial scratchpad for humans and agents. apeGmsh, apeSteel, and Studio consume the draft.</div>
+        <div><strong>Is not</strong>SolidWorks, a second Gmsh, or Studio as CAD. Studio shows and picks.</div>
+        <div><strong>Status</strong>Pre-alpha 0.0.0 · Python 3.11+ · MIT</div>
+      </div>
+      <div class="code">
+        <pre><span class="k">from</span> apeCAD <span class="k">import</span> Document
+
+cad = Document()
+a = cad.add_point(<span class="c">0, 0, 0,</span> label=<span class="c">"A"</span>)
+b = cad.add_point(<span class="c">6000, 0, 0,</span> label=<span class="c">"B"</span>)
+cad.add_line(a.entity_id, b.entity_id, label=<span class="c">"beam_B1"</span>)
+print(cad.to_json())</pre>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <a href="https://github.com/nmorabowen/apeCAD/blob/main/LICENSE">MIT</a>
+    · mark in <a href="https://github.com/nmorabowen/apeCAD/tree/main/logo">logo/</a>
+    · <a href="https://nmorabowen.github.io/apeGmsh/">apeGmsh</a>
+  </footer>
+</body>
+</html>

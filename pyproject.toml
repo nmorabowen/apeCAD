@@ -35,7 +35,8 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/nmorabowen/apeCAD"
+"Homepage" = "https://nmorabowen.github.io/apeCAD/"
+"Repository" = "https://github.com/nmorabowen/apeCAD"
 "Bug Tracker" = "https://github.com/nmorabowen/apeCAD/issues"
 
 [tool.setuptools]

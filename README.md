@@ -11,6 +11,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-c64a1a?style=flat-square&labelColor=111111" alt="MIT"></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-f4f0e6?style=flat-square&labelColor=111111" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/status-pre--alpha-c64a1a?style=flat-square&labelColor=111111" alt="pre-alpha">
+  <a href="https://nmorabowen.github.io/apeCAD/"><img src="https://img.shields.io/badge/site-pages-c64a1a?style=flat-square&labelColor=111111" alt="GitHub Pages"></a>
 </p>
 
 <p align="center">
@@ -82,6 +83,7 @@ Python ≥ 3.11. Pre-alpha (`0.0.0`). The contract lives in [`AProjects/`](AProj
 
 ```text
 logo/                mark, icons, wordmark
+docs/                GitHub Pages — https://nmorabowen.github.io/apeCAD/
 src/apeCAD/          public Python package
 tests/
 AProjects/           ADRs, specs, memory — start here
