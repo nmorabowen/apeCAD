@@ -29,6 +29,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0017](0017-face-loop-lines.md) | Face loops write Line records | Accepted |
 | [0018](0018-brep-selection.md) | B-rep topology is the selection graph | Accepted |
 | [0019](0019-instance-scratchpad-host.md) | Scratchpad host is per-instance, not machine-global | Accepted |
+| [0020](0020-agent-surface.md) | AGENTS.md is the agent entry point | Proposed |
 
 ## Template
 
