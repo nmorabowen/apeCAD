@@ -239,16 +239,24 @@ def main(argv: list[str] | None = None) -> None:
         help=f"bind this port (default: {DEFAULT_PORT}, then next free in a span of {PORT_SPAN})",
     )
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument(
+        "--root",
+        default=None,
+        help="work-folder root that /api/identity reports "
+        "(default: $APE_HABITAT_ROOT, else $APECAD_SESSION_SKETCHES)",
+    )
     args = parser.parse_args(argv)
+    root = Path(args.root).expanduser().resolve() if args.root else None
     if args.port is None:
         server = serve(
             args.host,
             DEFAULT_PORT,
             open_browser=not args.no_browser,
             port_span=PORT_SPAN,
+            root=root,
         )
     else:
-        server = serve(args.host, args.port, open_browser=not args.no_browser)
+        server = serve(args.host, args.port, open_browser=not args.no_browser, root=root)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

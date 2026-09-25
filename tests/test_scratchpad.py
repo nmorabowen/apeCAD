@@ -10,7 +10,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from apeCAD.document import Document
-from apeCAD.scratchpad.server import STATIC_DIR, ScratchpadServer, serve
+from apeCAD.scratchpad.server import STATIC_DIR, ScratchpadServer, main, serve
 
 
 @pytest.fixture
@@ -80,6 +80,37 @@ def test_identity_reports_session_root(tmp_path: Path, monkeypatch: pytest.Monke
     finally:
         bound.shutdown()
         bound.server_close()
+
+
+def _main_identity(argv: list[str], monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+    """Run the CLI entry on `argv`; return `/api/identity` of the bound server."""
+    seen: list[dict[str, object]] = []
+
+    def serve_once(self: ScratchpadServer, poll_interval: float = 0.5) -> None:
+        seen.append(self.identity_payload())
+
+    monkeypatch.setattr(ScratchpadServer, "serve_forever", serve_once)
+    main(argv)
+    assert len(seen) == 1
+    return seen[0]
+
+
+def test_main_accepts_workbench_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # apeWorkbench `CadAdapter.argv(root, host=..., port=0, open_browser=False)`
+    # builds exactly this, and sets these two env vars (services/tools.py).
+    monkeypatch.setenv("APE_HABITAT_ROOT", str(tmp_path))
+    monkeypatch.setenv("APECAD_SESSION_SKETCHES", str(tmp_path / "tools" / "apeCAD" / "files"))
+    argv = ["--host", "127.0.0.1", "--port", "0", "--no-browser", "--root", str(tmp_path)]
+    identity = _main_identity(argv, monkeypatch)
+    assert identity["root"] == str(tmp_path.resolve())
+
+
+def test_root_flag_beats_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("APE_HABITAT_ROOT", str(tmp_path / "habitat"))
+    monkeypatch.setenv("APECAD_SESSION_SKETCHES", str(tmp_path / "files"))
+    argv = ["--port", "0", "--no-browser", "--root", str(tmp_path / "work")]
+    identity = _main_identity(argv, monkeypatch)
+    assert identity["root"] == str((tmp_path / "work").resolve())
 
 
 def test_static_index_is_served(server: ScratchpadServer) -> None:
