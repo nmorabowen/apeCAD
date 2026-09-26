@@ -103,8 +103,8 @@ written down nowhere (all verified 2026-09-25, see Results):
 ## Live incidents — merge order
 
 There is no lint, so no instances were found by a lint. One contract break
-turned up while mapping the cross-repo contracts. It is **not fixed and not
-waived**, and it does not block this change:
+turned up while mapping the cross-repo contracts. Both items below are
+**resolved** (2026-09-26); the text is kept as the record:
 
 1. **apeWorkbench passes `--root` to an apeCAD CLI that rejects it.**
    apeWorkbench `origin/main` @ `4a7a068`: in `src/apeWorkbench/services/tools.py`,
@@ -121,15 +121,16 @@ waived**, and it does not block this change:
    accepts `--root` (ADR 0019 reads the root from `APE_HABITAT_ROOT` today), or
    apeWorkbench drops it (it already sets `APE_HABITAT_ROOT`). This is the
    owner's call, after adversarial review.
+   **Resolved:** apeCAD accepts `--root` (PR #10, ADR 0021).
 2. **pyright strict is red on `main`** (the 4 errors above). This is gate
    drift, not a behaviour bug. It has to be fixed before CI can require
-   pyright.
+   pyright. **Resolved:** PR #11 typed the unwrap; pyright strict reports 0
+   errors on `main`.
 
 ## Open questions
 
-- Should apeCAD get CI (pytest + ruff check + pyright) once the `server.py`
-  typing is fixed?
-- Which repo fixes the `--root` mismatch?
+- Should apeCAD get CI (pytest + ruff check + pyright) now that the
+  `server.py` typing is fixed (PR #11)?
 - Should the `?v=N` bump stay manual? The server has sent
   `Cache-Control: no-store` for `app.js` since `037eb8d`.
 - Until this `.gitignore` lands, a worktree under `.claude/worktrees/` shows

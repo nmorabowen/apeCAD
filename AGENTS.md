@@ -35,11 +35,10 @@ Traps (each verified 2026-09-25):
    `PYTHONPATH=src python -m pytest -q` (or use a venv). Do not
    `pip install -e` a worktree into a shared interpreter: that interpreter's
    `apeCAD` then points at a directory that gets deleted.
-2. **pyright is already red on `main`:** 4 errors in
-   `src/apeCAD/scratchpad/server.py`, the `/api/load` wrapper unwrap
-   (lines ~120–125). They arrived with PR #4 (`dd130c8`); `4866599` was clean.
-   Compare the error count before and after your change and do not add to it.
-   Fixing them is a separate change.
+2. **pyright strict is clean on `main` (0 errors) — keep it that way.** It
+   was red from PR #4 (`dd130c8`) until PR #11 typed the `/api/load` wrapper
+   unwrap in `src/apeCAD/scratchpad/server.py`, and nothing noticed because
+   there is no CI. Run `pyright` before every PR; a new error is a finding.
 3. **`ruff format` is not a gate.** `ruff format --check src tests` wants to
    reformat 5 existing files. Do not run `ruff format` over the tree; it buries
    your diff.
@@ -93,13 +92,14 @@ These break a sibling repo if you change them:
 
 | Surface | Consumer (where) |
 |---|---|
-| `apeCAD.scratchpad.server.main(argv)`: flags `--host`, `--port`, `--no-browser`; instance root from env `APE_HABITAT_ROOT`, else `APECAD_SESSION_SKETCHES` | apeWorkbench `src/apeWorkbench/services/tools.py` (`CadAdapter`); apeGmsh `src/apeGmsh/studio/template/tools/apeCAD/open_interface.py` |
+| `apeCAD.scratchpad.server.main(argv)`: flags `--host`, `--port`, `--no-browser`, `--root` (ADR 0021); instance root from `--root`, else env `APE_HABITAT_ROOT`, else `APECAD_SESSION_SKETCHES` | apeWorkbench `src/apeWorkbench/services/tools.py` (`CadAdapter`); apeGmsh `src/apeGmsh/studio/template/tools/apeCAD/open_interface.py` |
 | `GET /api/identity` → `{name, pid, host, port, root}` (ADR 0019) | apeWorkbench `_probe_identity` |
 | Document JSON `schema: "apeCAD.document.v0"` (`ops.py` `SCHEMA_ID`) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`) |
 | `Document.to_frame()` (mm internally) | apeSteel, per coupling-map; `to_gmsh` is not implemented |
 
-Known drift: apeWorkbench's `CadAdapter` also passes `--root <folder>`,
-which this CLI rejects. See ADR 0020, "Live incidents".
+apeWorkbench's `CadAdapter` passes `--root <folder>`; the CLI accepts it
+since PR #10 (ADR 0021). Before that it exited with `SystemExit 2` (ADR 0020,
+"Live incidents").
 
 ## PRs and branches
 
