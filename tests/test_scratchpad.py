@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 from apeCAD.document import Document
+from apeCAD.scratchpad import server as server_module
 from apeCAD.scratchpad.server import STATIC_DIR, ScratchpadServer, main, serve
 
 
@@ -96,20 +97,28 @@ def _main_identity(argv: list[str], monkeypatch: pytest.MonkeyPatch) -> dict[str
 
 
 def test_main_accepts_workbench_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    # apeWorkbench `CadAdapter.argv(root, host=..., port=0, open_browser=False)`
-    # builds exactly this, and sets these two env vars (services/tools.py).
-    monkeypatch.setenv("APE_HABITAT_ROOT", str(tmp_path))
-    monkeypatch.setenv("APECAD_SESSION_SKETCHES", str(tmp_path / "tools" / "apeCAD" / "files"))
-    argv = ["--host", "127.0.0.1", "--port", "0", "--no-browser", "--root", str(tmp_path)]
+    # Hand copy of apeWorkbench src/apeWorkbench/services/tools.py @ 4a7a068:
+    # `ToolAdapter.argv` (line 210) + `CadAdapter.extra_argv` (line 261) build
+    # this argv for port=0, open_browser=False; `CadAdapter.env` (line 259) and
+    # `launch_tool` (line 600) set the two env vars. Re-check it if they change.
+    # Workbench gives env and flag the same folder; here they differ, so the
+    # assertion also shows that the flag wins.
+    work = tmp_path / "work"
+    habitat = tmp_path / "habitat"
+    monkeypatch.setenv("APE_HABITAT_ROOT", str(habitat))
+    monkeypatch.setenv("APECAD_SESSION_SKETCHES", str(habitat / "tools" / "apeCAD" / "files"))
+    argv = ["--host", "127.0.0.1", "--port", "0", "--no-browser", "--root", str(work)]
     identity = _main_identity(argv, monkeypatch)
-    assert identity["root"] == str(tmp_path.resolve())
+    assert identity["root"] == str(work.resolve())
 
 
-def test_root_flag_beats_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_resolves_root_without_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # No --port takes the preferred-port branch; DEFAULT_PORT=0 keeps the bind ephemeral.
+    monkeypatch.setattr(server_module, "DEFAULT_PORT", 0)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
     monkeypatch.setenv("APE_HABITAT_ROOT", str(tmp_path / "habitat"))
-    monkeypatch.setenv("APECAD_SESSION_SKETCHES", str(tmp_path / "files"))
-    argv = ["--port", "0", "--no-browser", "--root", str(tmp_path / "work")]
-    identity = _main_identity(argv, monkeypatch)
+    identity = _main_identity(["--no-browser", "--root", "~/sub/../work"], monkeypatch)
     assert identity["root"] == str((tmp_path / "work").resolve())
 
 

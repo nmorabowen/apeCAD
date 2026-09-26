@@ -5,9 +5,6 @@
 Amends [ADR 0019](0019-instance-scratchpad-host.md): the instance root
 can come from a flag as well as from the environment.
 
-Number 0020 is held by the open agent-surface PR #9
-(`AProjects/adrs/0020-agent-surface.md`).
-
 ## Context
 
 ADR 0019 reads the `/api/identity` `root` from `APE_HABITAT_ROOT`, else
@@ -16,8 +13,10 @@ ADR 0019 reads the `/api/identity` `root` from `APE_HABITAT_ROOT`, else
 launched apeCAD with `--root <work folder>` since its commit `e308e73`
 (2026-08-19), and its tests assert that flag. argparse rejects it
 (`SystemExit 2`, `unrecognized arguments: --root`), so the board cannot
-start apeCAD. apeSketch already takes `--root`, and its flag beats
-`APESKETCH_ROOT` (apeSketch ADR 0007).
+start apeCAD. apeSketch already takes `--root` (its ADR 0007 lists the
+flag and `APESKETCH_ROOT` without ranking them). In apeSketch's code the
+flag wins: `src/apeSketch/host/instance.py:116` @ `4d3b6e2`,
+`_as_path(root) or _env_path("APESKETCH_ROOT")`.
 
 ## Decision
 
