@@ -30,6 +30,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0018](0018-brep-selection.md) | B-rep topology is the selection graph | Accepted |
 | [0019](0019-instance-scratchpad-host.md) | Scratchpad host is per-instance, not machine-global | Accepted |
 | [0020](0020-agent-surface.md) | AGENTS.md is the agent entry point | Proposed |
+| [0021](0021-scratchpad-root-flag.md) | Scratchpad CLI accepts `--root` | Proposed |
 
 ## Template
 
