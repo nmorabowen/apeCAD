@@ -117,9 +117,10 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
                 payload = self._read_json_object()
                 nested = payload.get("document")
                 if payload.get("schema") is None and isinstance(nested, dict):
+                    source = cast(dict[object, object], nested)
                     payload = {
                         key: value
-                        for key, value in nested.items()
+                        for key, value in source.items()
                         if isinstance(key, str)
                     }
                 self.server.document = Document.from_dict(payload)
