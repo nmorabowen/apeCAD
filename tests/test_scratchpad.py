@@ -159,7 +159,7 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     assert 'data-cmd="view-top"' in html
     assert 'data-cmd="view-front"' in html
     assert (STATIC_DIR / "app.js").is_file()
-    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    app = _client_source()
     assert "chain: true" in app
     assert "Esc ends the chain" in app
     assert 'kind: "polyline"' in app
@@ -197,6 +197,30 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     assert "addVertexDot" in app
     assert "wall_ids" in app
     assert "sceneState.brep" in app
+
+
+def _client_source() -> str:
+    """app.js plus its ES modules, so moving code between them keeps these asserts."""
+    files = [STATIC_DIR / "app.js", *sorted((STATIC_DIR / "js").glob("*.js"))]
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+
+def test_client_modules_are_served(server: ScratchpadServer) -> None:
+    port = server.server_address[1]
+    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    for module in sorted((STATIC_DIR / "js").glob("*.js")):
+        assert f'"./js/{module.name}"' in app, f"{module.name} is not imported by app.js"
+        with urlopen(f"http://127.0.0.1:{port}/js/{module.name}") as response:
+            assert response.headers["Content-Type"].startswith("text/javascript")
+            assert response.read().decode("utf-8") == module.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("path", ["/js/missing.js", "/js/../server.py", "/js/sub/geom.js"])
+def test_client_module_paths_are_confined(server: ScratchpadServer, path: str) -> None:
+    port = server.server_address[1]
+    with pytest.raises(HTTPError) as caught:
+        urlopen(f"http://127.0.0.1:{port}{path}")
+    assert caught.value.code == 404
 
 
 def test_add_point_via_op_api(server: ScratchpadServer) -> None:

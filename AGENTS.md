@@ -15,7 +15,7 @@ kernel or Qt viewer without an ADR). Cursor gets the English rule from
 
 | Doing this | Read first |
 |---|---|
-| Changing the scratchpad (`src/apeCAD/scratchpad/`) or adding an op the canvas posts (`ops.py`, `document.py`) | [`.claude/skills/apecad-scratchpad-change/SKILL.md`](.claude/skills/apecad-scratchpad-change/SKILL.md) |
+| Changing the scratchpad (`src/apeCAD/scratchpad/`) or adding an op the canvas posts (`ops/`, `draft/`, `document.py`) | [`.claude/skills/apecad-scratchpad-change/SKILL.md`](.claude/skills/apecad-scratchpad-change/SKILL.md) |
 | Recording or amending a decision | [`AProjects/guides/writing-adrs.md`](AProjects/guides/writing-adrs.md) |
 
 ## Install and test
@@ -60,19 +60,30 @@ Stop what you started, by PID.
 ## Layout
 
 ```text
-src/apeCAD/              document.py (Document, apply, undo, JSON), ops.py (op
-                         types, to/from dict, SCHEMA_ID), entities.py, geometry.py,
-                         brep.py, frame.py (to_frame), errors.py
+src/apeCAD/              document.py (Document facade: typed API, ops log, undo, JSON),
+                         ops/ (types.py op dataclasses + SCHEMA_ID, codec.py to/from dict),
+                         draft/ (state, topology, create/edit/transform/meta handlers,
+                         dispatch.py HANDLERS table), entities.py, geometry.py, brep.py,
+                         frame.py (to_frame), errors.py
 src/apeCAD/scratchpad/   server.py (stdlib HTTP + CLI), payload.py (scene JSON),
-                         static/ (index.html + one vanilla app.js; three.js from CDN)
-tests/                   pytest; test_scratchpad.py drives the HTTP API on port 0
+                         static/ (index.html, app.js, js/*.js ES modules; three.js from CDN)
+tests/                   pytest; test_scratchpad.py drives the HTTP API on port 0;
+                         test_architecture.py guards module size and layering; js/ holds
+                         node --test unit tests for static/js/
 AProjects/               adrs/ (append-only), specs/, memory/, guides/
 docs/                    the published GitHub Pages site, not working memory
 logo/                    brand assets
 ```
 
 Do not list ops, endpoints, or entities in this file: consult
-`ops.py` (`_parse_op`) and `server.py` (`do_GET` / `do_POST`).
+`ops/codec.py` (`_parse_op`), `draft/dispatch.py` (`HANDLERS`) and `server.py`
+(`do_GET` / `do_POST`).
+
+No god files ([ADR 0023](AProjects/adrs/0023-module-boundaries.md)): every source
+file stays at or under 600 lines, and `test_architecture.py` enforces it. `app.js` is
+the one legacy exception, and its ceiling only goes down. New client code goes in a
+`static/js/` module; new document features go in their own module beside `draft/`.
+Never raise a ceiling to make a test pass.
 
 ## Where things live
 
@@ -94,7 +105,7 @@ These break a sibling repo if you change them:
 |---|---|
 | `apeCAD.scratchpad.server.main(argv)`: flags `--host`, `--port`, `--no-browser`, `--root` (ADR 0021); instance root from `--root`, else env `APE_HABITAT_ROOT`, else `APECAD_SESSION_SKETCHES` | apeWorkbench `src/apeWorkbench/services/tools.py` (`CadAdapter`); apeGmsh `src/apeGmsh/studio/template/tools/apeCAD/open_interface.py` |
 | `GET /api/identity` → `{name, pid, host, port, root}` (ADR 0019) | apeWorkbench `_probe_identity` |
-| Document JSON `schema: "apeCAD.document.v0"` (`ops.py` `SCHEMA_ID`) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`) |
+| Document JSON `schema: "apeCAD.document.v0"` (`ops/types.py` `SCHEMA_ID`) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`) |
 | `Document.to_frame()` (mm internally) | apeSteel, per coupling-map; `to_gmsh` is not implemented |
 
 apeWorkbench's `CadAdapter` passes `--root <folder>`; the CLI accepts it

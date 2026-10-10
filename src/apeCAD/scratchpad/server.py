@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 PORT_SPAN = 16
+# Client ES modules imported by app.js. One flat folder; the name pattern rules out traversal.
+_JS_MODULE = re.compile(r"/js/([a-z0-9_-]+\.js)")
 
 
 def _port_in_use(host: str, port: int) -> bool:
@@ -76,6 +79,10 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/app.js":
             self._send_file(STATIC_DIR / "app.js", "text/javascript; charset=utf-8")
+            return
+        module = _JS_MODULE.fullmatch(parsed.path)
+        if module is not None:
+            self._send_file(STATIC_DIR / "js" / module.group(1), "text/javascript; charset=utf-8")
             return
         static_images = {
             "/favicon.ico": ("favicon.ico", "image/x-icon"),
