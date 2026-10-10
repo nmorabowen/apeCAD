@@ -1,16 +1,21 @@
 // Grid menu and Grid -> Preferences dialog: the setters behind them and their form sync.
 import { S } from "./state.js";
 import { refreshToggles, setHint } from "./cmdline.js";
+import { updateGhost } from "./ghosts.js";
 import { grid, gridMajorMm, gridMinorMm, rebuildGrid } from "./grid.js";
 import {
+  GRID_DEFAULT_MAJOR_MM,
+  GRID_DEFAULT_MINOR_MM,
   GRID_MAX_MM,
   GRID_MIN_MM,
   clampDotSize,
+  clampGridSpacing,
   clampHiddenScale,
   clampLineWidth,
   displayUnit,
   formatGridInput,
   formatLength,
+  fromDisplay,
   gridAutoOn,
   gridDotSize,
   gridLineWidth,
@@ -19,7 +24,7 @@ import {
   mmToUnit,
   savePrefs,
 } from "./prefs.js";
-import { UNIT_STEP } from "./units.js";
+import { UNIT_MM, UNIT_STEP } from "./units.js";
 
 export function setGridAuto(next) {
   S.prefs.gridAuto = Boolean(next);
@@ -31,7 +36,7 @@ export function setGridAuto(next) {
     : "Grid spacing is manual.");
 }
 
-export function setGridMinorOn(next) {
+function setGridMinorOn(next) {
   S.gridMinorOn = next;
   S.prefs.gridMinorOn = next;
   savePrefs();
@@ -163,4 +168,75 @@ export function setGridSnapOn(next) {
   S.prefs.gridSnap = next;
   savePrefs();
   refreshToggles();
+}
+
+export function setGridSpacing(minor, major) {
+  S.prefs.gridAuto = false;
+  S.prefs.gridMinor = clampGridSpacing(minor, GRID_DEFAULT_MINOR_MM);
+  if (major != null) S.prefs.gridMajor = clampGridSpacing(major, GRID_DEFAULT_MAJOR_MM);
+  if (S.prefs.gridMajor < S.prefs.gridMinor) S.prefs.gridMajor = S.prefs.gridMinor;
+  savePrefs();
+  rebuildGrid();
+  refreshToggles();
+  if (S.lastPointer) updateGhost(S.lastPointer);
+  setHint(`Grid ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`);
+}
+
+export function setDisplayUnit(next) {
+  S.prefs.displayUnit = UNIT_MM[next] ? next : "mm";
+  savePrefs();
+  refreshToggles();
+  if (S.lastPointer) updateGhost(S.lastPointer);
+  setHint(`Units ${displayUnit()}.`);
+}
+
+function readGridSpacingForm() {
+  setGridSpacing(
+    fromDisplay(document.getElementById("gpref-minor").value),
+    fromDisplay(document.getElementById("gpref-major").value),
+  );
+}
+
+// Each slider has a number box twin: typing previews silently, committing reports a hint.
+function bindSliderPair(rangeId, numId, set) {
+  for (const el of [document.getElementById(rangeId), document.getElementById(numId)]) {
+    el.addEventListener("input", () => set(el.value, { silent: true }));
+    el.addEventListener("change", () => set(el.value));
+  }
+}
+
+export function bindGridPrefs() {
+  document.getElementById("grid-menu").addEventListener("click", (event) => event.stopPropagation());
+  document.getElementById("grid-minor-on").addEventListener("change", (event) => {
+    setGridMinorOn(event.target.checked);
+  });
+  document.getElementById("gpref-show").addEventListener("change", (event) => {
+    setGridOn(event.target.checked);
+  });
+  document.getElementById("gpref-minor-on").addEventListener("change", (event) => {
+    setGridMinorOn(event.target.checked);
+  });
+  document.getElementById("gpref-snap").addEventListener("change", (event) => {
+    setGridSnapOn(event.target.checked);
+  });
+  document.getElementById("gpref-auto").addEventListener("change", (event) => {
+    setGridAuto(event.target.checked);
+  });
+  document.getElementById("gpref-minor-style").addEventListener("change", (event) => {
+    setGridMinorStyle(event.target.value);
+  });
+  document.getElementById("gpref-minor").addEventListener("change", readGridSpacingForm);
+  document.getElementById("gpref-major").addEventListener("change", readGridSpacingForm);
+  document.getElementById("gpref-unit").addEventListener("change", (event) => {
+    setDisplayUnit(event.target.value);
+  });
+  bindSliderPair("gpref-hidden-scale", "gpref-hidden-scale-num", setGridHiddenScale);
+  bindSliderPair("gpref-dot-size", "gpref-dot-size-num", setGridDotSize);
+  bindSliderPair("gpref-line-width", "gpref-line-width-num", setGridLineWidth);
+  for (const button of document.querySelectorAll("[data-grid-minor]")) {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setGridSpacing(button.dataset.gridMinor, button.dataset.gridMajor);
+    });
+  }
 }

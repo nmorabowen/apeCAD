@@ -15,6 +15,7 @@ import { camera, fitView, frameDistance, goToView, resetViewZoom } from "./camer
 import { setHint } from "./cmdline.js";
 import { circumcircle, dist3 } from "./geom.js";
 import { gridMinorMm } from "./grid.js";
+import { commitDelete } from "./modify.js";
 import { formatMm } from "./prefs.js";
 import { rebuild, refreshFrom } from "./render.js";
 import { setSelection } from "./selection.js";
@@ -22,7 +23,7 @@ import { ISO_DIR, VIEW_PRESETS, controls, viewUp } from "./viewport.js";
 
 export const treeEl = document.getElementById("tree");
 const propBody = document.getElementById("prop-body");
-export const collapsedTree = new Set();
+const collapsedTree = new Set();
 
 function renderTreeNode(row, parent) {
   const kids = brepChildren(row);
@@ -78,8 +79,8 @@ function renderTreeNode(row, parent) {
   parent.append(node);
 }
 
-export const ctxMenu = document.getElementById("ctx-menu");
-export let ctxRow = null;
+const ctxMenu = document.getElementById("ctx-menu");
+let ctxRow = null;
 
 export function closeTreeMenu() {
   ctxMenu.classList.remove("open");
@@ -119,7 +120,7 @@ function openTreeMenu(x, y, row) {
   ctxMenu.style.top = `${Math.max(pad, top)}px`;
 }
 
-export function hideSubtree(row, hide) {
+function hideSubtree(row, hide) {
   const ids = new Set([row.id]);
   collectNested(row, ids);
   for (const id of ids) {
@@ -180,7 +181,7 @@ export function beginRename(row, rowEl) {
   input.addEventListener("blur", () => finish(true));
 }
 
-export function fitEntity(row) {
+function fitEntity(row) {
   const pts = gatherPoints(row);
   const box = new THREE.Box3();
   for (const point of pts) {
@@ -204,7 +205,7 @@ export function fitEntity(row) {
   });
 }
 
-export async function duplicateEntities(ids) {
+async function duplicateEntities(ids) {
   if (!ids.length) {
     setHint("Select something to duplicate.");
     return;
@@ -298,4 +299,59 @@ function propertyFields(row) {
     fields.push(["Size", item.size_xyz_mm.map((value) => formatMm(value)).join(" × ")]);
   }
   return fields;
+}
+
+function runTreeCommand(cmd, row) {
+  if (cmd === "select") {
+    setSelection(row.id);
+    return;
+  }
+  if (cmd === "rename") {
+    const rowEl = treeEl.querySelector(`.tree-row[data-id="${row.id}"]`);
+    if (rowEl) beginRename(row, rowEl);
+    return;
+  }
+  if (cmd === "duplicate") {
+    const ids = S.selectedIds.has(row.id) ? [...S.selectedIds] : [row.id];
+    duplicateEntities(ids).catch((error) => setHint(error.message));
+    return;
+  }
+  if (cmd === "hide") {
+    hideSubtree(row, true);
+    setHint("Hidden in the view. Right-click → Show to restore.");
+    return;
+  }
+  if (cmd === "show") {
+    hideSubtree(row, false);
+    return;
+  }
+  if (cmd === "fit") {
+    fitEntity(row);
+    return;
+  }
+  if (cmd === "toggle") {
+    if (collapsedTree.has(row.id)) collapsedTree.delete(row.id);
+    else collapsedTree.add(row.id);
+    refreshDocks();
+    return;
+  }
+  if (cmd === "delete") {
+    if (!S.selectedIds.has(row.id)) setSelection(row.id);
+    commitDelete().catch((error) => setHint(error.message));
+  }
+}
+
+export function bindOutliner() {
+  ctxMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-tree-cmd]");
+    if (!button || !ctxRow) return;
+    event.stopPropagation();
+    const row = ctxRow;
+    const cmd = button.dataset.treeCmd;
+    closeTreeMenu();
+    runTreeCommand(cmd, row);
+  });
+  document.getElementById("tree-wrap").addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
 }
