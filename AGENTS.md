@@ -38,8 +38,7 @@ Traps (each verified 2026-09-25):
 2. **pyright strict is clean on `main` (0 errors) — keep it that way.** It
    was red from PR #4 (`dd130c8`) until PR #11 typed the `/api/load` wrapper
    unwrap in `src/apeCAD/scratchpad/server.py`, and nothing noticed because
-   there was no CI. CI now runs it (trap 4), but still run `pyright` before
-   every PR; a new error is a finding.
+   there is no CI. Run `pyright` before every PR; a new error is a finding.
 3. **`ruff format` is not a gate.** `ruff format --check src tests` wants to
    reformat 5 existing files. Do not run `ruff format` over the tree; it buries
    your diff.
