@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from threading import Thread
@@ -205,14 +206,27 @@ def _client_source() -> str:
     return "\n".join(path.read_text(encoding="utf-8") for path in files)
 
 
+def _reachable_modules() -> set[str]:
+    """Names of js/*.js files that app.js imports, directly or through other modules."""
+    seen: set[str] = set()
+    queue = [STATIC_DIR / "app.js"]
+    while queue:
+        source = queue.pop().read_text(encoding="utf-8")
+        for name in re.findall(r'from "\./(?:js/)?([a-z0-9_-]+\.js)"', source):
+            if name not in seen and (STATIC_DIR / "js" / name).is_file():
+                seen.add(name)
+                queue.append(STATIC_DIR / "js" / name)
+    return seen
+
+
 def test_client_modules_are_served(server: ScratchpadServer) -> None:
     port = server.server_address[1]
-    app = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
+    reachable = _reachable_modules()
     for module in sorted((STATIC_DIR / "js").glob("*.js")):
-        assert f'"./js/{module.name}"' in app, f"{module.name} is not imported by app.js"
+        assert module.name in reachable, f"{module.name} is not imported from app.js"
         with urlopen(f"http://127.0.0.1:{port}/js/{module.name}") as response:
             assert response.headers["Content-Type"].startswith("text/javascript")
-            assert response.read().decode("utf-8") == module.read_text(encoding="utf-8")
+            assert response.read() == module.read_bytes()
 
 
 @pytest.mark.parametrize("path", ["/js/missing.js", "/js/../server.py", "/js/sub/geom.js"])

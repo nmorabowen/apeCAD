@@ -16,9 +16,7 @@ MAX_LINES = 600
 
 # Files that predate the budget. A ceiling may only go down: when a file shrinks, lower its
 # number here in the same PR; when it is under MAX_LINES, delete its row. Never raise one.
-LEGACY_CEILINGS: dict[str, int] = {
-    "scratchpad/static/app.js": 5172,
-}
+LEGACY_CEILINGS: dict[str, int] = {}
 
 # Inside apeCAD.draft a module may import only modules of a strictly lower rank.
 DRAFT_RANK: dict[str, int] = {

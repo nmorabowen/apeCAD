@@ -84,10 +84,10 @@ Do not list ops, endpoints, or entities in this file: consult
 (`do_GET` / `do_POST`).
 
 No god files ([ADR 0023](AProjects/adrs/0023-module-boundaries.md)): every source
-file stays at or under 600 lines, and `test_architecture.py` enforces it. `app.js` is
-the one legacy exception, and its ceiling only goes down. New client code goes in a
-`static/js/` module; new document features go in their own module beside `draft/`.
-Never raise a ceiling to make a test pass.
+file stays at or under 600 lines, and `test_architecture.py` enforces it. There are no
+legacy exceptions left: `app.js` is a bootstrap and the client lives in `static/js/`
+modules. New client code goes in a `static/js/` module; new document features go in
+their own module beside `draft/`. Never add a `LEGACY_CEILINGS` row to make a test pass.
 
 ## Where things live
 

@@ -98,3 +98,37 @@ sizes and blocks growth, so the next feature lands in a module instead of a god 
 | Mutation: `segmentsCross2d` always returns false | `test_client_module_unit_tests_pass` fails |
 | Browser: `python -m apeCAD --no-browser --port 8791`, seeded a face and a circle, crossing-window drag | Rendered; "Crossing: 2 selected"; no console errors |
 | Sizes after the change | `document.py` 565, `ops/codec.py` 523, `ops/types.py` 458, `draft/topology.py` 411, `app.js` 5172 |
+
+## Amendment (2026-10-10): the client split
+
+This finishes decision 3. The ADR is still `Proposed`, so this section amends it in place.
+
+- **Shared client state is one object.** `js/state.js` exports `S`: the tool and its
+  `pending` step, the selection and filter, hidden ids and cutters, the scene payload and its
+  B-rep maps, the projection and named view, the drafting toggles, and the prefs. State that
+  only one module touches stays a module-level `let` there, for example the view animation
+  in `camera.js` or the preselect key in `preselect.js`.
+- **`app.js` is a bootstrap.** It imports the modules, calls their `init*` / `bind*`
+  functions, and runs the render loop: 46 lines. Its `LEGACY_CEILINGS` row is deleted, and
+  the table is now empty.
+- **Modules never import `app.js`.** The page loads it as `/app.js?v=N`, and `../app.js` is
+  a different URL, so the browser would evaluate a second copy of the client. Modules may
+  import each other in cycles. Top-level module code only touches `viewport.js`, `state.js`
+  and pure modules; everything else runs from an `init*` / `bind*` call.
+- **Order of the split.** Code moved bottom-up through the call graph, so no step needed an
+  import from `app.js`. The only call cycle is `rebuild` → `refreshDocks` →
+  `renderTreeNode` → `setSelection` → `rebuild` (with `refreshFrom` and `beginRename`), and
+  it moved in one step.
+- `test_client_modules_are_served` now accepts a module that another module imports (it
+  walks the import graph from `app.js`), and compares the served bytes with the file's bytes,
+  so a CRLF checkout on Windows no longer fails it.
+
+| Check (2026-10-10, Python 3.12, Node 24.14.0) | Result |
+|---|---|
+| `PYTHONPATH=src python -m pytest -q` | 93 passed |
+| `python -m ruff check src tests` / `pyright` | All checks passed / 0 errors |
+| `node --test tests/js/*.test.mjs` | 23 passed (`geom`, `screen`, `units`, `prefs`, `brep`) |
+| Mutation: pad `js/tools.js` to 604 lines | `test_source_files_stay_under_the_line_budget` fails |
+| Mutation: add a `js/` file nothing imports | `test_client_modules_are_served` fails |
+| Browser smoke after each of the 8 steps (synthetic pointer and key events in the page) | Draw line, rect, circle, box; click, window and crossing select; move; trim; fillet; undo. These matched a run on `main`. Checks added as their code moved: view cube (also matched `main`), filters and hover, outliner hide/show/rename, polyline, redo, grid and prefs dialogs, menus, layout. All pass at the last step. One console `ReferenceError` (`pointerDown` dropped in step 8) was caught this way and fixed |
+| Sizes | `app.js` 46; largest modules `tools.js` 404, `outliner.js` 357, `camera.js` 331, `commands.js` 328 |
