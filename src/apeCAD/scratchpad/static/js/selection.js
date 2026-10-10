@@ -3,6 +3,8 @@ import * as THREE from "three";
 import { S } from "./state.js";
 import {
   FILTER_KINDS,
+  SELECT_FILTERS,
+  brepRoots,
   catalog,
   findRecord,
   gatherPoints,
@@ -13,7 +15,9 @@ import {
   rootId,
 } from "./brep.js";
 import { camera } from "./camera.js";
+import { refreshToggles, setHint } from "./cmdline.js";
 import { sampleCircle } from "./geom.js";
+import { rebuild } from "./render.js";
 import { shapeQualifies } from "./screen.js";
 import { canvas } from "./viewport.js";
 
@@ -46,7 +50,7 @@ function filterSelectionIds(ids) {
   });
 }
 
-export function convertSelectionToFilter(filter) {
+function convertSelectionToFilter(filter) {
   indexBrep();
   const next = new Set();
   if (filter === "element") {
@@ -193,4 +197,58 @@ export function windowHits(origin, event) {
     bottom: Math.max(origin.y, event.clientY),
   };
   return filterSelectionIds(entitiesInWindow(rect, crossing));
+}
+
+export function setSelection(id, { shift = false } = {}) {
+  if (id == null) {
+    if (!shift) S.selectedIds.clear();
+  } else if (shift) {
+    if (S.selectedIds.has(id)) S.selectedIds.delete(id);
+    else S.selectedIds.add(id);
+  } else {
+    S.selectedIds.clear();
+    S.selectedIds.add(id);
+  }
+  rebuild();
+}
+
+export function setSelectFilter(next) {
+  if (!SELECT_FILTERS.includes(next)) return;
+  S.selectFilter = next;
+  S.selectedIds = convertSelectionToFilter(next);
+  for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
+    button.classList.toggle("active", button.dataset.filter === S.selectFilter);
+  }
+  refreshToggles();
+  const labels = {
+    point: "points",
+    line: "lines",
+    face: "faces",
+    solid: "solids",
+    element: "whole elements",
+  };
+  setHint(`Select ${labels[S.selectFilter]} (1–5). Click, window, or crossing.`);
+  rebuild();
+}
+
+export function applyWindowSelect(origin, event) {
+  const crossing = event.clientX < origin.x;
+  const hits = windowHits(origin, event);
+  hideMarquee();
+  if (!event.shiftKey) S.selectedIds.clear();
+  for (const id of hits) S.selectedIds.add(id);
+  rebuild();
+  setHint(hits.length
+    ? `${crossing ? "Crossing" : "Window"}: ${S.selectedIds.size} selected.`
+    : "Nothing in the window.");
+}
+
+export function selectAll() {
+  indexBrep();
+  const ids = S.selectFilter === "element"
+    ? brepRoots().map((row) => row.id)
+    : catalog().filter((row) => FILTER_KINDS[S.selectFilter].has(row.kind)).map((row) => row.id);
+  S.selectedIds = new Set(ids);
+  rebuild();
+  setHint(S.selectedIds.size ? `${S.selectedIds.size} selected.` : "Nothing to select.");
 }
