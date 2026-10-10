@@ -33,6 +33,9 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0021](0021-scratchpad-root-flag.md) | Scratchpad CLI accepts `--root` | Proposed |
 | [0022](0022-ci-gates.md) | CI runs pytest, ruff check and pyright | Proposed |
 | [0023](0023-module-boundaries.md) | Module boundaries and a line budget | Proposed |
+| [0024](0024-section-mode-rc-intent.md) | Section mode: RC section entities are drawing intent | Proposed |
+| [0025](0025-section-draft-contract.md) | The `apeCAD.section-draft` v1 contract | Proposed |
+| [0026](0026-section-transport-and-client.md) | Stateless op transport and a 2-D section client | Proposed |
 
 ## Template
 
