@@ -1,9 +1,27 @@
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
-import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
-import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { S } from "./js/state.js";
+import {
+  activeLength,
+  appendLog,
+  arrayCount,
+  bufferLength,
+  clearTyped,
+  consoleInput,
+  consolePrompt,
+  gridButton,
+  gridSnapButton,
+  isTypingField,
+  labelValue,
+  orthoButton,
+  projectDims,
+  refreshToggles,
+  setCoords,
+  setHint,
+  setTyped,
+  sidesValue,
+  snapButton,
+  typedText,
+} from "./js/cmdline.js";
 import {
   circumcircle,
   dist3,
@@ -16,23 +34,34 @@ import {
   sampleEllipse,
 } from "./js/geom.js";
 import {
+  setGridAuto,
+  setGridDotSize,
+  setGridHiddenScale,
+  setGridLineWidth,
+  setGridMinorOn,
+  setGridMinorStyle,
+  setGridOn,
+  setGridSnapOn,
+  syncGridPrefsForm,
+} from "./js/grid-ui.js";
+import {
+  gridMajorMm,
+  gridMinorMm,
+  isGridSnap,
+  nearestGridPoint,
+  rebuildGrid,
+  snapGrid,
+  syncGridLineResolution,
+} from "./js/grid.js";
+import {
   BACKGROUNDS,
   GRID_DEFAULT_MAJOR_MM,
   GRID_DEFAULT_MINOR_MM,
-  GRID_EXTENT_MM,
-  GRID_MAX_DIVISIONS,
-  GRID_MAX_MM,
-  GRID_MIN_MM,
   LAYOUT_KEY,
-  clampDotSize,
   clampGridSpacing,
-  clampHiddenScale,
-  clampLineWidth,
   displayUnit,
-  formatGridInput,
   formatLength,
   formatMm,
-  formatNumber,
   fromDisplay,
   gridAutoOn,
   gridDotSize,
@@ -40,15 +69,30 @@ import {
   gridMinorStyle,
   hiddenLineScale,
   initPrefs,
-  mmToUnit,
-  niceLength,
-  parseLength,
   prefMajorMm,
   prefMinorMm,
   savePrefs,
 } from "./js/prefs.js";
 import { shapeQualifies } from "./js/screen.js";
-import { UNIT_MM, UNIT_STEP, formatDeg } from "./js/units.js";
+import { UNIT_MM } from "./js/units.js";
+import {
+  ISO_DIR,
+  VIEW_PRESETS,
+  WORLD_UP,
+  canvas,
+  contact,
+  controls,
+  draft,
+  ghosts,
+  hemi,
+  keyLight,
+  orthoCam,
+  persp,
+  preselects,
+  renderer,
+  scene,
+  viewUp,
+} from "./js/viewport.js";
 
 const SNAP_APERTURE_MM = 400;
 const PICK_POINT_PX = 12;
@@ -61,19 +105,7 @@ const FILTER_KINDS = {
   solid: new Set(["Solid", "Box"]),
 };
 
-const canvas = document.getElementById("view");
-const status = document.getElementById("status");
-const labelInput = document.getElementById("label");
-const consoleLog = document.getElementById("console-log");
-const consolePrompt = document.getElementById("console-prompt");
-const consoleInput = document.getElementById("console-input");
 const projButton = document.getElementById("proj");
-const snapButton = document.getElementById("snap");
-const gridSnapButton = document.getElementById("grid-snap");
-const orthoButton = document.getElementById("ortho");
-const gridButton = document.getElementById("grid");
-const coordsEl = document.getElementById("coords");
-const dimsEl = document.getElementById("dims");
 const treeEl = document.getElementById("tree");
 const propBody = document.getElementById("prop-body");
 const marqueeEl = document.getElementById("marquee");
@@ -88,55 +120,6 @@ const CURVE_PICK = 0x4a90d9;
 const CURVE_HOVER = 0x6aa8e8;
 const SNAP_COLOR = 0xd55e00;
 
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xe4e9ee);
-
-const WORLD_UP = new THREE.Vector3(0, 0, 1);
-const ISO_DIR = new THREE.Vector3(1, -1, 1);
-const viewUp = new THREE.Vector3(0, 0, 1);
-const VIEW_PRESETS = {
-  top: { dir: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0), label: "Top" },
-  bottom: { dir: new THREE.Vector3(0, 0, -1), up: new THREE.Vector3(0, 1, 0), label: "Bottom" },
-  front: { dir: new THREE.Vector3(0, -1, 0), up: WORLD_UP, label: "Front" },
-  back: { dir: new THREE.Vector3(0, 1, 0), up: WORLD_UP, label: "Back" },
-  right: { dir: new THREE.Vector3(1, 0, 0), up: WORLD_UP, label: "Right" },
-  left: { dir: new THREE.Vector3(-1, 0, 0), up: WORLD_UP, label: "Left" },
-};
-
-const persp = new THREE.PerspectiveCamera(50, 1, 10, 2_000_000);
-persp.up.copy(WORLD_UP);
-persp.position.copy(ISO_DIR.clone().normalize().multiplyScalar(10000));
-const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 10, 2_000_000);
-orthoCam.up.copy(WORLD_UP);
-orthoCam.position.copy(persp.position);
-
-const controls = new OrbitControls(orthoCam, canvas);
-controls.target.set(0, 0, 0);
-controls.mouseButtons.LEFT = -1;
-controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
-controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
-// Keep orbit off the Z pole so lookAt(up=+Z) stays well-defined after Top/Bottom.
-controls.minPolarAngle = 0.04;
-controls.maxPolarAngle = Math.PI - 0.04;
-controls.minDistance = 10;
-controls.maxDistance = 2_000_000;
-controls.update();
-
-const hemi = new THREE.HemisphereLight(0xf4f7fb, 0x6e757c, 0.55);
-scene.add(hemi);
-const keyLight = new THREE.DirectionalLight(0xffffff, 0.45);
-keyLight.position.set(-1.1, 0.85, 1.35);
-scene.add(keyLight);
-
-function scenePlanBox() {
-  const box = new THREE.Box3();
-  for (const point of S.sceneState.points || []) {
-    box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, 0));
-  }
-  return box.isEmpty() ? null : box;
-}
 
 function sceneBounds3() {
   const box = new THREE.Box3();
@@ -187,186 +170,6 @@ function lookAtScene(dir, extras = {}) {
   });
 }
 
-function effectiveGrid() {
-  const minor0 = prefMinorMm();
-  const major0 = prefMajorMm();
-  if (!gridAutoOn()) return { minor: minor0, major: major0 };
-  const box = scenePlanBox();
-  if (!box) return { minor: minor0, major: major0 };
-  const size = box.getSize(new THREE.Vector3());
-  const span = Math.max(size.x, size.y);
-  if (span < minor0 * 2) return { minor: minor0, major: major0 };
-  const ratio = Math.max(Math.round(major0 / minor0) || 10, 2);
-  const major = niceLength(span / 10);
-  const minor = clampGridSpacing(major / ratio, minor0);
-  return { minor, major: Math.max(major, minor) };
-}
-
-function gridMinorMm() {
-  return effectiveGrid().minor;
-}
-
-function gridMajorMm() {
-  return effectiveGrid().major;
-}
-
-function gridReachMm() {
-  const major = gridMajorMm();
-  const box = scenePlanBox();
-  if (!box) return GRID_EXTENT_MM / 2;
-  const reach = Math.max(
-    Math.abs(box.min.x), Math.abs(box.max.x),
-    Math.abs(box.min.y), Math.abs(box.max.y),
-  );
-  const span = Math.max(box.getSize(new THREE.Vector3()).x, box.getSize(new THREE.Vector3()).y);
-  return Math.min(
-    Math.max(reach * 1.35, span * 0.7, major * 6, GRID_DEFAULT_MAJOR_MM * 2),
-    GRID_EXTENT_MM * 2,
-  );
-}
-
-function gridLayout(spacing) {
-  const reach = gridReachMm();
-  let divisions = Math.round((reach * 2) / spacing);
-  divisions = Math.max(2, Math.min(divisions, GRID_MAX_DIVISIONS));
-  if (divisions % 2 !== 0) divisions += 1;
-  return { divisions, size: divisions * spacing };
-}
-
-function appendHiddenSpan(from, to, dash, gap, emitSeg, maxSeg) {
-  if (dash <= 0) {
-    const piece = Math.max(maxSeg || 1000, 100);
-    for (let a = from; a < to - 1e-6; a += piece) {
-      emitSeg(a, Math.min(a + piece, to));
-    }
-    return;
-  }
-  const period = dash + gap;
-  const start = Math.floor(from / period) * period;
-  for (let s = start; s < to; s += period) {
-    const a = Math.max(s, from);
-    const b = Math.min(s + dash, to);
-    if (b - a > 1e-6) emitSeg(a, b);
-  }
-}
-
-function onGridStep(value, step) {
-  return Math.abs(value - snapToStep(value, step)) < 1e-4;
-}
-
-function makeMinorDots(spacing, color, skipStep) {
-  const { divisions, size } = gridLayout(spacing);
-  const step = size / divisions;
-  const half = size / 2;
-  const positions = [];
-  for (let i = 0, x = -half; i <= divisions; i++, x += step) {
-    if (skipStep && onGridStep(x, skipStep)) continue;
-    for (let j = 0, y = -half; j <= divisions; j++, y += step) {
-      if (skipStep && onGridStep(y, skipStep)) continue;
-      positions.push(x, y, 0);
-    }
-  }
-  if (!positions.length) return null;
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-  const helper = new THREE.Points(
-    geometry,
-    new THREE.PointsMaterial({
-      color,
-      size: gridDotSize(),
-      sizeAttenuation: false,
-      toneMapped: false,
-    }),
-  );
-  sendBehind(helper, -1);
-  return helper;
-}
-
-function makeGridHelper(spacing, color, hidden, skipStep) {
-  const { divisions, size } = gridLayout(spacing);
-  const step = size / divisions;
-  const half = size / 2;
-  const scale = hidden ? hiddenLineScale() : 0;
-  const period = hidden ? spacing * scale : 0;
-  const dash = hidden ? period * (2 / 3) : 0;
-  const gap = hidden ? period - dash : 0;
-  const positions = [];
-  for (let i = 0, k = -half; i <= divisions; i++, k += step) {
-    if (skipStep && onGridStep(k, skipStep)) continue;
-    appendHiddenSpan(-half, half, dash, gap, (a, b) => {
-      positions.push(a, 0, k, b, 0, k);
-    }, step);
-    appendHiddenSpan(-half, half, dash, gap, (a, b) => {
-      positions.push(k, 0, a, k, 0, b);
-    }, step);
-  }
-  if (!positions.length) return null;
-  const geometry = new LineSegmentsGeometry();
-  geometry.setPositions(positions);
-  const helper = new LineSegments2(
-    geometry,
-    new LineMaterial({
-      color,
-      linewidth: gridLineWidth(),
-      worldUnits: false,
-      toneMapped: false,
-    }),
-  );
-  helper.rotation.x = Math.PI / 2;
-  sendBehind(helper, -1);
-  syncGridLineResolution(helper);
-  return helper;
-}
-
-function makeGrid() {
-  const pal = BACKGROUNDS[S.prefs.background] || BACKGROUNDS.g5;
-  const group = new THREE.Group();
-  const minor = gridMinorMm();
-  const major = gridMajorMm();
-  if (S.gridMinorOn && major > minor + 1e-6) {
-    const minorGrid = gridMinorStyle() === "dots"
-      ? makeMinorDots(minor, pal.minor, major)
-      : makeGridHelper(minor, pal.minor, true, major);
-    if (minorGrid) group.add(minorGrid);
-  }
-  const majorGrid = makeGridHelper(major, pal.major, false);
-  if (majorGrid) group.add(majorGrid);
-  group.visible = S.gridOn;
-  return group;
-}
-
-function disposeObject(object) {
-  if (!object) return;
-  object.traverse((node) => {
-    if (node.geometry) node.geometry.dispose();
-    for (const mat of [].concat(node.material || [])) {
-      if (mat) mat.dispose();
-    }
-  });
-}
-
-function rebuildGrid() {
-  const next = makeGrid();
-  if (grid) {
-    scene.remove(grid);
-    disposeObject(grid);
-  }
-  grid = next;
-  scene.add(grid);
-  syncGridLineResolution(grid);
-}
-
-function syncGridLineResolution(root = grid) {
-  if (!root) return;
-  const width = Math.max(canvas.clientWidth, 1);
-  const height = Math.max(canvas.clientHeight, 1);
-  root.traverse((node) => {
-    if (node.material && node.material.resolution) {
-      node.material.resolution.set(width, height);
-    }
-  });
-}
-
 function setGridSpacing(minor, major) {
   S.prefs.gridAuto = false;
   S.prefs.gridMinor = clampGridSpacing(minor, GRID_DEFAULT_MINOR_MM);
@@ -379,77 +182,6 @@ function setGridSpacing(minor, major) {
   setHint(`Grid ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`);
 }
 
-function setGridAuto(next) {
-  S.prefs.gridAuto = Boolean(next);
-  savePrefs();
-  rebuildGrid();
-  refreshToggles();
-  setHint(S.prefs.gridAuto
-    ? `Grid auto ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`
-    : "Grid spacing is manual.");
-}
-
-function setGridMinorOn(next) {
-  S.gridMinorOn = next;
-  S.prefs.gridMinorOn = next;
-  savePrefs();
-  rebuildGrid();
-  refreshToggles();
-  setHint(S.gridMinorOn ? "Minor grid on." : "Minor grid off.");
-}
-
-function setGridHiddenScale(next, opts = {}) {
-  S.prefs.gridHiddenScale = clampHiddenScale(next);
-  savePrefs();
-  rebuildGrid();
-  syncGridPrefsForm();
-  if (!opts.silent) setHint(`Hidden line scale ${hiddenLineScale()}.`);
-}
-
-function setGridMinorStyle(next) {
-  S.prefs.gridMinorStyle = next === "lines" ? "lines" : "dots";
-  savePrefs();
-  rebuildGrid();
-  syncGridPrefsForm();
-  setHint(S.prefs.gridMinorStyle === "dots" ? "Minor grid: dots." : "Minor grid: lines.");
-}
-
-function setGridDotSize(next, opts = {}) {
-  S.prefs.gridDotSize = clampDotSize(next);
-  savePrefs();
-  const size = gridDotSize();
-  let updated = false;
-  if (grid) {
-    grid.traverse((node) => {
-      if (node.isPoints && node.material) {
-        node.material.size = size;
-        updated = true;
-      }
-    });
-  }
-  if (!updated && gridMinorStyle() === "dots") rebuildGrid();
-  syncGridPrefsForm();
-  if (!opts.silent) setHint(`Dot size ${size} px.`);
-}
-
-function setGridLineWidth(next, opts = {}) {
-  S.prefs.gridLineWidth = clampLineWidth(next);
-  savePrefs();
-  const width = gridLineWidth();
-  let updated = false;
-  if (grid) {
-    grid.traverse((node) => {
-      if (node.material && node.material.linewidth != null) {
-        node.material.linewidth = width;
-        updated = true;
-      }
-    });
-  }
-  if (!updated) rebuildGrid();
-  syncGridPrefsForm();
-  if (!opts.silent) setHint(`Line thickness ${width} px.`);
-}
-
 function setDisplayUnit(next) {
   S.prefs.displayUnit = UNIT_MM[next] ? next : "mm";
   savePrefs();
@@ -458,103 +190,11 @@ function setDisplayUnit(next) {
   setHint(`Units ${displayUnit()}.`);
 }
 
-function syncGridMenu() {
-  const minorOnEl = document.getElementById("grid-minor-on");
-  if (minorOnEl) minorOnEl.checked = S.gridMinorOn;
-}
-
-function syncGridPrefsForm() {
-  const showEl = document.getElementById("gpref-show");
-  if (!showEl) return;
-  showEl.checked = S.gridOn;
-  document.getElementById("gpref-minor-on").checked = S.gridMinorOn;
-  document.getElementById("gpref-snap").checked = S.gridSnapOn;
-  const autoEl = document.getElementById("gpref-auto");
-  if (autoEl) autoEl.checked = gridAutoOn();
-  const styleEl = document.getElementById("gpref-minor-style");
-  if (styleEl && document.activeElement !== styleEl) styleEl.value = gridMinorStyle();
-  const unitEl = document.getElementById("gpref-unit");
-  if (unitEl && document.activeElement !== unitEl) unitEl.value = displayUnit();
-  const dots = gridMinorStyle() === "dots";
-  const dotOpts = document.getElementById("gpref-dot-opts");
-  const lineOpts = document.getElementById("gpref-line-opts");
-  if (dotOpts) dotOpts.hidden = !dots;
-  if (lineOpts) lineOpts.hidden = dots;
-  const unit = displayUnit();
-  const step = UNIT_STEP[unit];
-  const min = mmToUnit(GRID_MIN_MM);
-  const max = mmToUnit(GRID_MAX_MM);
-  const minorEl = document.getElementById("gpref-minor");
-  const majorEl = document.getElementById("gpref-major");
-  for (const el of [minorEl, majorEl]) {
-    el.min = String(min);
-    el.max = String(max);
-    el.step = String(step);
-    el.disabled = gridAutoOn();
-  }
-  if (document.activeElement !== minorEl) minorEl.value = formatGridInput(gridMinorMm());
-  if (document.activeElement !== majorEl) majorEl.value = formatGridInput(gridMajorMm());
-  const scaleEl = document.getElementById("gpref-hidden-scale");
-  const scaleNum = document.getElementById("gpref-hidden-scale-num");
-  const scale = hiddenLineScale();
-  if (document.activeElement !== scaleEl) scaleEl.value = String(scale);
-  if (document.activeElement !== scaleNum) scaleNum.value = String(scale);
-  const dotEl = document.getElementById("gpref-dot-size");
-  const dotNum = document.getElementById("gpref-dot-size-num");
-  const size = gridDotSize();
-  if (dotEl && document.activeElement !== dotEl) dotEl.value = String(size);
-  if (dotNum && document.activeElement !== dotNum) dotNum.value = String(size);
-  const widthEl = document.getElementById("gpref-line-width");
-  const widthNum = document.getElementById("gpref-line-width-num");
-  const width = gridLineWidth();
-  if (widthEl && document.activeElement !== widthEl) widthEl.value = String(width);
-  if (widthNum && document.activeElement !== widthNum) widthNum.value = String(width);
-  for (const button of document.querySelectorAll("[data-grid-minor]")) {
-    button.textContent = `${formatGridInput(Number(button.dataset.gridMinor))} / ${formatGridInput(Number(button.dataset.gridMajor))}`;
-  }
-  const placeholder = document.getElementById("console-input");
-  if (placeholder) placeholder.placeholder = `length ${unit} · angle ° · Enter`;
-}
-
-let grid = null;
-const contact = new THREE.Mesh(
-  new THREE.PlaneGeometry(40000, 40000),
-  new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.06,
-    depthWrite: false,
-  }),
-);
-contact.position.z = -2;
-contact.renderOrder = -2;
-scene.add(contact);
-scene.add(new THREE.AxesHelper(3000));
-const draft = new THREE.Group();
-const ghosts = new THREE.Group();
-const preselects = new THREE.Group();
-scene.add(draft);
-scene.add(ghosts);
-scene.add(preselects);
-
 function isOverlayGroup(group) {
   return group === ghosts || group === preselects;
 }
 
-function sendBehind(object, order) {
-  object.renderOrder = order;
-  const materials = [].concat(object.material || []);
-  for (const mat of materials) {
-    if (!mat) continue;
-    mat.depthTest = false;
-    mat.depthWrite = false;
-  }
-}
-
 rebuildGrid();
-draft.renderOrder = 1;
-ghosts.renderOrder = 2;
-preselects.renderOrder = 3;
 
 function camera() {
   return S.useOrtho ? orthoCam : persp;
@@ -614,14 +254,14 @@ function syncCameras() {
 }
 
 function syncViewMenu() {
-  const mark = (cmd, on) => {
+  const markOn = (cmd, on) => {
     const el = document.querySelector(`[data-cmd="${cmd}"]`);
     if (el) el.classList.toggle("is-on", on);
   };
-  mark("perspective", S.projection === "perspective");
-  mark("parallel", S.projection === "parallel");
+  markOn("perspective", S.projection === "perspective");
+  markOn("parallel", S.projection === "parallel");
   for (const name of Object.keys(VIEW_PRESETS)) {
-    mark(`view-${name}`, S.namedView === name);
+    markOn(`view-${name}`, S.namedView === name);
   }
 }
 
@@ -960,98 +600,6 @@ document.getElementById("view-iso").addEventListener("click", () => {
 });
 document.getElementById("view-fit").addEventListener("click", () => fitView());
 
-function setHint(text) {
-  const next = text && text.trim() !== "" ? text : "Command:";
-  const previous = consolePrompt.textContent;
-  if (previous && previous !== next && previous !== "Command:") {
-    appendLog(previous);
-  }
-  consolePrompt.textContent = next;
-  consolePrompt.title = next;
-}
-
-function appendLog(text) {
-  if (!text) return;
-  const last = consoleLog.lastElementChild;
-  if (last && last.textContent === text) {
-    consoleLog.scrollTop = consoleLog.scrollHeight;
-    return;
-  }
-  const line = document.createElement("div");
-  line.textContent = text;
-  consoleLog.appendChild(line);
-  while (consoleLog.childElementCount > 80) consoleLog.removeChild(consoleLog.firstChild);
-  consoleLog.scrollTop = consoleLog.scrollHeight;
-}
-
-function typedText() {
-  return consoleInput.value.trim();
-}
-
-function clearTyped() {
-  consoleInput.value = "";
-}
-
-function setTyped(value) {
-  consoleInput.value = value;
-}
-
-function isTypingField(event) {
-  if (event.target === consoleInput) return false;
-  const tag = event.target && event.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-  return Boolean(event.target && event.target.closest && event.target.closest("dialog"));
-}
-
-function refreshToggles() {
-  snapButton.classList.toggle("active", S.snapOn);
-  gridSnapButton.classList.toggle("active", S.gridSnapOn);
-  orthoButton.classList.toggle("active", S.orthoOn);
-  gridButton.classList.toggle("active", S.gridOn);
-  const parts = [];
-  if (S.snapOn) parts.push("SNAP");
-  if (S.gridSnapOn) parts.push(`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`);
-  if (S.orthoOn) parts.push("ORTHO");
-  if (S.gridOn) parts.push("GRID");
-  if (S.tool === "select") {
-    const names = {
-      point: "POINT", line: "LINE", face: "FACE", solid: "SOLID", element: "ELEMENT",
-    };
-    parts.push(names[S.selectFilter] || "ELEMENT");
-  }
-  const typed = activeLength();
-  if (typed !== null) parts.push(formatLength(typed));
-  status.textContent = parts.join(" · ") || "free";
-  grid.visible = S.gridOn;
-  syncGridMenu();
-  syncGridPrefsForm();
-}
-
-function labelValue() {
-  const value = labelInput.value.trim();
-  return value === "" ? null : value;
-}
-
-function fieldLength() {
-  return parseLength(typedText());
-}
-
-function activeLength() {
-  return fieldLength();
-}
-
-function bufferLength() {
-  return fieldLength();
-}
-
-function sidesValue() {
-  return 6;
-}
-
-function arrayCount() {
-  return 4;
-}
-
 function worldToScreen(x, y, z) {
   const vector = new THREE.Vector3(x, y, z).project(camera());
   if (vector.z > 1) return null;
@@ -1059,29 +607,6 @@ function worldToScreen(x, y, z) {
     x: (vector.x * 0.5 + 0.5) * Math.max(canvas.clientWidth, 1),
     y: (-vector.y * 0.5 + 0.5) * Math.max(canvas.clientHeight, 1),
   };
-}
-
-function projectDims() {
-  dimsEl.innerHTML = "";
-}
-
-function setCoords(hit, origin) {
-  if (!hit) {
-    coordsEl.textContent = `X 0   Y 0   Z 0   ${displayUnit()}`;
-    return;
-  }
-  const x = formatNumber(hit.x_mm);
-  const y = formatNumber(hit.y_mm);
-  const z = formatNumber(hit.z_mm || 0);
-  let text = `X ${x}   Y ${y}   Z ${z}   ${displayUnit()}`;
-  if (origin) {
-    const dx = hit.x_mm - origin.x_mm;
-    const dy = hit.y_mm - origin.y_mm;
-    const length = dist3(origin, hit);
-    const ang = Math.atan2(dy, dx);
-    text += `    ΔX ${formatNumber(dx)}   ΔY ${formatNumber(dy)}    L ${formatLength(length)}    ${formatDeg(ang)}`;
-  }
-  coordsEl.textContent = text;
 }
 
 function parseCssHex(value, fallback) {
@@ -3143,46 +2668,6 @@ async function reload() {
   lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
 }
 
-function snapToStep(value, step) {
-  return Math.round(value / step) * step;
-}
-
-function snapGrid(value) {
-  const minor = gridMinorMm();
-  const major = gridMajorMm();
-  const a = snapToStep(value, minor);
-  const b = snapToStep(value, major);
-  return Math.abs(value - b) <= Math.abs(value - a) ? b : a;
-}
-
-function nearestGridPoint(raw) {
-  const minor = gridMinorMm();
-  const major = gridMajorMm();
-  const xs = [snapToStep(raw.x_mm, minor), snapToStep(raw.x_mm, major)];
-  const ys = [snapToStep(raw.y_mm, minor), snapToStep(raw.y_mm, major)];
-  let best = null;
-  for (const x_mm of xs) {
-    for (const y_mm of ys) {
-      const dist = Math.hypot(x_mm - raw.x_mm, y_mm - raw.y_mm);
-      const onMajor = Math.abs(x_mm - snapToStep(x_mm, major)) < 1e-6
-        && Math.abs(y_mm - snapToStep(y_mm, major)) < 1e-6;
-      const kind = onMajor ? "grid-major" : "grid-minor";
-      if (
-        !best
-        || dist < best.dist - 1e-6
-        || (Math.abs(dist - best.dist) < 1e-6 && kind === "grid-major")
-      ) {
-        best = { x_mm, y_mm, z_mm: 0, dist, snap: kind };
-      }
-    }
-  }
-  return best;
-}
-
-function isGridSnap(kind) {
-  return kind === "grid" || kind === "grid-minor" || kind === "grid-major";
-}
-
 function ndcFromEvent(event) {
   const rect = canvas.getBoundingClientRect();
   return new THREE.Vector2(
@@ -4575,21 +4060,6 @@ function restoreLayout() {
   } catch (_error) {
     /* keep defaults */
   }
-}
-
-function setGridOn(next) {
-  S.gridOn = next;
-  S.prefs.grid = next;
-  savePrefs();
-  refreshToggles();
-  grid.visible = S.gridOn;
-}
-
-function setGridSnapOn(next) {
-  S.gridSnapOn = next;
-  S.prefs.gridSnap = next;
-  savePrefs();
-  refreshToggles();
 }
 
 function applyViz() {
