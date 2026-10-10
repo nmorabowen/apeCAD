@@ -3,6 +3,7 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { S } from "./js/state.js";
 import {
   circumcircle,
   dist3,
@@ -14,7 +15,40 @@ import {
   sampleCircle,
   sampleEllipse,
 } from "./js/geom.js";
+import {
+  BACKGROUNDS,
+  GRID_DEFAULT_MAJOR_MM,
+  GRID_DEFAULT_MINOR_MM,
+  GRID_EXTENT_MM,
+  GRID_MAX_DIVISIONS,
+  GRID_MAX_MM,
+  GRID_MIN_MM,
+  LAYOUT_KEY,
+  clampDotSize,
+  clampGridSpacing,
+  clampHiddenScale,
+  clampLineWidth,
+  displayUnit,
+  formatGridInput,
+  formatLength,
+  formatMm,
+  formatNumber,
+  fromDisplay,
+  gridAutoOn,
+  gridDotSize,
+  gridLineWidth,
+  gridMinorStyle,
+  hiddenLineScale,
+  initPrefs,
+  mmToUnit,
+  niceLength,
+  parseLength,
+  prefMajorMm,
+  prefMinorMm,
+  savePrefs,
+} from "./js/prefs.js";
 import { shapeQualifies } from "./js/screen.js";
+import { UNIT_MM, UNIT_STEP, formatDeg } from "./js/units.js";
 
 const SNAP_APERTURE_MM = 400;
 const PICK_POINT_PX = 12;
@@ -26,25 +60,6 @@ const FILTER_KINDS = {
   face: new Set(["Face", "Circle", "Ellipse"]),
   solid: new Set(["Solid", "Box"]),
 };
-const GRID_DEFAULT_MINOR_MM = 100;
-const GRID_DEFAULT_MAJOR_MM = 1000;
-const GRID_EXTENT_MM = 40000;
-const GRID_MAX_DIVISIONS = 800;
-const GRID_MIN_MM = 1;
-const GRID_MAX_MM = 10000;
-const GRID_HIDDEN_SCALE_DEFAULT = 0.25;
-const GRID_HIDDEN_SCALE_MIN = 0.25;
-const GRID_HIDDEN_SCALE_MAX = 4;
-const GRID_MINOR_STYLE_DEFAULT = "dots";
-const GRID_DOT_SIZE_DEFAULT = 1.5;
-const GRID_DOT_SIZE_MIN = 0.5;
-const GRID_DOT_SIZE_MAX = 8;
-const GRID_LINE_WIDTH_DEFAULT = 1;
-const GRID_LINE_WIDTH_MIN = 0.5;
-const GRID_LINE_WIDTH_MAX = 8;
-const UNIT_MM = { mm: 1, cm: 10, m: 1000, in: 25.4 };
-const UNIT_STEP = { mm: 1, cm: 0.1, m: 0.01, in: 0.01 };
-const UNIT_DECIMALS = { mm: 0, cm: 1, m: 3, in: 2 };
 
 const canvas = document.getElementById("view");
 const status = document.getElementById("status");
@@ -63,102 +78,15 @@ const treeEl = document.getElementById("tree");
 const propBody = document.getElementById("prop-body");
 const marqueeEl = document.getElementById("marquee");
 
-let tool = "select";
-let pending = null;
-let lastPointer = null;
-let selectedIds = new Set();
-let selectFilter = "element";
-let brepChildrenOf = new Map();
-let brepParentsOf = new Map();
-let brepRootOf = new Map();
-let brepSolidOf = new Map();
-let preselectKey = "";
-let hiddenIds = new Set();
-let cutterIds = new Set();
-let marqueeOrigin = null;
-let sceneState = {
-  points: [], lines: [], boxes: [], polylines: [], faces: [], solids: [],
-  circles: [], arcs: [], ellipses: [], beziers: [],
-};
-let pointerDown = null;
-let useOrtho = true;
-let projection = "parallel";
-let namedView = null;
-let snapOn = true;
-let gridSnapOn = true;
-let gridOn = true;
-let gridMinorOn = true;
-let orthoOn = false;
-let ghostDims = [];
-let committedDims = [];
-let saveName = "apecad.json";
-let viewCubeOn = true;
+initPrefs();
 
-const PREFS_KEY = "apeCAD.prefs.v2";
-const LAYOUT_KEY = "apeCAD.layout.v2";
-const PREF_DEFAULTS = {
-  background: "g5",
-  clay: 176,
-  curve: "#111111",
-  keyLight: true,
-  ao: true,
-  showEdges: true,
-  showCurves: true,
-  showFaces: true,
-  grid: true,
-  gridSnap: true,
-  gridMinorOn: true,
-  gridMinor: GRID_DEFAULT_MINOR_MM,
-  gridMajor: GRID_DEFAULT_MAJOR_MM,
-  gridAuto: true,
-  gridHiddenScale: GRID_HIDDEN_SCALE_DEFAULT,
-  gridMinorStyle: GRID_MINOR_STYLE_DEFAULT,
-  gridDotSize: GRID_DOT_SIZE_DEFAULT,
-  gridLineWidth: GRID_LINE_WIDTH_DEFAULT,
-  displayUnit: "mm",
-};
-const BACKGROUNDS = {
-  g2: { bg: 0x1c1c1c, major: 0x3c3c3c, minor: 0x2a2a2a },
-  g5: { bg: 0xe4e9ee, major: 0xc0c0c0, minor: 0xd2d2d2 },
-  g6: { bg: 0xa3a6aa, major: 0x8a8e92, minor: 0x96999d },
-};
+let preselectKey = "";
+let pointerDown = null;
+
 const EDGE_COLOR = 0x111111;
 const CURVE_PICK = 0x4a90d9;
 const CURVE_HOVER = 0x6aa8e8;
 const SNAP_COLOR = 0xd55e00;
-
-function clampGridSpacing(value, fallback = GRID_DEFAULT_MINOR_MM) {
-  const raw = Number(value);
-  if (!Number.isFinite(raw) || raw <= 0) return fallback;
-  return Math.min(Math.max(raw, GRID_MIN_MM), GRID_MAX_MM);
-}
-
-function loadPrefs() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(PREFS_KEY) || "null");
-    const merged = { ...PREF_DEFAULTS, ...(raw && typeof raw === "object" ? raw : {}) };
-    if (raw && typeof raw === "object" && raw.gridMinor == null && raw.gridSpacing != null) {
-      merged.gridMinor = clampGridSpacing(raw.gridSpacing);
-    }
-    if (raw && typeof raw === "object" && raw.gridMajor == null) {
-      merged.gridMajor = clampGridSpacing(merged.gridMinor * 10, GRID_DEFAULT_MAJOR_MM);
-    }
-    if (merged.gridMajor < merged.gridMinor) merged.gridMajor = merged.gridMinor;
-    return merged;
-  } catch (_error) {
-    return { ...PREF_DEFAULTS };
-  }
-}
-
-let prefs = loadPrefs();
-if (prefs.grid === false) gridOn = false;
-if (prefs.gridSnap === false) gridSnapOn = false;
-if (prefs.gridMinorOn === false) gridMinorOn = false;
-prefs.gridHiddenScale = clampHiddenScale(prefs.gridHiddenScale);
-prefs.gridMinorStyle = gridMinorStyle();
-prefs.gridDotSize = clampDotSize(prefs.gridDotSize);
-prefs.gridLineWidth = clampLineWidth(prefs.gridLineWidth);
-prefs.displayUnit = displayUnit();
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
@@ -198,97 +126,13 @@ controls.update();
 
 const hemi = new THREE.HemisphereLight(0xf4f7fb, 0x6e757c, 0.55);
 scene.add(hemi);
-const key = new THREE.DirectionalLight(0xffffff, 0.45);
-key.position.set(-1.1, 0.85, 1.35);
-scene.add(key);
-function clampHiddenScale(value) {
-  const raw = Number(value);
-  if (!Number.isFinite(raw) || raw <= 0) return GRID_HIDDEN_SCALE_DEFAULT;
-  const clamped = Math.min(Math.max(raw, GRID_HIDDEN_SCALE_MIN), GRID_HIDDEN_SCALE_MAX);
-  return Math.round(clamped * 100) / 100;
-}
-
-function hiddenLineScale() {
-  return clampHiddenScale(prefs.gridHiddenScale);
-}
-
-function clampDotSize(value) {
-  const raw = Number(value);
-  if (!Number.isFinite(raw) || raw <= 0) return GRID_DOT_SIZE_DEFAULT;
-  const clamped = Math.min(Math.max(raw, GRID_DOT_SIZE_MIN), GRID_DOT_SIZE_MAX);
-  return Math.round(clamped * 2) / 2;
-}
-
-function gridDotSize() {
-  return clampDotSize(prefs.gridDotSize);
-}
-
-function clampLineWidth(value) {
-  const raw = Number(value);
-  if (!Number.isFinite(raw) || raw <= 0) return GRID_LINE_WIDTH_DEFAULT;
-  const clamped = Math.min(Math.max(raw, GRID_LINE_WIDTH_MIN), GRID_LINE_WIDTH_MAX);
-  return Math.round(clamped * 2) / 2;
-}
-
-function gridLineWidth() {
-  return clampLineWidth(prefs.gridLineWidth);
-}
-
-function gridMinorStyle() {
-  return prefs.gridMinorStyle === "lines" ? "lines" : "dots";
-}
-
-function displayUnit() {
-  return UNIT_MM[prefs.displayUnit] ? prefs.displayUnit : "mm";
-}
-
-function mmToUnit(mm, unit = displayUnit()) {
-  return mm / UNIT_MM[unit];
-}
-
-function fromDisplay(value, unit = displayUnit()) {
-  const raw = Number(value);
-  if (!Number.isFinite(raw)) return NaN;
-  return raw * UNIT_MM[unit];
-}
-
-function formatGridInput(mm) {
-  const unit = displayUnit();
-  const value = mmToUnit(mm, unit);
-  const decimals = UNIT_DECIMALS[unit];
-  const rounded = Number(value.toFixed(decimals));
-  return String(rounded);
-}
-
-function formatNumber(mm) {
-  return formatGridInput(mm);
-}
-
-function prefMinorMm() {
-  return clampGridSpacing(prefs.gridMinor, GRID_DEFAULT_MINOR_MM);
-}
-
-function prefMajorMm() {
-  const minor = prefMinorMm();
-  return Math.max(clampGridSpacing(prefs.gridMajor, GRID_DEFAULT_MAJOR_MM), minor);
-}
-
-function gridAutoOn() {
-  return prefs.gridAuto !== false;
-}
-
-function niceLength(mm) {
-  if (!Number.isFinite(mm) || mm <= 0) return GRID_DEFAULT_MINOR_MM;
-  const exp = Math.floor(Math.log10(mm));
-  const base = 10 ** exp;
-  const n = mm / base;
-  const nice = n <= 1.5 ? 1 : n <= 3.5 ? 2 : n <= 7.5 ? 5 : 10;
-  return clampGridSpacing(nice * base);
-}
+const keyLight = new THREE.DirectionalLight(0xffffff, 0.45);
+keyLight.position.set(-1.1, 0.85, 1.35);
+scene.add(keyLight);
 
 function scenePlanBox() {
   const box = new THREE.Box3();
-  for (const point of sceneState.points || []) {
+  for (const point of S.sceneState.points || []) {
     box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, 0));
   }
   return box.isEmpty() ? null : box;
@@ -296,7 +140,7 @@ function scenePlanBox() {
 
 function sceneBounds3() {
   const box = new THREE.Box3();
-  for (const point of sceneState.points || []) {
+  for (const point of S.sceneState.points || []) {
     box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0));
   }
   return box.isEmpty() ? null : box;
@@ -475,11 +319,11 @@ function makeGridHelper(spacing, color, hidden, skipStep) {
 }
 
 function makeGrid() {
-  const pal = BACKGROUNDS[prefs.background] || BACKGROUNDS.g5;
+  const pal = BACKGROUNDS[S.prefs.background] || BACKGROUNDS.g5;
   const group = new THREE.Group();
   const minor = gridMinorMm();
   const major = gridMajorMm();
-  if (gridMinorOn && major > minor + 1e-6) {
+  if (S.gridMinorOn && major > minor + 1e-6) {
     const minorGrid = gridMinorStyle() === "dots"
       ? makeMinorDots(minor, pal.minor, major)
       : makeGridHelper(minor, pal.minor, true, major);
@@ -487,7 +331,7 @@ function makeGrid() {
   }
   const majorGrid = makeGridHelper(major, pal.major, false);
   if (majorGrid) group.add(majorGrid);
-  group.visible = gridOn;
+  group.visible = S.gridOn;
   return group;
 }
 
@@ -524,38 +368,38 @@ function syncGridLineResolution(root = grid) {
 }
 
 function setGridSpacing(minor, major) {
-  prefs.gridAuto = false;
-  prefs.gridMinor = clampGridSpacing(minor, GRID_DEFAULT_MINOR_MM);
-  if (major != null) prefs.gridMajor = clampGridSpacing(major, GRID_DEFAULT_MAJOR_MM);
-  if (prefs.gridMajor < prefs.gridMinor) prefs.gridMajor = prefs.gridMinor;
+  S.prefs.gridAuto = false;
+  S.prefs.gridMinor = clampGridSpacing(minor, GRID_DEFAULT_MINOR_MM);
+  if (major != null) S.prefs.gridMajor = clampGridSpacing(major, GRID_DEFAULT_MAJOR_MM);
+  if (S.prefs.gridMajor < S.prefs.gridMinor) S.prefs.gridMajor = S.prefs.gridMinor;
   savePrefs();
   rebuildGrid();
   refreshToggles();
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
   setHint(`Grid ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`);
 }
 
 function setGridAuto(next) {
-  prefs.gridAuto = Boolean(next);
+  S.prefs.gridAuto = Boolean(next);
   savePrefs();
   rebuildGrid();
   refreshToggles();
-  setHint(prefs.gridAuto
+  setHint(S.prefs.gridAuto
     ? `Grid auto ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`
     : "Grid spacing is manual.");
 }
 
 function setGridMinorOn(next) {
-  gridMinorOn = next;
-  prefs.gridMinorOn = next;
+  S.gridMinorOn = next;
+  S.prefs.gridMinorOn = next;
   savePrefs();
   rebuildGrid();
   refreshToggles();
-  setHint(gridMinorOn ? "Minor grid on." : "Minor grid off.");
+  setHint(S.gridMinorOn ? "Minor grid on." : "Minor grid off.");
 }
 
 function setGridHiddenScale(next, opts = {}) {
-  prefs.gridHiddenScale = clampHiddenScale(next);
+  S.prefs.gridHiddenScale = clampHiddenScale(next);
   savePrefs();
   rebuildGrid();
   syncGridPrefsForm();
@@ -563,15 +407,15 @@ function setGridHiddenScale(next, opts = {}) {
 }
 
 function setGridMinorStyle(next) {
-  prefs.gridMinorStyle = next === "lines" ? "lines" : "dots";
+  S.prefs.gridMinorStyle = next === "lines" ? "lines" : "dots";
   savePrefs();
   rebuildGrid();
   syncGridPrefsForm();
-  setHint(prefs.gridMinorStyle === "dots" ? "Minor grid: dots." : "Minor grid: lines.");
+  setHint(S.prefs.gridMinorStyle === "dots" ? "Minor grid: dots." : "Minor grid: lines.");
 }
 
 function setGridDotSize(next, opts = {}) {
-  prefs.gridDotSize = clampDotSize(next);
+  S.prefs.gridDotSize = clampDotSize(next);
   savePrefs();
   const size = gridDotSize();
   let updated = false;
@@ -589,7 +433,7 @@ function setGridDotSize(next, opts = {}) {
 }
 
 function setGridLineWidth(next, opts = {}) {
-  prefs.gridLineWidth = clampLineWidth(next);
+  S.prefs.gridLineWidth = clampLineWidth(next);
   savePrefs();
   const width = gridLineWidth();
   let updated = false;
@@ -607,24 +451,24 @@ function setGridLineWidth(next, opts = {}) {
 }
 
 function setDisplayUnit(next) {
-  prefs.displayUnit = UNIT_MM[next] ? next : "mm";
+  S.prefs.displayUnit = UNIT_MM[next] ? next : "mm";
   savePrefs();
   refreshToggles();
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
   setHint(`Units ${displayUnit()}.`);
 }
 
 function syncGridMenu() {
   const minorOnEl = document.getElementById("grid-minor-on");
-  if (minorOnEl) minorOnEl.checked = gridMinorOn;
+  if (minorOnEl) minorOnEl.checked = S.gridMinorOn;
 }
 
 function syncGridPrefsForm() {
   const showEl = document.getElementById("gpref-show");
   if (!showEl) return;
-  showEl.checked = gridOn;
-  document.getElementById("gpref-minor-on").checked = gridMinorOn;
-  document.getElementById("gpref-snap").checked = gridSnapOn;
+  showEl.checked = S.gridOn;
+  document.getElementById("gpref-minor-on").checked = S.gridMinorOn;
+  document.getElementById("gpref-snap").checked = S.gridSnapOn;
   const autoEl = document.getElementById("gpref-auto");
   if (autoEl) autoEl.checked = gridAutoOn();
   const styleEl = document.getElementById("gpref-minor-style");
@@ -713,13 +557,13 @@ ghosts.renderOrder = 2;
 preselects.renderOrder = 3;
 
 function camera() {
-  return useOrtho ? orthoCam : persp;
+  return S.useOrtho ? orthoCam : persp;
 }
 
 function applyCameraPose(position, target, up) {
   if (up) viewUp.copy(up);
   const src = camera();
-  const dst = useOrtho ? persp : orthoCam;
+  const dst = S.useOrtho ? persp : orthoCam;
   src.position.copy(position);
   src.up.copy(viewUp);
   src.lookAt(target);
@@ -744,7 +588,7 @@ let viewSize = { w: 0, h: 0 };
 
 function syncCameras() {
   const src = camera();
-  const dst = useOrtho ? persp : orthoCam;
+  const dst = S.useOrtho ? persp : orthoCam;
   src.up.copy(viewUp);
   dst.position.copy(src.position);
   dst.quaternion.copy(src.quaternion);
@@ -774,10 +618,10 @@ function syncViewMenu() {
     const el = document.querySelector(`[data-cmd="${cmd}"]`);
     if (el) el.classList.toggle("is-on", on);
   };
-  mark("perspective", projection === "perspective");
-  mark("parallel", projection === "parallel");
+  mark("perspective", S.projection === "perspective");
+  mark("parallel", S.projection === "parallel");
   for (const name of Object.keys(VIEW_PRESETS)) {
-    mark(`view-${name}`, namedView === name);
+    mark(`view-${name}`, S.namedView === name);
   }
 }
 
@@ -795,12 +639,12 @@ function bindProjectionCamera(opts = {}) {
   const dst = camera();
   dst.up.copy(viewUp);
   controls.object = dst;
-  const named = namedView && VIEW_PRESETS[namedView];
-  projButton.classList.toggle("active", useOrtho);
+  const named = S.namedView && VIEW_PRESETS[S.namedView];
+  projButton.classList.toggle("active", S.useOrtho);
   projButton.title = named
     ? `${named.label} (O perspective / parallel)`
-    : useOrtho ? "Parallel (O)" : "Perspective (O)";
-  setOrbitPoleLimit(Boolean(namedView));
+    : S.useOrtho ? "Parallel (O)" : "Perspective (O)";
+  setOrbitPoleLimit(Boolean(S.namedView));
   syncCameras();
   if (!opts.deferUpdate) controls.update();
   syncViewMenu();
@@ -808,13 +652,13 @@ function bindProjectionCamera(opts = {}) {
 
 function setProjectionMode(mode, extras = {}) {
   if (mode === "orthographic") {
-    goNamedView(namedView || "top");
+    goNamedView(S.namedView || "top");
     return;
   }
-  const leavingNamed = namedView;
-  namedView = null;
-  projection = mode;
-  useOrtho = mode !== "perspective";
+  const leavingNamed = S.namedView;
+  S.namedView = null;
+  S.projection = mode;
+  S.useOrtho = mode !== "perspective";
   const hint = mode === "perspective" ? "Perspective." : "Parallel.";
   if (leavingNamed) {
     viewUp.copy(WORLD_UP);
@@ -825,7 +669,7 @@ function setProjectionMode(mode, extras = {}) {
     return;
   }
   viewUp.copy(WORLD_UP);
-  const src = useOrtho ? persp : orthoCam;
+  const src = S.useOrtho ? persp : orthoCam;
   const dst = camera();
   dst.position.copy(src.position);
   dst.quaternion.copy(src.quaternion);
@@ -839,13 +683,13 @@ function setProjection(nextOrtho) {
 }
 
 function releaseNamedViewForOrbit() {
-  if (!namedView) return;
-  const leaving = namedView;
-  namedView = null;
+  if (!S.namedView) return;
+  const leaving = S.namedView;
+  S.namedView = null;
   viewAnim = null;
-  if (projection === "orthographic") {
-    projection = "parallel";
-    useOrtho = true;
+  if (S.projection === "orthographic") {
+    S.projection = "parallel";
+    S.useOrtho = true;
   }
   const target = controls.target.clone();
   const offset = camera().position.clone().sub(target);
@@ -861,9 +705,9 @@ function releaseNamedViewForOrbit() {
 function goNamedView(name) {
   const preset = VIEW_PRESETS[name];
   if (!preset) return;
-  namedView = name;
-  projection = "orthographic";
-  useOrtho = true;
+  S.namedView = name;
+  S.projection = "orthographic";
+  S.useOrtho = true;
   viewUp.copy(preset.up);
   bindProjectionCamera({ deferUpdate: true });
   goToView(preset.dir.clone(), { up: preset.up.clone(), axis: true });
@@ -1064,9 +908,9 @@ function tickViewAnim() {
 }
 
 function fitView() {
-  let dir = namedView ? VIEW_PRESETS[namedView].dir.clone() : camera().position.clone().sub(controls.target);
+  let dir = S.namedView ? VIEW_PRESETS[S.namedView].dir.clone() : camera().position.clone().sub(controls.target);
   if (dir.lengthSq() < 1e-8) dir.copy(ISO_DIR);
-  lookAtScene(dir, { up: viewUp.clone(), axis: Boolean(namedView) });
+  lookAtScene(dir, { up: viewUp.clone(), axis: Boolean(S.namedView) });
 }
 
 let cubePointer = null;
@@ -1088,10 +932,10 @@ cubeCanvas.addEventListener("pointerup", (event) => {
   const name = namedViewFromDir(dir);
   if (name) goNamedView(name);
   else {
-    namedView = null;
-    if (projection === "orthographic") {
-      projection = "parallel";
-      useOrtho = true;
+    S.namedView = null;
+    if (S.projection === "orthographic") {
+      S.projection = "parallel";
+      S.useOrtho = true;
       bindProjectionCamera();
     }
     viewUp.copy(WORLD_UP);
@@ -1104,10 +948,10 @@ cubeCanvas.addEventListener("pointermove", (event) => {
 });
 cubeCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
 document.getElementById("view-iso").addEventListener("click", () => {
-  namedView = null;
-  if (projection === "orthographic") {
-    projection = "parallel";
-    useOrtho = true;
+  S.namedView = null;
+  if (S.projection === "orthographic") {
+    S.projection = "parallel";
+    S.useOrtho = true;
   }
   viewUp.copy(WORLD_UP);
   bindProjectionCamera();
@@ -1160,25 +1004,25 @@ function isTypingField(event) {
 }
 
 function refreshToggles() {
-  snapButton.classList.toggle("active", snapOn);
-  gridSnapButton.classList.toggle("active", gridSnapOn);
-  orthoButton.classList.toggle("active", orthoOn);
-  gridButton.classList.toggle("active", gridOn);
+  snapButton.classList.toggle("active", S.snapOn);
+  gridSnapButton.classList.toggle("active", S.gridSnapOn);
+  orthoButton.classList.toggle("active", S.orthoOn);
+  gridButton.classList.toggle("active", S.gridOn);
   const parts = [];
-  if (snapOn) parts.push("SNAP");
-  if (gridSnapOn) parts.push(`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`);
-  if (orthoOn) parts.push("ORTHO");
-  if (gridOn) parts.push("GRID");
-  if (tool === "select") {
+  if (S.snapOn) parts.push("SNAP");
+  if (S.gridSnapOn) parts.push(`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`);
+  if (S.orthoOn) parts.push("ORTHO");
+  if (S.gridOn) parts.push("GRID");
+  if (S.tool === "select") {
     const names = {
       point: "POINT", line: "LINE", face: "FACE", solid: "SOLID", element: "ELEMENT",
     };
-    parts.push(names[selectFilter] || "ELEMENT");
+    parts.push(names[S.selectFilter] || "ELEMENT");
   }
   const typed = activeLength();
   if (typed !== null) parts.push(formatLength(typed));
   status.textContent = parts.join(" · ") || "free";
-  grid.visible = gridOn;
+  grid.visible = S.gridOn;
   syncGridMenu();
   syncGridPrefsForm();
 }
@@ -1206,33 +1050,6 @@ function sidesValue() {
 
 function arrayCount() {
   return 4;
-}
-
-function parseLength(text) {
-  const match = String(text || "").trim().match(/^([+-]?\d+(?:\.\d+)?)\s*(mm|cm|m|in|")?$/i);
-  if (!match) return null;
-  const n = Number(match[1]);
-  if (!Number.isFinite(n) || n <= 0) return null;
-  const suffix = match[2] ? match[2].toLowerCase() : displayUnit();
-  const key = suffix === '"' ? "in" : suffix;
-  const factor = UNIT_MM[key];
-  if (!factor) return null;
-  return n * factor;
-}
-
-function formatLength(mm) {
-  if (!Number.isFinite(mm)) return "—";
-  return `${formatNumber(mm)} ${displayUnit()}`;
-}
-
-function formatMm(value) {
-  return formatLength(value);
-}
-
-function formatDeg(rad) {
-  let deg = rad * 180 / Math.PI;
-  if (deg < 0) deg += 360;
-  return `${Math.round(deg * 10) / 10}°`;
 }
 
 function worldToScreen(x, y, z) {
@@ -1277,41 +1094,41 @@ function parseCssHex(value, fallback) {
 }
 
 function clayHex() {
-  const value = Math.max(80, Math.min(230, Number(prefs.clay) || 176));
+  const value = Math.max(80, Math.min(230, Number(S.prefs.clay) || 176));
   return (value << 16) | (value << 8) | value;
 }
 
 function curveIdle() {
-  return parseCssHex(prefs.curve, EDGE_COLOR);
+  return parseCssHex(S.prefs.curve, EDGE_COLOR);
 }
 
 function isPicked(entityId) {
-  return entityId != null && selectedIds.has(entityId);
+  return entityId != null && S.selectedIds.has(entityId);
 }
 
 function selectionTints(entityId) {
   if (entityId == null) return false;
   if (isPicked(entityId)) return true;
   const seen = new Set();
-  const stack = [...(brepParentsOf.get(entityId) || [])];
+  const stack = [...(S.brepParentsOf.get(entityId) || [])];
   while (stack.length) {
     const parentId = stack.pop();
     if (seen.has(parentId)) continue;
     seen.add(parentId);
     if (isPicked(parentId)) return true;
-    stack.push(...(brepParentsOf.get(parentId) || []));
+    stack.push(...(S.brepParentsOf.get(parentId) || []));
   }
   return false;
 }
 
 function curveFor(entityId) {
   if (selectionTints(entityId)) return CURVE_PICK;
-  if (entityId != null && cutterIds.has(entityId)) return CURVE_HOVER;
+  if (entityId != null && S.cutterIds.has(entityId)) return CURVE_HOVER;
   return curveIdle();
 }
 
 function lineOverlay(entityId) {
-  return selectFilter === "line" || selectionTints(entityId);
+  return S.selectFilter === "line" || selectionTints(entityId);
 }
 
 function clayMat(preview, opacity, entityId = null) {
@@ -1324,7 +1141,7 @@ function clayMat(preview, opacity, entityId = null) {
 }
 
 function addEdgeOverlay(group, mesh, entityId, preview) {
-  if (preview || !prefs.showEdges) return;
+  if (preview || !S.prefs.showEdges) return;
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(mesh.geometry),
     new THREE.LineBasicMaterial({ color: EDGE_COLOR }),
@@ -1337,7 +1154,7 @@ function addEdgeOverlay(group, mesh, entityId, preview) {
 
 function addCurve(group, pts, color = curveIdle(), entityId = null) {
   if (pts.length < 2) return;
-  if (!isOverlayGroup(group) && !prefs.showCurves) return;
+  if (!isOverlayGroup(group) && !S.prefs.showCurves) return;
   const overlay = group !== ghosts && lineOverlay(entityId);
   const line = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(
@@ -1382,7 +1199,7 @@ function addVolume(group, origin, size, color, opacity, entityId = null) {
   );
   mesh.position.set(origin[0] + size[0] / 2, origin[1] + size[1] / 2, origin[2] + size[2] / 2);
   mark(mesh, entityId);
-  if (!preview && !prefs.showFaces) mesh.visible = false;
+  if (!preview && !S.prefs.showFaces) mesh.visible = false;
   group.add(mesh);
   addEdgeOverlay(group, mesh, entityId, preview);
 }
@@ -1396,7 +1213,7 @@ function addCylinder(group, cx, cy, radius, originZ, height, color, opacity, ent
   mesh.rotation.x = Math.PI / 2;
   mesh.position.set(cx, cy, originZ + height / 2);
   mark(mesh, entityId);
-  if (!preview && !prefs.showFaces) mesh.visible = false;
+  if (!preview && !S.prefs.showFaces) mesh.visible = false;
   group.add(mesh);
   addEdgeOverlay(group, mesh, entityId, preview);
 }
@@ -1405,7 +1222,7 @@ function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entityId = nu
   if (pts.length < 3) return;
   const preview = isOverlayGroup(group);
   const z = (Number.isFinite(pts[0].z_mm) ? pts[0].z_mm : 0) + 20;
-  if (fill && (preview || prefs.showFaces)) {
+  if (fill && (preview || S.prefs.showFaces)) {
     const vertices = [];
     const origin = pts[0];
     for (let i = 1; i < pts.length - 1; i += 1) {
@@ -1427,7 +1244,7 @@ function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entityId = nu
     mark(mesh, entityId);
     group.add(mesh);
   }
-  if (!preview && !prefs.showEdges && !prefs.showCurves) return;
+  if (!preview && !S.prefs.showEdges && !S.prefs.showCurves) return;
   const loop = pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, z + 8));
   loop.push(loop[0].clone());
   const outline = new THREE.Line(
@@ -1455,7 +1272,7 @@ function addPlanarFace(group, pts, entityId) {
   if (pts.length < 3) return;
   const preview = isOverlayGroup(group);
   const world = pts.map(xyzMm);
-  if (preview || prefs.showFaces) {
+  if (preview || S.prefs.showFaces) {
     const vertices = [];
     const origin = world[0];
     for (let i = 1; i < world.length - 1; i += 1) {
@@ -1473,7 +1290,7 @@ function addPlanarFace(group, pts, entityId) {
     mark(mesh, entityId);
     group.add(mesh);
   }
-  if ((preview || prefs.showEdges || prefs.showCurves) && (preview || selectFilter !== "line")) {
+  if ((preview || S.prefs.showEdges || S.prefs.showCurves) && (preview || S.selectFilter !== "line")) {
     const loop = world.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm));
     loop.push(loop[0].clone());
     const outline = new THREE.Line(
@@ -1488,10 +1305,10 @@ function addPlanarFace(group, pts, entityId) {
 }
 
 function addSolidPrism(group, solid, byId) {
-  const face = (sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
+  const face = (S.sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
   if (!face) return false;
   const base = face.point_ids.map((id) => byId.get(id)).filter(Boolean);
-  const cap = (sceneState.faces || []).find((item) => item.entity_id === solid.cap_id);
+  const cap = (S.sceneState.faces || []).find((item) => item.entity_id === solid.cap_id);
   const lid = cap
     ? cap.point_ids.map((id) => byId.get(id)).filter(Boolean)
     : [];
@@ -1507,7 +1324,7 @@ function addSolidPrism(group, solid, byId) {
 }
 
 function addSolidVolumeFallback(group, solid, byId) {
-  const face = (sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
+  const face = (S.sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
   if (!face) return;
   const pts = face.point_ids.map((id) => byId.get(id)).filter(Boolean).map(xyzMm);
   if (!pts.length) return;
@@ -1539,7 +1356,7 @@ function addVertexDot(group, point) {
   const picked = selectionTints(point.entity_id);
   const material = new THREE.PointsMaterial({
     color: picked ? CURVE_PICK : EDGE_COLOR,
-    size: selectFilter === "point" || picked ? 11 : 8,
+    size: S.selectFilter === "point" || picked ? 11 : 8,
     sizeAttenuation: false,
     depthTest: false,
     depthWrite: false,
@@ -1553,15 +1370,15 @@ function addVertexDot(group, point) {
 
 function rebuild() {
   draft.clear();
-  committedDims = [];
+  S.committedDims = [];
   indexBrep();
-  const byId = new Map((sceneState.points || []).map((point) => [point.entity_id, point]));
-  for (const line of sceneState.lines || []) {
-    if (hiddenIds.has(line.entity_id)) continue;
+  const byId = new Map((S.sceneState.points || []).map((point) => [point.entity_id, point]));
+  for (const line of S.sceneState.lines || []) {
+    if (S.hiddenIds.has(line.entity_id)) continue;
     const start = byId.get(line.start_id);
     const end = byId.get(line.end_id);
     if (!start || !end) continue;
-    if (prefs.showCurves) {
+    if (S.prefs.showCurves) {
       const overlay = lineOverlay(line.entity_id);
       const a = xyzMm(start);
       const b = xyzMm(end);
@@ -1577,11 +1394,11 @@ function rebuild() {
       draft.add(drawn);
     }
   }
-  for (const polyline of sceneState.polylines || []) {
-    if (hiddenIds.has(polyline.entity_id)) continue;
+  for (const polyline of S.sceneState.polylines || []) {
+    if (S.hiddenIds.has(polyline.entity_id)) continue;
     const pts = polyline.point_ids.map((id) => byId.get(id)).filter(Boolean);
     if (pts.length < 2) continue;
-    if (!prefs.showCurves) continue;
+    if (!S.prefs.showCurves) continue;
     const overlay = lineOverlay(polyline.entity_id);
     const vectors = pts.map((point) => {
       const p = xyzMm(point);
@@ -1600,13 +1417,13 @@ function rebuild() {
     draft.add(drawn);
   }
   const extruded = new Set();
-  for (const solid of sceneState.solids || []) {
+  for (const solid of S.sceneState.solids || []) {
     extruded.add(solid.face_id);
     if (solid.cap_id) extruded.add(solid.cap_id);
     for (const wallId of solid.wall_ids || []) extruded.add(wallId);
   }
-  for (const face of sceneState.faces || []) {
-    if (hiddenIds.has(face.entity_id) || extruded.has(face.entity_id)) continue;
+  for (const face of S.sceneState.faces || []) {
+    if (S.hiddenIds.has(face.entity_id) || extruded.has(face.entity_id)) continue;
     const pts = face.point_ids.map((id) => byId.get(id)).filter(Boolean);
     addFaceGraphic(draft, pts, {
       fill: true,
@@ -1614,57 +1431,57 @@ function rebuild() {
       entityId: face.entity_id,
     });
   }
-  for (const circle of sceneState.circles || []) {
-    if (hiddenIds.has(circle.entity_id)) continue;
+  for (const circle of S.sceneState.circles || []) {
+    if (S.hiddenIds.has(circle.entity_id)) continue;
     const center = byId.get(circle.center_id);
     if (!center) continue;
     const loop = sampleCircle(center, circle.radius_mm);
     const showFill = !extruded.has(circle.entity_id)
-      || selectedIds.has(circle.entity_id)
-      || selectFilter === "face";
+      || S.selectedIds.has(circle.entity_id)
+      || S.selectFilter === "face";
     addFaceGraphic(draft, loop.slice(0, -1), {
       fill: showFill,
       opacity: 0.92,
       entityId: circle.entity_id,
     });
   }
-  for (const arc of sceneState.arcs || []) {
-    if (hiddenIds.has(arc.entity_id)) continue;
+  for (const arc of S.sceneState.arcs || []) {
+    if (S.hiddenIds.has(arc.entity_id)) continue;
     const start = byId.get(arc.start_id);
     const midPt = byId.get(arc.mid_id);
     const end = byId.get(arc.end_id);
     if (!start || !midPt || !end) continue;
     addCurve(draft, sampleArc(start, midPt, end), curveFor(arc.entity_id), arc.entity_id);
   }
-  for (const ellipse of sceneState.ellipses || []) {
-    if (hiddenIds.has(ellipse.entity_id)) continue;
+  for (const ellipse of S.sceneState.ellipses || []) {
+    if (S.hiddenIds.has(ellipse.entity_id)) continue;
     const center = byId.get(ellipse.center_id);
     if (!center) continue;
     const loop = sampleEllipse(center, ellipse.radius_x_mm, ellipse.radius_y_mm);
     const showFill = !extruded.has(ellipse.entity_id)
-      || selectedIds.has(ellipse.entity_id)
-      || selectFilter === "face";
+      || S.selectedIds.has(ellipse.entity_id)
+      || S.selectFilter === "face";
     addFaceGraphic(draft, loop.slice(0, -1), {
       fill: showFill,
       opacity: 0.92,
       entityId: ellipse.entity_id,
     });
   }
-  for (const bezier of sceneState.beziers || []) {
-    if (hiddenIds.has(bezier.entity_id)) continue;
+  for (const bezier of S.sceneState.beziers || []) {
+    if (S.hiddenIds.has(bezier.entity_id)) continue;
     const pts = bezier.point_ids.map((id) => byId.get(id)).filter(Boolean);
     if (pts.length !== 4) continue;
     addCurve(draft, sampleBezier(pts), curveFor(bezier.entity_id), bezier.entity_id);
   }
-  for (const box of sceneState.boxes || []) {
-    if (hiddenIds.has(box.entity_id)) continue;
+  for (const box of S.sceneState.boxes || []) {
+    if (S.hiddenIds.has(box.entity_id)) continue;
     addVolume(draft, box.origin_xyz_mm, box.size_xyz_mm, clayHex(), 1, box.entity_id);
   }
-  for (const solid of sceneState.solids || []) {
-    if (hiddenIds.has(solid.entity_id)) continue;
+  for (const solid of S.sceneState.solids || []) {
+    if (S.hiddenIds.has(solid.entity_id)) continue;
     const color = clayHex();
-    const circle = (sceneState.circles || []).find((item) => item.entity_id === solid.face_id);
-    const ellipse = (sceneState.ellipses || []).find((item) => item.entity_id === solid.face_id);
+    const circle = (S.sceneState.circles || []).find((item) => item.entity_id === solid.face_id);
+    const ellipse = (S.sceneState.ellipses || []).find((item) => item.entity_id === solid.face_id);
     const height = Math.abs(solid.distance_mm);
     if (circle) {
       const center = byId.get(circle.center_id);
@@ -1689,19 +1506,19 @@ function rebuild() {
     }
     addSolidPrism(draft, solid, byId) || addSolidVolumeFallback(draft, solid, byId);
   }
-  for (const point of sceneState.points || []) {
-    if (!prefs.showCurves || hiddenIds.has(point.entity_id)) continue;
+  for (const point of S.sceneState.points || []) {
+    if (!S.prefs.showCurves || S.hiddenIds.has(point.entity_id)) continue;
     addVertexDot(draft, point);
   }
   indexBrep();
   refreshDocks();
   rebuildGrid();
-  if (lastPointer && tool === "select") updatePreselect(lastPointer);
+  if (S.lastPointer && S.tool === "select") updatePreselect(S.lastPointer);
   else clearPreselect();
 }
 
 async function refreshFrom(payload) {
-  sceneState = payload;
+  S.sceneState = payload;
   try {
     rebuild();
   } catch (error) {
@@ -1724,16 +1541,16 @@ function catalog() {
       item,
     });
   };
-  for (const item of sceneState.points || []) push("Point", item);
-  for (const item of sceneState.lines || []) push("Line", item);
-  for (const item of sceneState.polylines || []) push("Polyline", item);
-  for (const item of sceneState.faces || []) push("Face", item);
-  for (const item of sceneState.circles || []) push("Circle", item);
-  for (const item of sceneState.arcs || []) push("Arc", item);
-  for (const item of sceneState.ellipses || []) push("Ellipse", item);
-  for (const item of sceneState.beziers || []) push("Bezier", item);
-  for (const item of sceneState.boxes || []) push("Box", item);
-  for (const item of sceneState.solids || []) push("Solid", item);
+  for (const item of S.sceneState.points || []) push("Point", item);
+  for (const item of S.sceneState.lines || []) push("Line", item);
+  for (const item of S.sceneState.polylines || []) push("Polyline", item);
+  for (const item of S.sceneState.faces || []) push("Face", item);
+  for (const item of S.sceneState.circles || []) push("Circle", item);
+  for (const item of S.sceneState.arcs || []) push("Arc", item);
+  for (const item of S.sceneState.ellipses || []) push("Ellipse", item);
+  for (const item of S.sceneState.beziers || []) push("Bezier", item);
+  for (const item of S.sceneState.boxes || []) push("Box", item);
+  for (const item of S.sceneState.solids || []) push("Solid", item);
   rows.sort((a, b) => a.id - b.id);
   return rows;
 }
@@ -1745,7 +1562,7 @@ function brepKind(kind) {
 }
 
 function lineConnecting(a, b) {
-  return (sceneState.lines || []).find((line) => (
+  return (S.sceneState.lines || []).find((line) => (
     (line.start_id === a && line.end_id === b)
     || (line.start_id === b && line.end_id === a)
   )) || null;
@@ -1794,8 +1611,8 @@ function brepChildrenLocal(row) {
 }
 
 function brepChildren(row) {
-  if (brepChildrenOf.has(row.id)) {
-    return (brepChildrenOf.get(row.id) || []).map(findRecord).filter(Boolean);
+  if (S.brepChildrenOf.has(row.id)) {
+    return (S.brepChildrenOf.get(row.id) || []).map(findRecord).filter(Boolean);
   }
   return brepChildrenLocal(row);
 }
@@ -1821,39 +1638,39 @@ function brepRoots() {
 }
 
 function indexBrep() {
-  brepChildrenOf = new Map();
-  brepParentsOf = new Map();
-  brepRootOf = new Map();
-  brepSolidOf = new Map();
-  const raw = sceneState.brep;
+  S.brepChildrenOf = new Map();
+  S.brepParentsOf = new Map();
+  S.brepRootOf = new Map();
+  S.brepSolidOf = new Map();
+  const raw = S.sceneState.brep;
   if (raw && raw.children && raw.root) {
     for (const [key, kids] of Object.entries(raw.children)) {
-      brepChildrenOf.set(Number(key), (kids || []).map(Number));
+      S.brepChildrenOf.set(Number(key), (kids || []).map(Number));
     }
     for (const [key, pars] of Object.entries(raw.parents || {})) {
-      brepParentsOf.set(Number(key), (pars || []).map(Number));
+      S.brepParentsOf.set(Number(key), (pars || []).map(Number));
     }
     for (const [key, value] of Object.entries(raw.root)) {
-      brepRootOf.set(Number(key), Number(value));
+      S.brepRootOf.set(Number(key), Number(value));
     }
     for (const [key, value] of Object.entries(raw.solid || {})) {
-      brepSolidOf.set(Number(key), Number(value));
+      S.brepSolidOf.set(Number(key), Number(value));
     }
     return;
   }
   for (const row of catalog()) {
     const kids = brepChildrenLocal(row);
-    brepChildrenOf.set(row.id, kids.map((child) => child.id));
+    S.brepChildrenOf.set(row.id, kids.map((child) => child.id));
     for (const child of kids) {
-      const pars = brepParentsOf.get(child.id) || [];
+      const pars = S.brepParentsOf.get(child.id) || [];
       if (!pars.includes(row.id)) pars.push(row.id);
-      brepParentsOf.set(child.id, pars);
+      S.brepParentsOf.set(child.id, pars);
     }
   }
   for (const row of catalog()) {
-    brepRootOf.set(row.id, walkRoot(row.id));
+    S.brepRootOf.set(row.id, walkRoot(row.id));
     const owner = walkSolid(row.id);
-    if (owner != null) brepSolidOf.set(row.id, owner);
+    if (owner != null) S.brepSolidOf.set(row.id, owner);
   }
 }
 
@@ -1861,7 +1678,7 @@ function walkRoot(id) {
   const seen = new Set();
   let current = id;
   while (true) {
-    const pars = brepParentsOf.get(current) || [];
+    const pars = S.brepParentsOf.get(current) || [];
     if (!pars.length) return current;
     const solid = pars.find((pid) => {
       const row = findRecord(pid);
@@ -1877,7 +1694,7 @@ function walkRoot(id) {
 function walkSolid(id) {
   const row = findRecord(id);
   if (row && FILTER_KINDS.solid.has(row.kind)) return id;
-  const stack = [...(brepParentsOf.get(id) || [])];
+  const stack = [...(S.brepParentsOf.get(id) || [])];
   const seen = new Set();
   while (stack.length) {
     const pid = stack.pop();
@@ -1885,19 +1702,19 @@ function walkSolid(id) {
     seen.add(pid);
     const parent = findRecord(pid);
     if (parent && FILTER_KINDS.solid.has(parent.kind)) return pid;
-    stack.push(...(brepParentsOf.get(pid) || []));
+    stack.push(...(S.brepParentsOf.get(pid) || []));
   }
   return null;
 }
 
 function rootId(id) {
-  return brepRootOf.has(id) ? brepRootOf.get(id) : id;
+  return S.brepRootOf.has(id) ? S.brepRootOf.get(id) : id;
 }
 
 function owningSolidId(id) {
   const row = findRecord(id);
   if (row && FILTER_KINDS.solid.has(row.kind)) return id;
-  return brepSolidOf.has(id) ? brepSolidOf.get(id) : null;
+  return S.brepSolidOf.has(id) ? S.brepSolidOf.get(id) : null;
 }
 
 const collapsedTree = new Set();
@@ -1907,8 +1724,8 @@ function renderTreeNode(row, parent) {
   const node = document.createElement("div");
   node.className = "tree-node";
   const rowEl = document.createElement("div");
-  const dimmed = hiddenIds.has(row.id);
-  rowEl.className = `tree-row${selectedIds.has(row.id) ? " selected" : ""}${dimmed ? " dimmed" : ""}`;
+  const dimmed = S.hiddenIds.has(row.id);
+  rowEl.className = `tree-row${S.selectedIds.has(row.id) ? " selected" : ""}${dimmed ? " dimmed" : ""}`;
   rowEl.dataset.id = String(row.id);
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -1943,7 +1760,7 @@ function renderTreeNode(row, parent) {
   rowEl.addEventListener("contextmenu", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!selectedIds.has(row.id)) setSelection(row.id);
+    if (!S.selectedIds.has(row.id)) setSelection(row.id);
     openTreeMenu(event.clientX, event.clientY, row);
   });
   node.append(rowEl);
@@ -1967,7 +1784,7 @@ function closeTreeMenu() {
 
 function openTreeMenu(x, y, row) {
   ctxRow = row;
-  const hidden = hiddenIds.has(row.id);
+  const hidden = S.hiddenIds.has(row.id);
   const kids = brepChildren(row);
   ctxMenu.innerHTML = "";
   const addItem = (label, cmd, shortcut = "") => {
@@ -2011,8 +1828,8 @@ function hideSubtree(row, hide) {
   const ids = new Set([row.id]);
   collectNested(row, ids);
   for (const id of ids) {
-    if (hide) hiddenIds.add(id);
-    else hiddenIds.delete(id);
+    if (hide) S.hiddenIds.add(id);
+    else S.hiddenIds.delete(id);
   }
   rebuild();
 }
@@ -2095,14 +1912,14 @@ function fitEntity(row) {
   const center = box.getCenter(new THREE.Vector3());
   const size = box.getSize(new THREE.Vector3());
   const radius = Math.max(size.length() * 0.55, gridMinorMm() * 2, 1);
-  let dir = namedView ? VIEW_PRESETS[namedView].dir.clone() : camera().position.clone().sub(controls.target);
+  let dir = S.namedView ? VIEW_PRESETS[S.namedView].dir.clone() : camera().position.clone().sub(controls.target);
   if (dir.lengthSq() < 1e-8) dir.copy(ISO_DIR);
   resetViewZoom();
   goToView(dir, {
     target: center,
     dist: frameDistance(radius),
     up: viewUp.clone(),
-    axis: Boolean(namedView),
+    axis: Boolean(S.namedView),
   });
 }
 
@@ -2133,7 +1950,7 @@ function runTreeCommand(cmd, row) {
     return;
   }
   if (cmd === "duplicate") {
-    const ids = selectedIds.has(row.id) ? [...selectedIds] : [row.id];
+    const ids = S.selectedIds.has(row.id) ? [...S.selectedIds] : [row.id];
     duplicateEntities(ids).catch((error) => setHint(error.message));
     return;
   }
@@ -2157,7 +1974,7 @@ function runTreeCommand(cmd, row) {
     return;
   }
   if (cmd === "delete") {
-    if (!selectedIds.has(row.id)) setSelection(row.id);
+    if (!S.selectedIds.has(row.id)) setSelection(row.id);
     commitDelete().catch((error) => setHint(error.message));
   }
 }
@@ -2173,26 +1990,26 @@ function isProfile(id) {
 
 function setSelection(id, { shift = false } = {}) {
   if (id == null) {
-    if (!shift) selectedIds.clear();
+    if (!shift) S.selectedIds.clear();
   } else if (shift) {
-    if (selectedIds.has(id)) selectedIds.delete(id);
-    else selectedIds.add(id);
+    if (S.selectedIds.has(id)) S.selectedIds.delete(id);
+    else S.selectedIds.add(id);
   } else {
-    selectedIds.clear();
-    selectedIds.add(id);
+    S.selectedIds.clear();
+    S.selectedIds.add(id);
   }
   rebuild();
 }
 
 function selectedProfileId() {
-  const profiles = [...selectedIds].filter((id) => isProfile(id));
+  const profiles = [...S.selectedIds].filter((id) => isProfile(id));
   return profiles.length === 1 ? profiles[0] : null;
 }
 
 function refreshDocks() {
   const rows = catalog();
-  for (const id of [...selectedIds]) {
-    if (!rows.some((row) => row.id === id)) selectedIds.delete(id);
+  for (const id of [...S.selectedIds]) {
+    if (!rows.some((row) => row.id === id)) S.selectedIds.delete(id);
   }
   treeEl.innerHTML = "";
   const roots = brepRoots();
@@ -2201,15 +2018,15 @@ function refreshDocks() {
   } else {
     for (const row of roots) renderTreeNode(row, treeEl);
   }
-  if (selectedIds.size === 0) {
+  if (S.selectedIds.size === 0) {
     propBody.textContent = "Nothing selected.";
     return;
   }
-  if (selectedIds.size > 1) {
-    propBody.textContent = `${selectedIds.size} entities selected.`;
+  if (S.selectedIds.size > 1) {
+    propBody.textContent = `${S.selectedIds.size} entities selected.`;
     return;
   }
-  const selected = rows.find((row) => selectedIds.has(row.id)) || null;
+  const selected = rows.find((row) => S.selectedIds.has(row.id)) || null;
   if (!selected) {
     propBody.textContent = "Nothing selected.";
     return;
@@ -2403,8 +2220,8 @@ function curveWorldPoints(row) {
 
 function pickClosestPoint(event) {
   let best = null;
-  for (const point of sceneState.points || []) {
-    if (hiddenIds.has(point.entity_id)) continue;
+  for (const point of S.sceneState.points || []) {
+    if (S.hiddenIds.has(point.entity_id)) continue;
     const dist = pixelDist(event, point);
     if (dist <= PICK_POINT_PX && (!best || dist < best.dist)) {
       best = { id: point.entity_id, dist };
@@ -2416,7 +2233,7 @@ function pickClosestPoint(event) {
 function pickClosestLine(event) {
   let best = null;
   for (const row of catalog()) {
-    if (!FILTER_KINDS.line.has(row.kind) || hiddenIds.has(row.id)) continue;
+    if (!FILTER_KINDS.line.has(row.kind) || S.hiddenIds.has(row.id)) continue;
     const shape = curveWorldPoints(row);
     if (!shape) continue;
     const dist = pixelDistLoop(event, shape.pts, shape.closed);
@@ -2430,17 +2247,17 @@ function pickClosestLine(event) {
 function facePickPolygons() {
   const polygons = [];
   for (const row of catalog()) {
-    if (!FILTER_KINDS.face.has(row.kind) || hiddenIds.has(row.id)) continue;
+    if (!FILTER_KINDS.face.has(row.kind) || S.hiddenIds.has(row.id)) continue;
     const pts = profileWorldPoints(row);
     if (pts.length >= 3) polygons.push({ id: row.id, pts });
   }
-  for (const solid of sceneState.solids || []) {
-    if (hiddenIds.has(solid.entity_id)) continue;
+  for (const solid of S.sceneState.solids || []) {
+    if (S.hiddenIds.has(solid.entity_id)) continue;
     const cap = findRecord(solid.cap_id);
     if (cap && FILTER_KINDS.face.has(cap.kind)) continue;
     const profile = findRecord(solid.face_id);
     if (!profile || (profile.kind !== "Circle" && profile.kind !== "Ellipse")) continue;
-    if (hiddenIds.has(profile.id)) continue;
+    if (S.hiddenIds.has(profile.id)) continue;
     const pts = profileWorldPoints(profile);
     if (pts.length < 3) continue;
     const dir = solid.direction_xyz || [0, 0, 1];
@@ -2499,7 +2316,7 @@ function pickClosestSolid(event) {
   const ray = eventRay(event);
   let best = null;
   for (const row of catalog()) {
-    if (!FILTER_KINDS.solid.has(row.kind) || hiddenIds.has(row.id)) continue;
+    if (!FILTER_KINDS.solid.has(row.kind) || S.hiddenIds.has(row.id)) continue;
     const dist = rayHitsSolid(ray, row);
     if (dist != null && (!best || dist < best.dist)) best = { id: row.id, dist };
   }
@@ -2528,11 +2345,11 @@ function pickByFilter(event, filter) {
 }
 
 function pickEntity(event) {
-  if (tool === "select") return pickByFilter(event, selectFilter);
-  if (tool === "trim" || tool === "extend" || tool === "break") {
+  if (S.tool === "select") return pickByFilter(event, S.selectFilter);
+  if (S.tool === "trim" || S.tool === "extend" || S.tool === "break") {
     return pickClosestLine(event);
   }
-  if (tool === "node") {
+  if (S.tool === "node") {
     return pickClosestLine(event) || pickClosestFace(event);
   }
   const drawn = pickDrawnEntity(event);
@@ -2541,10 +2358,10 @@ function pickEntity(event) {
 
 function filterSelectionIds(ids) {
   indexBrep();
-  if (selectFilter === "element") {
+  if (S.selectFilter === "element") {
     return [...new Set(ids.map((id) => rootId(id)))];
   }
-  if (selectFilter === "solid") {
+  if (S.selectFilter === "solid") {
     const solids = new Set();
     for (const id of ids) {
       const row = findRecord(id);
@@ -2554,7 +2371,7 @@ function filterSelectionIds(ids) {
     }
     return [...solids];
   }
-  const kinds = FILTER_KINDS[selectFilter];
+  const kinds = FILTER_KINDS[S.selectFilter];
   return ids.filter((id) => {
     const row = findRecord(id);
     return row && kinds.has(row.kind);
@@ -2565,18 +2382,18 @@ function convertSelectionToFilter(filter) {
   indexBrep();
   const next = new Set();
   if (filter === "element") {
-    for (const id of selectedIds) next.add(rootId(id));
+    for (const id of S.selectedIds) next.add(rootId(id));
     return next;
   }
   const kinds = FILTER_KINDS[filter];
-  for (const id of selectedIds) {
+  for (const id of S.selectedIds) {
     const row = findRecord(id);
     if (!row) continue;
     if (kinds.has(row.kind)) {
       next.add(id);
       continue;
     }
-    const stack = [...(brepChildrenOf.get(id) || [])];
+    const stack = [...(S.brepChildrenOf.get(id) || [])];
     const seen = new Set();
     while (stack.length) {
       const childId = stack.pop();
@@ -2584,13 +2401,13 @@ function convertSelectionToFilter(filter) {
       seen.add(childId);
       const child = findRecord(childId);
       if (child && kinds.has(child.kind)) next.add(childId);
-      stack.push(...(brepChildrenOf.get(childId) || []));
+      stack.push(...(S.brepChildrenOf.get(childId) || []));
     }
     if (filter === "solid") {
       const owner = owningSolidId(id);
       if (owner != null) next.add(owner);
     } else {
-      const up = [...(brepParentsOf.get(id) || [])];
+      const up = [...(S.brepParentsOf.get(id) || [])];
       const seenUp = new Set();
       while (up.length) {
         const parentId = up.pop();
@@ -2598,7 +2415,7 @@ function convertSelectionToFilter(filter) {
         seenUp.add(parentId);
         const parent = findRecord(parentId);
         if (parent && kinds.has(parent.kind)) next.add(parentId);
-        up.push(...(brepParentsOf.get(parentId) || []));
+        up.push(...(S.brepParentsOf.get(parentId) || []));
       }
     }
   }
@@ -2607,10 +2424,10 @@ function convertSelectionToFilter(filter) {
 
 function setSelectFilter(next) {
   if (!SELECT_FILTERS.includes(next)) return;
-  selectFilter = next;
-  selectedIds = convertSelectionToFilter(next);
+  S.selectFilter = next;
+  S.selectedIds = convertSelectionToFilter(next);
   for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
-    button.classList.toggle("active", button.dataset.filter === selectFilter);
+    button.classList.toggle("active", button.dataset.filter === S.selectFilter);
   }
   refreshToggles();
   const labels = {
@@ -2620,12 +2437,12 @@ function setSelectFilter(next) {
     solid: "solids",
     element: "whole elements",
   };
-  setHint(`Select ${labels[selectFilter]} (1–5). Click, window, or crossing.`);
+  setHint(`Select ${labels[S.selectFilter]} (1–5). Click, window, or crossing.`);
   rebuild();
 }
 
 function pointById(id) {
-  return (sceneState.points || []).find((point) => point.entity_id === id) || null;
+  return (S.sceneState.points || []).find((point) => point.entity_id === id) || null;
 }
 
 function clientOf(xMm, yMm, zMm = 0) {
@@ -2702,16 +2519,16 @@ function entitiesInWindow(rect, crossing) {
 }
 
 function hideMarquee() {
-  marqueeOrigin = null;
+  S.marqueeOrigin = null;
   marqueeEl.hidden = true;
   marqueeEl.classList.remove("crossing");
 }
 
 function updateMarquee(event) {
-  if (!marqueeOrigin) return;
+  if (!S.marqueeOrigin) return;
   const stage = document.getElementById("stage").getBoundingClientRect();
-  const x0 = marqueeOrigin.x;
-  const y0 = marqueeOrigin.y;
+  const x0 = S.marqueeOrigin.x;
+  const y0 = S.marqueeOrigin.y;
   const x1 = event.clientX;
   const y1 = event.clientY;
   marqueeEl.hidden = false;
@@ -2737,24 +2554,24 @@ function applyWindowSelect(origin, event) {
   const crossing = event.clientX < origin.x;
   const hits = windowHits(origin, event);
   hideMarquee();
-  if (!event.shiftKey) selectedIds.clear();
-  for (const id of hits) selectedIds.add(id);
+  if (!event.shiftKey) S.selectedIds.clear();
+  for (const id of hits) S.selectedIds.add(id);
   rebuild();
   setHint(hits.length
-    ? `${crossing ? "Crossing" : "Window"}: ${selectedIds.size} selected.`
+    ? `${crossing ? "Crossing" : "Window"}: ${S.selectedIds.size} selected.`
     : "Nothing in the window.");
 }
 
 function descendantIds(id) {
   const out = [];
-  const stack = [...(brepChildrenOf.get(id) || [])];
+  const stack = [...(S.brepChildrenOf.get(id) || [])];
   const seen = new Set();
   while (stack.length) {
     const childId = stack.pop();
     if (seen.has(childId)) continue;
     seen.add(childId);
     out.push(childId);
-    stack.push(...(brepChildrenOf.get(childId) || []));
+    stack.push(...(S.brepChildrenOf.get(childId) || []));
   }
   return out;
 }
@@ -2781,7 +2598,7 @@ function drawPreselectEntity(id, shown) {
   const row = findRecord(id);
   if (!row) return;
   const asSolid = FILTER_KINDS.solid.has(row.kind)
-    || (selectFilter === "element" && owningSolidId(id) === id);
+    || (S.selectFilter === "element" && owningSolidId(id) === id);
   if (asSolid) {
     for (const childId of descendantIds(id)) {
       const child = findRecord(childId);
@@ -2825,26 +2642,26 @@ function clearPreselect() {
 }
 
 function updatePreselect(event) {
-  if (tool !== "select" || !event) {
+  if (S.tool !== "select" || !event) {
     clearPreselect();
     return;
   }
   indexBrep();
   let ids = [];
-  if (marqueeOrigin && Math.hypot(event.clientX - marqueeOrigin.x, event.clientY - marqueeOrigin.y) > 5) {
-    ids = windowHits(marqueeOrigin, event);
+  if (S.marqueeOrigin && Math.hypot(event.clientX - S.marqueeOrigin.x, event.clientY - S.marqueeOrigin.y) > 5) {
+    ids = windowHits(S.marqueeOrigin, event);
   } else {
-    const picked = pickByFilter(event, selectFilter);
+    const picked = pickByFilter(event, S.selectFilter);
     if (picked != null) ids = [picked];
   }
-  const key = `${selectFilter}:${ids.slice().sort((a, b) => a - b).join(",")}`;
+  const key = `${S.selectFilter}:${ids.slice().sort((a, b) => a - b).join(",")}`;
   canvas.style.cursor = ids.length ? "pointer" : "";
   if (key === preselectKey) return;
   preselectKey = key;
   preselects.clear();
   const shown = new Set();
   for (const id of ids) {
-    if (selectedIds.has(id)) continue;
+    if (S.selectedIds.has(id)) continue;
     drawPreselectEntity(id, shown);
   }
 }
@@ -2854,7 +2671,7 @@ function lineRows() {
 }
 
 function cutterCandidates(victimId) {
-  const pinned = [...cutterIds].filter((id) => id !== victimId);
+  const pinned = [...S.cutterIds].filter((id) => id !== victimId);
   const source = pinned.length
     ? pinned.map((id) => findRecord(id)).filter((row) => row && row.kind === "Line")
     : lineRows().filter((row) => row.id !== victimId);
@@ -2862,7 +2679,7 @@ function cutterCandidates(victimId) {
 }
 
 function seedCuttersFromSelection() {
-  cutterIds = new Set([...selectedIds].filter((id) => {
+  S.cutterIds = new Set([...S.selectedIds].filter((id) => {
     const row = findRecord(id);
     return row && row.kind === "Line";
   }));
@@ -2969,7 +2786,7 @@ async function commitTrimPreview(preview) {
   setHint(preview.mode === "extend"
     ? "Extended. Click another end, or Esc."
     : "Trimmed. Click another part, or Esc.");
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 }
 
 async function commitBreak(preview) {
@@ -2979,33 +2796,33 @@ async function commitBreak(preview) {
     line_b_id: preview.lineB,
   });
   await refreshFrom(after);
-  pending = null;
+  S.pending = null;
   if (after.created_id != null) setSelection(after.created_id);
   setHint("Broke at the crossing. Click two more lines, or Esc.");
 }
 
 async function finishMove(end) {
-  const dx = end.x_mm - pending.a.x_mm;
-  const dy = end.y_mm - pending.a.y_mm;
-  const dz = (end.z_mm || 0) - (pending.a.z_mm || 0);
+  const dx = end.x_mm - S.pending.a.x_mm;
+  const dy = end.y_mm - S.pending.a.y_mm;
+  const dz = (end.z_mm || 0) - (S.pending.a.z_mm || 0);
   if (Math.hypot(dx, dy, dz) < 1) {
-    pending = null;
+    S.pending = null;
     ghosts.clear();
     setHint("Move cancelled (zero displacement).");
     return;
   }
   await refreshFrom(await api("/api/op", "POST", {
     op: "Translate",
-    entity_ids: [...selectedIds],
+    entity_ids: [...S.selectedIds],
     dx_mm: dx,
     dy_mm: dy,
     dz_mm: dz,
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
-  setHint(`Moved ${selectedIds.size} entities.`);
+  S.ghostDims = [];
+  setHint(`Moved ${S.selectedIds.size} entities.`);
 }
 
 async function finishInsertNode(targetId, xyz) {
@@ -3022,7 +2839,7 @@ async function finishInsertNode(targetId, xyz) {
 }
 
 async function commitFaceFromLines() {
-  const lineIds = [...selectedIds].filter((id) => {
+  const lineIds = [...S.selectedIds].filter((id) => {
     const row = findRecord(id);
     return row && row.kind === "Line";
   });
@@ -3041,7 +2858,7 @@ async function commitFaceFromLines() {
 }
 
 async function commitJoin() {
-  const ids = [...selectedIds].filter((id) => {
+  const ids = [...S.selectedIds].filter((id) => {
     const row = findRecord(id);
     return row && (row.kind === "Line" || row.kind === "Polyline");
   });
@@ -3060,20 +2877,20 @@ async function commitJoin() {
 }
 
 async function commitSew() {
-  if (selectedIds.size === 0) {
+  if (S.selectedIds.size === 0) {
     setHint("Select entities, then Sew to merge coincident points.");
     return;
   }
   await refreshFrom(await api("/api/op", "POST", {
     op: "Sew",
-    entity_ids: [...selectedIds],
+    entity_ids: [...S.selectedIds],
     tolerance_mm: 1,
   }));
   setHint("Sewed coincident points.");
 }
 
 async function commitSimplify() {
-  const ids = [...selectedIds].filter((id) => {
+  const ids = [...S.selectedIds].filter((id) => {
     const row = findRecord(id);
     return row && (row.kind === "Face" || row.kind === "Polyline");
   });
@@ -3089,18 +2906,18 @@ async function commitSimplify() {
 }
 
 async function commitDelete() {
-  if (pending) {
+  if (S.pending) {
     setHint("Finish or Esc the current command before deleting.");
     return;
   }
-  if (selectedIds.size === 0) {
+  if (S.selectedIds.size === 0) {
     setHint("Select entities, then Delete.");
     return;
   }
-  const count = selectedIds.size;
+  const count = S.selectedIds.size;
   await refreshFrom(await api("/api/op", "POST", {
     op: "Delete",
-    entity_ids: [...selectedIds],
+    entity_ids: [...S.selectedIds],
   }));
   setHint(count === 1 ? "Deleted 1 entity." : `Deleted ${count} entities.`);
 }
@@ -3144,32 +2961,32 @@ function cornerTarget(event) {
 async function finishRotate(pivot, angleDeg) {
   await refreshFrom(await api("/api/op", "POST", {
     op: "Rotate",
-    entity_ids: [...selectedIds],
+    entity_ids: [...S.selectedIds],
     origin_x_mm: pivot.x_mm,
     origin_y_mm: pivot.y_mm,
     angle_deg: angleDeg,
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
-  setHint(`Rotated ${selectedIds.size} entities.`);
+  S.ghostDims = [];
+  setHint(`Rotated ${S.selectedIds.size} entities.`);
 }
 
 async function finishMirror(axisA, axisB) {
   await refreshFrom(await api("/api/op", "POST", {
     op: "Mirror",
-    entity_ids: [...selectedIds],
+    entity_ids: [...S.selectedIds],
     ax_mm: axisA.x_mm,
     ay_mm: axisA.y_mm,
     bx_mm: axisB.x_mm,
     by_mm: axisB.y_mm,
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
-  setHint(`Mirrored ${selectedIds.size} entities.`);
+  S.ghostDims = [];
+  setHint(`Mirrored ${S.selectedIds.size} entities.`);
 }
 
 async function finishArray(end) {
@@ -3177,16 +2994,16 @@ async function finishArray(end) {
   if (copies < 1) throw new Error("n must be at least 2 for an array");
   await refreshFrom(await api("/api/op", "POST", {
     op: "ArrayLinear",
-    entity_ids: [...selectedIds],
-    dx_mm: end.x_mm - pending.a.x_mm,
-    dy_mm: end.y_mm - pending.a.y_mm,
+    entity_ids: [...S.selectedIds],
+    dx_mm: end.x_mm - S.pending.a.x_mm,
+    dy_mm: end.y_mm - S.pending.a.y_mm,
     dz_mm: 0,
     copies,
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   setHint(`Linear array: ${arrayCount()} items.`);
 }
 
@@ -3194,16 +3011,16 @@ async function finishPolar(center) {
   const typed = activeLength();
   await refreshFrom(await api("/api/op", "POST", {
     op: "ArrayPolar",
-    entity_ids: [...selectedIds],
+    entity_ids: [...S.selectedIds],
     origin_x_mm: center.x_mm,
     origin_y_mm: center.y_mm,
     count: arrayCount(),
     angle_deg: typed != null ? typed : 360,
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   setHint(`Polar array: ${arrayCount()} items.`);
 }
 
@@ -3241,7 +3058,7 @@ async function finishCorner(kind, event) {
 
 function profileExtents(id) {
   const row = findRecord(id);
-  const byId = new Map((sceneState.points || []).map((point) => [point.entity_id, point]));
+  const byId = new Map((S.sceneState.points || []).map((point) => [point.entity_id, point]));
   if (!row) return null;
   if (row.kind === "Circle") {
     const center = byId.get(row.item.center_id);
@@ -3292,31 +3109,31 @@ function setTool(next) {
     commitDelete().catch((error) => setHint(error.message));
     return;
   }
-  const previous = tool;
-  tool = next;
-  pending = null;
+  const previous = S.tool;
+  S.tool = next;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   if (next === "trim" || next === "extend") {
     seedCuttersFromSelection();
   } else {
-    cutterIds.clear();
+    S.cutterIds.clear();
   }
   for (const button of document.querySelectorAll("button[data-tool]")) {
-    button.classList.toggle("active", button.dataset.tool === tool);
+    button.classList.toggle("active", button.dataset.tool === S.tool);
   }
   refreshToggles();
   if (next === "trim") {
-    setHint(cutterIds.size
-      ? `Trim (T): click the part to remove. ${cutterIds.size} cutter(s) pinned. Shift pins more.`
+    setHint(S.cutterIds.size
+      ? `Trim (T): click the part to remove. ${S.cutterIds.size} cutter(s) pinned. Shift pins more.`
       : "Trim (T): click the part to remove. Shift pins a cutter. All lines cut if none pinned.");
   } else if (next === "extend") {
-    setHint(cutterIds.size
-      ? `Extend (E): click the end to grow. ${cutterIds.size} boundary line(s) pinned.`
+    setHint(S.cutterIds.size
+      ? `Extend (E): click the end to grow. ${S.cutterIds.size} boundary line(s) pinned.`
       : "Extend (E): click the end to grow. Shift pins a boundary. All lines if none pinned.");
   } else {
-    setHint(toolHints[tool] || "");
+    setHint(toolHints[S.tool] || "");
   }
   if (next === "trim" || next === "extend" || previous === "trim" || previous === "extend") rebuild();
 }
@@ -3377,7 +3194,7 @@ function ndcFromEvent(event) {
 function nearestPoint(xyz, tolerance = SNAP_APERTURE_MM) {
   let best = null;
   let bestDist = tolerance;
-  for (const point of sceneState.points || []) {
+  for (const point of S.sceneState.points || []) {
     const dist = Math.hypot(point.x_mm - xyz.x_mm, point.y_mm - xyz.y_mm, point.z_mm - xyz.z_mm);
     if (dist <= bestDist) {
       best = point;
@@ -3399,7 +3216,7 @@ function rawHit(event) {
 
 function applySnaps(raw) {
   if (!raw) return null;
-  if (snapOn) {
+  if (S.snapOn) {
     const node = nearestPoint(raw);
     if (node) {
       return {
@@ -3411,7 +3228,7 @@ function applySnaps(raw) {
       };
     }
   }
-  if (gridSnapOn) {
+  if (S.gridSnapOn) {
     const snapped = nearestGridPoint(raw);
     if (!snapped) return { ...raw, snap: null };
     const minor = gridMinorMm();
@@ -3433,7 +3250,7 @@ function hitWorkplane(event) {
 }
 
 function wantOrtho(event) {
-  return Boolean(orthoOn) !== Boolean(event && event.shiftKey);
+  return Boolean(S.orthoOn) !== Boolean(event && event.shiftKey);
 }
 
 function orthogonalize(from, to, event) {
@@ -3479,7 +3296,7 @@ function hitHeight(event, cornerA, cornerB) {
   raycaster.setFromCamera(ndcFromEvent(event), camera());
   const hit = new THREE.Vector3();
   if (!raycaster.ray.intersectPlane(new THREE.Plane(look, -look.dot(mid)), hit)) return 3000;
-  return gridSnapOn ? snapGrid(hit.z) : hit.z;
+  return S.gridSnapOn ? snapGrid(hit.z) : hit.z;
 }
 
 async function addFaceFromCorners(a, b, label) {
@@ -3536,10 +3353,10 @@ function ghostPolyline(pts, cursor) {
 
 function polylineCloses(end) {
   return Boolean(
-    pending
-    && pending.kind === "polyline"
-    && pending.pts.length >= 3
-    && dist3(pending.pts[0], end) <= SNAP_APERTURE_MM,
+    S.pending
+    && S.pending.kind === "polyline"
+    && S.pending.pts.length >= 3
+    && dist3(S.pending.pts[0], end) <= SNAP_APERTURE_MM,
   );
 }
 
@@ -3608,13 +3425,13 @@ function drawSnapMarker(xyz, kind) {
 }
 
 function currentEnd(event) {
-  if (!pending) return null;
-  if (pending.kind === "polyline") {
+  if (!S.pending) return null;
+  if (S.pending.kind === "polyline") {
     const raw = rawHit(event);
     if (!raw) return null;
-    const last = pending.pts[pending.pts.length - 1];
-    if (pending.pts.length >= 3 && dist3(pending.pts[0], raw) <= SNAP_APERTURE_MM) {
-      return { ...pending.pts[0], snap: "node" };
+    const last = S.pending.pts[S.pending.pts.length - 1];
+    if (S.pending.pts.length >= 3 && dist3(S.pending.pts[0], raw) <= SNAP_APERTURE_MM) {
+      return { ...S.pending.pts[0], snap: "node" };
     }
     const hit = applySnaps(raw);
     if (!hit) return null;
@@ -3624,151 +3441,151 @@ function currentEnd(event) {
   const raw = hitWorkplane(event);
   if (!raw) return null;
   if (raw.snap === "node") return raw;
-  if (pending.kind === "line" || pending.kind === "move" || pending.kind === "array" || pending.kind === "mirror" || (pending.kind === "radial" && tool !== "ellipse")) {
-    return applyLength(pending.a, orthogonalize(pending.a, raw, event), activeLength());
+  if (S.pending.kind === "line" || S.pending.kind === "move" || S.pending.kind === "array" || S.pending.kind === "mirror" || (S.pending.kind === "radial" && S.tool !== "ellipse")) {
+    return applyLength(S.pending.a, orthogonalize(S.pending.a, raw, event), activeLength());
   }
-  if (pending.kind === "rect") {
-    return orthogonalize(pending.a, raw, event);
+  if (S.pending.kind === "rect") {
+    return orthogonalize(S.pending.a, raw, event);
   }
   return raw;
 }
 
 function updateGhost(event) {
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   if (!event) {
     setCoords(null);
     return;
   }
   const hit = hitWorkplane(event);
   if (hit && (hit.snap === "node" || isGridSnap(hit.snap))) drawSnapMarker(hit, hit.snap);
-  if ((tool === "trim" || tool === "extend") && !pending) {
+  if ((S.tool === "trim" || S.tool === "extend") && !S.pending) {
     const picked = pickEntity(event);
-    const preview = picked ? solveTrimOrExtend(picked, hit, tool) : null;
+    const preview = picked ? solveTrimOrExtend(picked, hit, S.tool) : null;
     if (preview) drawTrimPreview(preview);
     setCoords(hit);
     return;
   }
-  if (tool === "break" && pending && pending.kind === "break") {
+  if (S.tool === "break" && S.pending && S.pending.kind === "break") {
     const picked = pickEntity(event);
-    const preview = solveBreak(pending.lineId, picked);
+    const preview = solveBreak(S.pending.lineId, picked);
     if (preview) drawSnapMarker(preview.cut, "node");
     setCoords(hit);
     return;
   }
-  if (!pending) {
+  if (!S.pending) {
     setCoords(hit);
     return;
   }
-  if (pending.kind === "polyline") {
+  if (S.pending.kind === "polyline") {
     const end = currentEnd(event);
     if (end) {
-      ghostPolyline(pending.pts, end);
-      const last = pending.pts[pending.pts.length - 1];
+      ghostPolyline(S.pending.pts, end);
+      const last = S.pending.pts[S.pending.pts.length - 1];
       setCoords(end, last);
-      if (polylineCloses(end)) drawSnapMarker(pending.pts[0], "node");
+      if (polylineCloses(end)) drawSnapMarker(S.pending.pts[0], "node");
     }
     return;
   }
-  if (pending.kind === "line" || pending.kind === "move" || pending.kind === "array" || pending.kind === "mirror") {
+  if (S.pending.kind === "line" || S.pending.kind === "move" || S.pending.kind === "array" || S.pending.kind === "mirror") {
     const end = currentEnd(event);
     if (end) {
-      ghostLine(pending.a, end);
-      setCoords(end, pending.a);
+      ghostLine(S.pending.a, end);
+      setCoords(end, S.pending.a);
     }
     return;
   }
-  if (pending.kind === "rotate") {
+  if (S.pending.kind === "rotate") {
     const end = hitWorkplane(event);
     if (end) {
-      ghostLine(pending.a, end);
-      setCoords(end, pending.a);
+      ghostLine(S.pending.a, end);
+      setCoords(end, S.pending.a);
     }
     return;
   }
-  if (pending.kind === "rect") {
+  if (S.pending.kind === "rect") {
     const end = currentEnd(event);
     if (end) {
-      ghostRect(pending.a, end);
-      setCoords(end, pending.a);
+      ghostRect(S.pending.a, end);
+      setCoords(end, S.pending.a);
     }
     return;
   }
-  if (pending.kind === "height" || pending.kind === "extrude") {
-    const height = hitHeight(event, pending.a, pending.b);
-    ghostRect(pending.a, pending.b, height);
+  if (S.pending.kind === "height" || S.pending.kind === "extrude") {
+    const height = hitHeight(event, S.pending.a, S.pending.b);
+    ghostRect(S.pending.a, S.pending.b, height);
     setCoords(hit);
     return;
   }
-  if (pending.kind === "radial") {
+  if (S.pending.kind === "radial") {
     const rim = currentEnd(event);
     if (!rim) return;
-    const radius = dist3(pending.a, rim);
-    if (tool === "circle") {
-      addFaceGraphic(ghosts, sampleCircle(pending.a, radius).slice(0, -1), { fill: true, opacity: 0.22 });
-    } else if (tool === "polygon") {
-      addFaceGraphic(ghosts, regularPolygon(pending.a, rim, sidesValue()), { fill: true, opacity: 0.18 });
-    } else if (tool === "ellipse") {
-      const rx = Math.max(Math.abs(rim.x_mm - pending.a.x_mm), 1);
-      const ry = Math.max(Math.abs(rim.y_mm - pending.a.y_mm), 1);
-      addFaceGraphic(ghosts, sampleEllipse(pending.a, rx, ry).slice(0, -1), { fill: true, opacity: 0.22 });
+    const radius = dist3(S.pending.a, rim);
+    if (S.tool === "circle") {
+      addFaceGraphic(ghosts, sampleCircle(S.pending.a, radius).slice(0, -1), { fill: true, opacity: 0.22 });
+    } else if (S.tool === "polygon") {
+      addFaceGraphic(ghosts, regularPolygon(S.pending.a, rim, sidesValue()), { fill: true, opacity: 0.18 });
+    } else if (S.tool === "ellipse") {
+      const rx = Math.max(Math.abs(rim.x_mm - S.pending.a.x_mm), 1);
+      const ry = Math.max(Math.abs(rim.y_mm - S.pending.a.y_mm), 1);
+      addFaceGraphic(ghosts, sampleEllipse(S.pending.a, rx, ry).slice(0, -1), { fill: true, opacity: 0.22 });
     }
-    setCoords(rim, pending.a);
+    setCoords(rim, S.pending.a);
     return;
   }
-  if (pending.kind === "arc") {
+  if (S.pending.kind === "arc") {
     const cur = currentEnd(event) || hit;
     if (!cur) return;
-    if (pending.pts.length === 1) {
-      ghostLine(pending.pts[0], cur);
+    if (S.pending.pts.length === 1) {
+      ghostLine(S.pending.pts[0], cur);
     } else {
-      addCurve(ghosts, sampleArc(pending.pts[0], pending.pts[1], cur), 0x6cb3ff);
+      addCurve(ghosts, sampleArc(S.pending.pts[0], S.pending.pts[1], cur), 0x6cb3ff);
     }
-    setCoords(cur, pending.pts[0]);
+    setCoords(cur, S.pending.pts[0]);
     return;
   }
-  if (pending.kind === "bezier") {
+  if (S.pending.kind === "bezier") {
     const cur = currentEnd(event) || hit;
     if (!cur) return;
-    const pts = pending.pts.concat([cur]);
+    const pts = S.pending.pts.concat([cur]);
     if (pts.length === 2) ghostLine(pts[0], pts[1]);
     else if (pts.length === 3) addCurve(ghosts, sampleBezier([pts[0], pts[1], pts[2], pts[2]]), 0x6cb3ff);
     else addCurve(ghosts, sampleBezier(pts.slice(0, 4)), 0x6cb3ff);
-    setCoords(cur, pending.pts[0]);
+    setCoords(cur, S.pending.pts[0]);
   }
 }
 
 async function finishLine(end) {
-  if (dist3(pending.a, end) < 1) {
+  if (dist3(S.pending.a, end) < 1) {
     setHint("Line: click a different point, or Esc to end the chain.");
     return;
   }
-  const startId = await ensurePoint(pending.a);
+  const startId = await ensurePoint(S.pending.a);
   const endId = await ensurePoint(end);
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddLine",
     start_id: startId,
     end_id: endId,
-    label: pending.chain ? null : labelValue(),
+    label: S.pending.chain ? null : labelValue(),
   }));
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
-  pending = {
+  S.ghostDims = [];
+  S.pending = {
     kind: "line",
     a: { x_mm: end.x_mm, y_mm: end.y_mm, z_mm: end.z_mm || 0, entity_id: endId },
     chain: true,
   };
   refreshToggles();
   setHint("Line: click the next point. Esc ends the chain.");
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 }
 
 function polylineHint() {
-  if (!pending || pending.pts.length < 2) {
+  if (!S.pending || S.pending.pts.length < 2) {
     return "Polyline: click the next point.";
   }
-  if (pending.pts.length < 3) {
+  if (S.pending.pts.length < 3) {
     return "Polyline: click the next point, or Enter to finish.";
   }
   return "Polyline: click the next point, Enter to finish, click start or type C to close.";
@@ -3779,19 +3596,19 @@ async function appendPolylineVertex(end) {
     await finishPolyline(true);
     return;
   }
-  const last = pending.pts[pending.pts.length - 1];
+  const last = S.pending.pts[S.pending.pts.length - 1];
   if (dist3(last, end) < 1) {
     setHint("Polyline: click a different point, Enter to finish, or Esc to cancel.");
     return;
   }
-  pending.pts.push(end);
+  S.pending.pts.push(end);
   clearTyped();
   setHint(polylineHint());
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 }
 
 async function finishPolyline(closed) {
-  const pts = pending.pts;
+  const pts = S.pending.pts;
   if (pts.length < 2 || (closed && pts.length < 3)) {
     setHint(closed ? "Polyline: need three points to close." : "Polyline: click at least two points, then Enter.");
     return;
@@ -3807,27 +3624,27 @@ async function finishPolyline(closed) {
     closed: Boolean(closed),
     label: labelValue(),
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint(closed ? "Closed polyline placed." : "Polyline placed. LMB starts another.");
 }
 
 async function finishFace(end) {
-  await addFaceFromCorners(pending.a, end, labelValue());
-  pending = null;
+  await addFaceFromCorners(S.pending.a, end, labelValue());
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Rect placed.");
 }
 
 async function finishBox(event) {
-  const height = hitHeight(event, pending.a, pending.b);
-  const faceId = await addFaceFromCorners(pending.a, pending.b, labelValue());
+  const height = hitHeight(event, S.pending.a, S.pending.b);
+  const faceId = await addFaceFromCorners(S.pending.a, S.pending.b, labelValue());
   const distance = height === 0 ? 100 : height;
   await refreshFrom(await api("/api/op", "POST", {
     op: "Extrude",
@@ -3835,51 +3652,51 @@ async function finishBox(event) {
     distance_mm: distance,
     label: labelValue() ? `${labelValue()}_solid` : null,
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Solid placed (face + extrude).");
 }
 
 async function finishExtrude(event) {
-  const height = hitHeight(event, pending.a, pending.b);
+  const height = hitHeight(event, S.pending.a, S.pending.b);
   const distance = height === 0 ? 100 : height;
   await refreshFrom(await api("/api/op", "POST", {
     op: "Extrude",
-    face_id: pending.profileId,
+    face_id: S.pending.profileId,
     distance_mm: distance,
     label: labelValue() ? `${labelValue()}_solid` : null,
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Solid placed.");
 }
 
 async function finishCircle(rim) {
-  const radius = dist3(pending.a, rim);
+  const radius = dist3(S.pending.a, rim);
   if (radius < 1) throw new Error("circle radius must be positive");
-  const centerId = await ensurePoint(pending.a);
+  const centerId = await ensurePoint(S.pending.a);
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddCircle", center_id: centerId, radius_mm: radius, label: labelValue(),
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Circle placed. Select it, then Extrude.");
 }
 
 async function finishEllipse(rim) {
-  const rx = Math.abs(rim.x_mm - pending.a.x_mm);
-  const ry = Math.abs(rim.y_mm - pending.a.y_mm);
+  const rx = Math.abs(rim.x_mm - S.pending.a.x_mm);
+  const ry = Math.abs(rim.y_mm - S.pending.a.y_mm);
   if (rx < 1 || ry < 1) throw new Error("ellipse needs two positive radii");
-  const centerId = await ensurePoint(pending.a);
+  const centerId = await ensurePoint(S.pending.a);
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddEllipse",
     center_id: centerId,
@@ -3887,16 +3704,16 @@ async function finishEllipse(rim) {
     radius_y_mm: ry,
     label: labelValue(),
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Ellipse placed.");
 }
 
 async function finishPolygon(rim) {
-  const pts = regularPolygon(pending.a, rim, sidesValue());
+  const pts = regularPolygon(S.pending.a, rim, sidesValue());
   const ids = [];
   for (const point of pts) ids.push(await ensurePoint(point));
   if (new Set(ids).size !== pts.length) {
@@ -3905,17 +3722,17 @@ async function finishPolygon(rim) {
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddFace", point_ids: ids, label: labelValue(),
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Polygon placed.");
 }
 
 async function finishArc(end) {
   const ids = [];
-  for (const point of pending.pts.concat([end])) ids.push(await ensurePoint(point));
+  for (const point of S.pending.pts.concat([end])) ids.push(await ensurePoint(point));
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddArc",
     start_id: ids[0],
@@ -3923,45 +3740,45 @@ async function finishArc(end) {
     end_id: ids[2],
     label: labelValue(),
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Arc placed.");
 }
 
 async function finishBezier(end) {
   const ids = [];
-  for (const point of pending.pts.concat([end])) ids.push(await ensurePoint(point));
+  for (const point of S.pending.pts.concat([end])) ids.push(await ensurePoint(point));
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddBezier", point_ids: ids, label: labelValue(),
   }));
-  pending = null;
+  S.pending = null;
   clearTyped();
   ghosts.clear();
-  ghostDims = [];
+  S.ghostDims = [];
   refreshToggles();
   setHint("Bézier placed.");
 }
 
 async function onClick(event) {
   try {
-    if (tool === "select") {
+    if (S.tool === "select") {
       const picked = pickEntity(event);
       setSelection(picked, { shift: event.shiftKey });
       if (picked == null && !event.shiftKey) setHint("Selection cleared.");
       return;
     }
-    if (tool === "move") {
-      if (selectedIds.size === 0) {
+    if (S.tool === "move") {
+      if (S.selectedIds.size === 0) {
         setHint("Select entities first, then Move.");
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "move", a: xyz };
+      if (!S.pending) {
+        S.pending = { kind: "move", a: xyz };
         setHint("Move: click the destination, or type a length and Enter.");
         return;
       }
@@ -3970,15 +3787,15 @@ async function onClick(event) {
       await finishMove(end);
       return;
     }
-    if (tool === "rotate") {
-      if (selectedIds.size === 0) {
+    if (S.tool === "rotate") {
+      if (S.selectedIds.size === 0) {
         setHint("Select entities first, then Rotate.");
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "rotate", a: xyz };
+      if (!S.pending) {
+        S.pending = { kind: "rotate", a: xyz };
         setHint("Rotate: type degrees and Enter, or click a second point for the angle.");
         return;
       }
@@ -3987,36 +3804,36 @@ async function onClick(event) {
       if (typed == null && !end) return;
       const angle = typed != null
         ? typed
-        : Math.atan2(end.y_mm - pending.a.y_mm, end.x_mm - pending.a.x_mm) * 180 / Math.PI;
-      await finishRotate(pending.a, angle);
+        : Math.atan2(end.y_mm - S.pending.a.y_mm, end.x_mm - S.pending.a.x_mm) * 180 / Math.PI;
+      await finishRotate(S.pending.a, angle);
       return;
     }
-    if (tool === "mirror") {
-      if (selectedIds.size === 0) {
+    if (S.tool === "mirror") {
+      if (S.selectedIds.size === 0) {
         setHint("Select entities first, then Mirror.");
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "mirror", a: xyz };
+      if (!S.pending) {
+        S.pending = { kind: "mirror", a: xyz };
         setHint("Mirror: click the second point of the axis.");
         return;
       }
       const end = currentEnd(event);
       if (!end) return;
-      await finishMirror(pending.a, end);
+      await finishMirror(S.pending.a, end);
       return;
     }
-    if (tool === "array") {
-      if (selectedIds.size === 0) {
+    if (S.tool === "array") {
+      if (S.selectedIds.size === 0) {
         setHint("Select entities first, then Array. n is the count.");
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "array", a: xyz };
+      if (!S.pending) {
+        S.pending = { kind: "array", a: xyz };
         setHint("Array: click the spacing to the next copy. n is the total count.");
         return;
       }
@@ -4025,8 +3842,8 @@ async function onClick(event) {
       await finishArray(end);
       return;
     }
-    if (tool === "polar") {
-      if (selectedIds.size === 0) {
+    if (S.tool === "polar") {
+      if (S.selectedIds.size === 0) {
         setHint("Select entities first, then Polar. n is the count.");
         return;
       }
@@ -4035,37 +3852,37 @@ async function onClick(event) {
       await finishPolar(xyz);
       return;
     }
-    if (tool === "chamfer") {
+    if (S.tool === "chamfer") {
       await finishCorner("chamfer", event);
       return;
     }
-    if (tool === "fillet") {
+    if (S.tool === "fillet") {
       await finishCorner("fillet", event);
       return;
     }
-    if (tool === "trim" || tool === "extend") {
+    if (S.tool === "trim" || S.tool === "extend") {
       const picked = pickEntity(event);
       const row = findRecord(picked);
       if (event.shiftKey && row && row.kind === "Line") {
-        if (cutterIds.has(picked)) cutterIds.delete(picked);
-        else cutterIds.add(picked);
+        if (S.cutterIds.has(picked)) S.cutterIds.delete(picked);
+        else S.cutterIds.add(picked);
         rebuild();
-        const noun = tool === "extend" ? "boundary" : "cutter";
-        setHint(cutterIds.size
-          ? `${tool === "extend" ? "Extend" : "Trim"}: ${cutterIds.size} ${noun}(s). Click a part.`
-          : `${tool === "extend" ? "Extend" : "Trim"}: all lines. Click a part.`);
+        const noun = S.tool === "extend" ? "boundary" : "cutter";
+        setHint(S.cutterIds.size
+          ? `${S.tool === "extend" ? "Extend" : "Trim"}: ${S.cutterIds.size} ${noun}(s). Click a part.`
+          : `${S.tool === "extend" ? "Extend" : "Trim"}: all lines. Click a part.`);
         return;
       }
       if (!row || row.kind !== "Line") {
-        setHint(tool === "extend"
+        setHint(S.tool === "extend"
           ? "Extend: click the end to grow, or Shift-click a boundary."
           : "Trim: click the part to remove, or Shift-click a cutter.");
         return;
       }
       const click = hitWorkplane(event);
-      const preview = solveTrimOrExtend(picked, click, tool);
+      const preview = solveTrimOrExtend(picked, click, S.tool);
       if (!preview) {
-        setHint(tool === "extend"
+        setHint(S.tool === "extend"
           ? "Extend: click the short end toward a boundary (implied intersection is OK)."
           : "Trim: click a free end — the stub past the nearest cutter.");
         return;
@@ -4073,19 +3890,19 @@ async function onClick(event) {
       await commitTrimPreview(preview);
       return;
     }
-    if (tool === "break") {
+    if (S.tool === "break") {
       const picked = pickEntity(event);
       const row = findRecord(picked);
       if (!row || row.kind !== "Line") {
         setHint("Break: click the first line.");
         return;
       }
-      if (!pending) {
-        pending = { kind: "break", lineId: picked };
+      if (!S.pending) {
+        S.pending = { kind: "break", lineId: picked };
         setHint("Break: click the crossing line.");
         return;
       }
-      const preview = solveBreak(pending.lineId, picked);
+      const preview = solveBreak(S.pending.lineId, picked);
       if (!preview) {
         setHint("Break: those lines do not cross. Click another line.");
         return;
@@ -4093,7 +3910,7 @@ async function onClick(event) {
       await commitBreak(preview);
       return;
     }
-    if (tool === "node") {
+    if (S.tool === "node") {
       const picked = pickEntity(event);
       const row = findRecord(picked);
       if (!row || (row.kind !== "Line" && row.kind !== "Face" && row.kind !== "Polyline")) {
@@ -4105,27 +3922,27 @@ async function onClick(event) {
       await finishInsertNode(picked, xyz);
       return;
     }
-    if (tool === "extrude") {
+    if (S.tool === "extrude") {
       const profileId = selectedProfileId();
       if (profileId == null) {
         setHint("Select a face, circle, or ellipse first.");
         return;
       }
-      if (!pending) {
+      if (!S.pending) {
         const extents = profileExtents(profileId);
         if (!extents) return;
-        pending = { kind: "extrude", a: extents.a, b: extents.b, profileId };
+        S.pending = { kind: "extrude", a: extents.a, b: extents.b, profileId };
         setHint("Extrude: move for height, then click or Enter.");
         return;
       }
       await finishExtrude(event);
       return;
     }
-    if (tool === "line") {
+    if (S.tool === "line") {
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "line", a: xyz };
+      if (!S.pending) {
+        S.pending = { kind: "line", a: xyz };
         setHint("Line: click the next point, or type a length and Enter.");
         return;
       }
@@ -4134,11 +3951,11 @@ async function onClick(event) {
       await finishLine(end);
       return;
     }
-    if (tool === "polyline") {
+    if (S.tool === "polyline") {
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "polyline", pts: [xyz] };
+      if (!S.pending) {
+        S.pending = { kind: "polyline", pts: [xyz] };
         setHint("Polyline: click the next point.");
         return;
       }
@@ -4147,11 +3964,11 @@ async function onClick(event) {
       await appendPolylineVertex(end);
       return;
     }
-    if (tool === "rect") {
+    if (S.tool === "rect") {
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "rect", a: xyz };
+      if (!S.pending) {
+        S.pending = { kind: "rect", a: xyz };
         setHint("Rect: click the opposite corner.");
         return;
       }
@@ -4160,69 +3977,69 @@ async function onClick(event) {
       await finishFace(end);
       return;
     }
-    if (tool === "circle" || tool === "polygon" || tool === "ellipse") {
+    if (S.tool === "circle" || S.tool === "polygon" || S.tool === "ellipse") {
       const xyz = hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "radial", a: xyz };
-        setHint(tool === "circle"
+      if (!S.pending) {
+        S.pending = { kind: "radial", a: xyz };
+        setHint(S.tool === "circle"
           ? "Circle: click the radius, or type it and Enter."
-          : tool === "polygon"
+          : S.tool === "polygon"
             ? "Polygon: click the radius."
             : "Ellipse: click a corner of the bounding box.");
         return;
       }
       const rim = currentEnd(event);
       if (!rim) return;
-      if (tool === "circle") await finishCircle(rim);
-      else if (tool === "polygon") await finishPolygon(rim);
+      if (S.tool === "circle") await finishCircle(rim);
+      else if (S.tool === "polygon") await finishPolygon(rim);
       else await finishEllipse(rim);
       return;
     }
-    if (tool === "arc") {
+    if (S.tool === "arc") {
       const xyz = currentEnd(event) || hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "arc", pts: [xyz] };
+      if (!S.pending) {
+        S.pending = { kind: "arc", pts: [xyz] };
         setHint("Arc: click a second point on the arc.");
         return;
       }
-      if (pending.pts.length === 1) {
-        pending.pts.push(xyz);
+      if (S.pending.pts.length === 1) {
+        S.pending.pts.push(xyz);
         setHint("Arc: click the end point.");
         return;
       }
       await finishArc(xyz);
       return;
     }
-    if (tool === "bezier") {
+    if (S.tool === "bezier") {
       const xyz = currentEnd(event) || hitWorkplane(event);
       if (!xyz) return;
-      if (!pending) {
-        pending = { kind: "bezier", pts: [xyz] };
+      if (!S.pending) {
+        S.pending = { kind: "bezier", pts: [xyz] };
         setHint("Bézier: click control point 2.");
         return;
       }
-      if (pending.pts.length < 3) {
-        pending.pts.push(xyz);
-        setHint(`Bézier: click control point ${pending.pts.length + 1}.`);
+      if (S.pending.pts.length < 3) {
+        S.pending.pts.push(xyz);
+        setHint(`Bézier: click control point ${S.pending.pts.length + 1}.`);
         return;
       }
       await finishBezier(xyz);
       return;
     }
-    if (tool === "box") {
-      if (!pending) {
+    if (S.tool === "box") {
+      if (!S.pending) {
         const xyz = hitWorkplane(event);
         if (!xyz) return;
-        pending = { kind: "rect", a: xyz };
+        S.pending = { kind: "rect", a: xyz };
         setHint("Box: click the opposite corner of the face.");
         return;
       }
-      if (pending.kind === "rect") {
+      if (S.pending.kind === "rect") {
         const end = currentEnd(event);
         if (!end) return;
-        pending = { kind: "height", a: pending.a, b: end };
+        S.pending = { kind: "height", a: S.pending.a, b: end };
         setHint("Box: move for height, type a length, then click or Enter.");
         return;
       }
@@ -4230,14 +4047,14 @@ async function onClick(event) {
     }
   } catch (error) {
     setHint(error.message);
-    pending = null;
+    S.pending = null;
     ghosts.clear();
-    ghostDims = [];
+    S.ghostDims = [];
   }
 }
 
 async function commitWithEnter() {
-  if (!pending) {
+  if (!S.pending) {
     const echoed = typedText();
     if (/^grid\s+auto$/i.test(echoed)) {
       appendLog(`${consolePrompt.textContent} ${echoed}`);
@@ -4327,83 +4144,83 @@ async function commitWithEnter() {
   const echoed = typedText();
   if (echoed) appendLog(`${consolePrompt.textContent} ${echoed}`);
   try {
-    if (pending.kind === "polyline") {
+    if (S.pending.kind === "polyline") {
       const token = echoed.trim().toLowerCase();
       if (token === "c" || token === "close") {
         await finishPolyline(true);
         return;
       }
-      if (activeLength() != null && lastPointer) {
-        const end = currentEnd(lastPointer);
+      if (activeLength() != null && S.lastPointer) {
+        const end = currentEnd(S.lastPointer);
         if (end) await appendPolylineVertex(end);
         return;
       }
       await finishPolyline(false);
       return;
     }
-    if (pending.kind === "rotate") {
+    if (S.pending.kind === "rotate") {
       const typed = activeLength();
       if (typed != null) {
-        await finishRotate(pending.a, typed);
+        await finishRotate(S.pending.a, typed);
         return;
       }
-      if (!lastPointer) return;
-      const end = hitWorkplane(lastPointer);
+      if (!S.lastPointer) return;
+      const end = hitWorkplane(S.lastPointer);
       if (end) {
         await finishRotate(
-          pending.a,
-          Math.atan2(end.y_mm - pending.a.y_mm, end.x_mm - pending.a.x_mm) * 180 / Math.PI,
+          S.pending.a,
+          Math.atan2(end.y_mm - S.pending.a.y_mm, end.x_mm - S.pending.a.x_mm) * 180 / Math.PI,
         );
       }
       return;
     }
-    if (!lastPointer) return;
-    if (pending.kind === "line" || pending.kind === "move" || pending.kind === "array" || pending.kind === "mirror") {
-      const end = currentEnd(lastPointer);
+    if (!S.lastPointer) return;
+    if (S.pending.kind === "line" || S.pending.kind === "move" || S.pending.kind === "array" || S.pending.kind === "mirror") {
+      const end = currentEnd(S.lastPointer);
       if (end) {
-        if (pending.kind === "move") await finishMove(end);
-        else if (pending.kind === "array") await finishArray(end);
-        else if (pending.kind === "mirror") await finishMirror(pending.a, end);
+        if (S.pending.kind === "move") await finishMove(end);
+        else if (S.pending.kind === "array") await finishArray(end);
+        else if (S.pending.kind === "mirror") await finishMirror(S.pending.a, end);
         else await finishLine(end);
       }
       return;
     }
-    if (pending.kind === "rect" && tool === "rect") {
-      const end = currentEnd(lastPointer);
+    if (S.pending.kind === "rect" && S.tool === "rect") {
+      const end = currentEnd(S.lastPointer);
       if (end) await finishFace(end);
       return;
     }
-    if (pending.kind === "radial") {
-      const rim = currentEnd(lastPointer);
+    if (S.pending.kind === "radial") {
+      const rim = currentEnd(S.lastPointer);
       if (!rim) return;
-      if (tool === "circle") await finishCircle(rim);
-      else if (tool === "polygon") await finishPolygon(rim);
-      else if (tool === "ellipse") await finishEllipse(rim);
+      if (S.tool === "circle") await finishCircle(rim);
+      else if (S.tool === "polygon") await finishPolygon(rim);
+      else if (S.tool === "ellipse") await finishEllipse(rim);
       return;
     }
-    if (pending.kind === "arc" && pending.pts.length === 2) {
-      const end = currentEnd(lastPointer);
+    if (S.pending.kind === "arc" && S.pending.pts.length === 2) {
+      const end = currentEnd(S.lastPointer);
       if (end) await finishArc(end);
       return;
     }
-    if (pending.kind === "bezier" && pending.pts.length === 3) {
-      const end = currentEnd(lastPointer);
+    if (S.pending.kind === "bezier" && S.pending.pts.length === 3) {
+      const end = currentEnd(S.lastPointer);
       if (end) await finishBezier(end);
       return;
     }
-    if (pending.kind === "rect" && tool === "box") {
-      const end = currentEnd(lastPointer);
+    if (S.pending.kind === "rect" && S.tool === "box") {
+      const end = currentEnd(S.lastPointer);
       if (!end) return;
-      pending = { kind: "height", a: pending.a, b: end };
+      S.pending = { kind: "height", a: S.pending.a, b: end };
       setHint("Box: move for height, type a length, then click or Enter.");
-      updateGhost(lastPointer);
+      updateGhost(S.lastPointer);
       return;
     }
-    if (pending.kind === "height") await finishBox(lastPointer);
-    if (pending.kind === "extrude") await finishExtrude(lastPointer);
+    if (S.pending.kind === "height") await finishBox(S.lastPointer);
+    if (S.pending.kind === "extrude") await finishExtrude(S.lastPointer);
   } catch (error) {
     setHint(error.message);
-    pending = null;
+    S.pending = null;
     ghosts.clear();
   }
 }
@@ -4444,29 +4261,29 @@ for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
 }
 
 projButton.addEventListener("click", () => {
-  setProjectionMode(projection === "perspective" ? "parallel" : "perspective");
+  setProjectionMode(S.projection === "perspective" ? "parallel" : "perspective");
 });
 snapButton.addEventListener("click", () => {
-  snapOn = !snapOn;
+  S.snapOn = !S.snapOn;
   refreshToggles();
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 });
 gridSnapButton.addEventListener("click", () => {
-  setGridSnapOn(!gridSnapOn);
-  if (lastPointer) updateGhost(lastPointer);
+  setGridSnapOn(!S.gridSnapOn);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 });
 orthoButton.addEventListener("click", () => {
-  orthoOn = !orthoOn;
+  S.orthoOn = !S.orthoOn;
   refreshToggles();
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 });
 gridButton.addEventListener("click", () => {
-  setGridOn(!gridOn);
-  if (lastPointer) updateGhost(lastPointer);
+  setGridOn(!S.gridOn);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 });
 consoleInput.addEventListener("input", () => {
   refreshToggles();
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 });
 
 canvas.addEventListener("pointerdown", (event) => {
@@ -4481,21 +4298,21 @@ canvas.addEventListener("pointerdown", (event) => {
   }
   if (event.button !== 0) return;
   pointerDown = { x: event.clientX, y: event.clientY };
-  if (tool === "select" && !event.altKey) {
-    marqueeOrigin = { x: event.clientX, y: event.clientY };
+  if (S.tool === "select" && !event.altKey) {
+    S.marqueeOrigin = { x: event.clientX, y: event.clientY };
     canvas.setPointerCapture(event.pointerId);
   }
 }, true);
 canvas.addEventListener("pointermove", (event) => {
-  lastPointer = event;
-  if (marqueeOrigin) updateMarquee(event);
+  S.lastPointer = event;
+  if (S.marqueeOrigin) updateMarquee(event);
   updatePreselect(event);
   updateGhost(event);
 });
 canvas.addEventListener("pointerup", (event) => {
   controls.mouseButtons.LEFT = -1;
   if (event.button !== 0 || !pointerDown) return;
-  const origin = marqueeOrigin;
+  const origin = S.marqueeOrigin;
   const moved = Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y);
   pointerDown = null;
   if (origin && moved > 5) {
@@ -4511,38 +4328,38 @@ canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 window.addEventListener("keydown", (event) => {
   if (event.key === "F3") {
     event.preventDefault();
-    snapOn = !snapOn;
+    S.snapOn = !S.snapOn;
     refreshToggles();
-    if (lastPointer) updateGhost(lastPointer);
+    if (S.lastPointer) updateGhost(S.lastPointer);
     return;
   }
   if (event.key === "F7") {
     event.preventDefault();
-    setGridSnapOn(!gridSnapOn);
-    if (lastPointer) updateGhost(lastPointer);
+    setGridSnapOn(!S.gridSnapOn);
+    if (S.lastPointer) updateGhost(S.lastPointer);
     return;
   }
   if (event.key === "F8") {
     event.preventDefault();
-    orthoOn = !orthoOn;
+    S.orthoOn = !S.orthoOn;
     refreshToggles();
-    if (lastPointer) updateGhost(lastPointer);
+    if (S.lastPointer) updateGhost(S.lastPointer);
     return;
   }
   if (event.key === "F9") {
     event.preventDefault();
-    setGridOn(!gridOn);
-    if (lastPointer) updateGhost(lastPointer);
+    setGridOn(!S.gridOn);
+    if (S.lastPointer) updateGhost(S.lastPointer);
     return;
   }
   if (event.key === "F2") {
     if (isTypingField(event) || event.target === consoleInput) return;
     event.preventDefault();
-    if (selectedIds.size !== 1) {
+    if (S.selectedIds.size !== 1) {
       setHint("Select one entity to rename.");
       return;
     }
-    const id = [...selectedIds][0];
+    const id = [...S.selectedIds][0];
     const row = findRecord(id);
     const rowEl = treeEl.querySelector(`.tree-row[data-id="${id}"]`);
     if (row && rowEl) beginRename(row, rowEl);
@@ -4590,12 +4407,12 @@ window.addEventListener("keydown", (event) => {
       return;
     }
     if (document.querySelector("dialog[open]")) return;
-    if (pending) {
-      const endedChain = pending.kind === "line" && pending.chain;
-      pending = null;
+    if (S.pending) {
+      const endedChain = S.pending.kind === "line" && S.pending.chain;
+      S.pending = null;
       clearTyped();
       ghosts.clear();
-      ghostDims = [];
+      S.ghostDims = [];
       hideMarquee();
       refreshToggles();
       setHint(endedChain
@@ -4603,7 +4420,7 @@ window.addEventListener("keydown", (event) => {
         : "Cancelled.");
       return;
     }
-    if (tool !== "select") {
+    if (S.tool !== "select") {
       setTool("select");
       return;
     }
@@ -4648,7 +4465,7 @@ window.addEventListener("keydown", (event) => {
   }
   if (isTypingField(event)) return;
   if (!event.ctrlKey && !event.metaKey && !event.altKey) {
-    if (tool === "select") {
+    if (S.tool === "select") {
       const filters = { 1: "point", 2: "line", 3: "face", 4: "solid", 5: "element" };
       if (filters[event.key]) {
         event.preventDefault();
@@ -4683,7 +4500,7 @@ window.addEventListener("keydown", (event) => {
     return;
   }
   if (event.key === "o" || event.key === "O") {
-    setProjectionMode(projection === "perspective" ? "parallel" : "perspective");
+    setProjectionMode(S.projection === "perspective" ? "parallel" : "perspective");
     return;
   }
   if (event.key === "Enter") {
@@ -4695,14 +4512,14 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault();
     setTyped(consoleInput.value.slice(0, -1));
     refreshToggles();
-    if (lastPointer) updateGhost(lastPointer);
+    if (S.lastPointer) updateGhost(S.lastPointer);
     return;
   }
   if (event.key.length === 1 && /[0-9.]/.test(event.key)) {
     if (event.key === "." && consoleInput.value.includes(".")) return;
     setTyped(consoleInput.value + event.key);
     refreshToggles();
-    if (lastPointer) updateGhost(lastPointer);
+    if (S.lastPointer) updateGhost(S.lastPointer);
   }
 });
 
@@ -4761,53 +4578,49 @@ function restoreLayout() {
 }
 
 function setGridOn(next) {
-  gridOn = next;
-  prefs.grid = next;
+  S.gridOn = next;
+  S.prefs.grid = next;
   savePrefs();
   refreshToggles();
-  grid.visible = gridOn;
+  grid.visible = S.gridOn;
 }
 
 function setGridSnapOn(next) {
-  gridSnapOn = next;
-  prefs.gridSnap = next;
+  S.gridSnapOn = next;
+  S.prefs.gridSnap = next;
   savePrefs();
   refreshToggles();
 }
 
 function applyViz() {
-  const pal = BACKGROUNDS[prefs.background] || BACKGROUNDS.g5;
+  const pal = BACKGROUNDS[S.prefs.background] || BACKGROUNDS.g5;
   scene.background.setHex(pal.bg);
   document.getElementById("stage").style.background = `#${pal.bg.toString(16).padStart(6, "0")}`;
   rebuildGrid();
-  const dark = prefs.background === "g2";
+  const dark = S.prefs.background === "g2";
   hemi.color.setHex(dark ? 0xc8cdd3 : 0xf4f7fb);
-  hemi.groundColor.setHex(prefs.ao ? (dark ? 0x0a0a0a : 0x6e757c) : (dark ? 0x2a2a2a : 0xc5cad0));
-  hemi.intensity = prefs.ao ? 0.58 : 0.42;
-  key.visible = prefs.keyLight;
-  key.intensity = prefs.keyLight ? 0.45 : 0;
-  contact.visible = prefs.ao;
+  hemi.groundColor.setHex(S.prefs.ao ? (dark ? 0x0a0a0a : 0x6e757c) : (dark ? 0x2a2a2a : 0xc5cad0));
+  hemi.intensity = S.prefs.ao ? 0.58 : 0.42;
+  keyLight.visible = S.prefs.keyLight;
+  keyLight.intensity = S.prefs.keyLight ? 0.45 : 0;
+  contact.visible = S.prefs.ao;
   contact.material.opacity = dark ? 0.18 : 0.06;
   rebuild();
 }
 
-function savePrefs() {
-  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-}
-
 function syncPrefsForm() {
-  document.getElementById("pref-background").value = prefs.background;
-  document.getElementById("pref-clay").value = String(prefs.clay);
-  document.getElementById("pref-curve").value = prefs.curve;
-  document.getElementById("pref-key").checked = prefs.keyLight;
-  document.getElementById("pref-ao").checked = prefs.ao;
-  document.getElementById("pref-edges").checked = prefs.showEdges;
-  document.getElementById("pref-curves").checked = prefs.showCurves;
-  document.getElementById("pref-faces").checked = prefs.showFaces;
+  document.getElementById("pref-background").value = S.prefs.background;
+  document.getElementById("pref-clay").value = String(S.prefs.clay);
+  document.getElementById("pref-curve").value = S.prefs.curve;
+  document.getElementById("pref-key").checked = S.prefs.keyLight;
+  document.getElementById("pref-ao").checked = S.prefs.ao;
+  document.getElementById("pref-edges").checked = S.prefs.showEdges;
+  document.getElementById("pref-curves").checked = S.prefs.showCurves;
+  document.getElementById("pref-faces").checked = S.prefs.showFaces;
 }
 
 function readPrefsForm() {
-  prefs = {
+  S.prefs = {
     background: document.getElementById("pref-background").value,
     clay: Number(document.getElementById("pref-clay").value) || 176,
     curve: document.getElementById("pref-curve").value,
@@ -4816,9 +4629,9 @@ function readPrefsForm() {
     showEdges: document.getElementById("pref-edges").checked,
     showCurves: document.getElementById("pref-curves").checked,
     showFaces: document.getElementById("pref-faces").checked,
-    grid: gridOn,
-    gridSnap: gridSnapOn,
-    gridMinorOn,
+    grid: S.gridOn,
+    gridSnap: S.gridSnapOn,
+    gridMinorOn: S.gridMinorOn,
     gridAuto: gridAutoOn(),
     gridMinor: prefMinorMm(),
     gridMajor: prefMajorMm(),
@@ -4831,11 +4644,11 @@ function readPrefsForm() {
   savePrefs();
   applyViz();
   refreshToggles();
-  if (lastPointer) updateGhost(lastPointer);
+  if (S.lastPointer) updateGhost(S.lastPointer);
 }
 
 function downloadJson(filename) {
-  const blob = new Blob([JSON.stringify(sceneState.document, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(S.sceneState.document, null, 2)], { type: "application/json" });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
   link.download = filename;
@@ -4845,12 +4658,12 @@ function downloadJson(filename) {
 
 function saveDocument(saveAs = false) {
   if (saveAs) {
-    const next = window.prompt("Save as", saveName) || "";
+    const next = window.prompt("Save as", S.saveName) || "";
     if (!next.trim()) return;
-    saveName = next.trim().endsWith(".json") ? next.trim() : `${next.trim()}.json`;
+    S.saveName = next.trim().endsWith(".json") ? next.trim() : `${next.trim()}.json`;
   }
-  downloadJson(saveName);
-  setHint(`Saved ${saveName}. Preferences are not in this file.`);
+  downloadJson(S.saveName);
+  setHint(`Saved ${S.saveName}. Preferences are not in this file.`);
 }
 
 function openDocument() {
@@ -4864,25 +4677,25 @@ function documentFromFile(parsed) {
 }
 
 async function loadDocumentDict(dict, name) {
-  pending = null;
+  S.pending = null;
   ghosts.clear();
-  selectedIds.clear();
+  S.selectedIds.clear();
   await refreshFrom(await api("/api/load", "POST", dict));
-  if (name) saveName = name;
-  namedView = null;
+  if (name) S.saveName = name;
+  S.namedView = null;
   viewUp.copy(WORLD_UP);
   bindProjectionCamera();
   lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
-  setHint(`Opened ${saveName}.`);
+  setHint(`Opened ${S.saveName}.`);
 }
 
 async function newDocument() {
-  pending = null;
+  S.pending = null;
   ghosts.clear();
-  selectedIds.clear();
+  S.selectedIds.clear();
   await refreshFrom(await api("/api/reset", "POST", {}));
-  saveName = "apecad.json";
-  namedView = null;
+  S.saveName = "apecad.json";
+  S.namedView = null;
   viewUp.copy(WORLD_UP);
   bindProjectionCamera();
   lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
@@ -4890,7 +4703,7 @@ async function newDocument() {
 }
 
 async function undoDocument() {
-  pending = null;
+  S.pending = null;
   ghosts.clear();
   await refreshFrom(await api("/api/undo", "POST", {}));
 }
@@ -4901,12 +4714,12 @@ async function redoDocument() {
 
 function selectAll() {
   indexBrep();
-  const ids = selectFilter === "element"
+  const ids = S.selectFilter === "element"
     ? brepRoots().map((row) => row.id)
-    : catalog().filter((row) => FILTER_KINDS[selectFilter].has(row.kind)).map((row) => row.id);
-  selectedIds = new Set(ids);
+    : catalog().filter((row) => FILTER_KINDS[S.selectFilter].has(row.kind)).map((row) => row.id);
+  S.selectedIds = new Set(ids);
   rebuild();
-  setHint(selectedIds.size ? `${selectedIds.size} selected.` : "Nothing to select.");
+  setHint(S.selectedIds.size ? `${S.selectedIds.size} selected.` : "Nothing to select.");
 }
 
 function closeMenus() {
@@ -4948,31 +4761,31 @@ function runCommand(cmd) {
   if (cmd === "view-back") return goNamedView("back");
   if (cmd === "view-bottom") return goNamedView("bottom");
   if (cmd === "projection") {
-    return setProjectionMode(projection === "perspective" ? "parallel" : "perspective");
+    return setProjectionMode(S.projection === "perspective" ? "parallel" : "perspective");
   }
   if (cmd === "snap") {
-    snapOn = !snapOn;
+    S.snapOn = !S.snapOn;
     refreshToggles();
     return;
   }
   if (cmd === "grid-snap") {
-    setGridSnapOn(!gridSnapOn);
+    setGridSnapOn(!S.gridSnapOn);
     return;
   }
   if (cmd === "ortho") {
-    orthoOn = !orthoOn;
+    S.orthoOn = !S.orthoOn;
     refreshToggles();
     return;
   }
   if (cmd === "grid") {
-    setGridOn(!gridOn);
+    setGridOn(!S.gridOn);
     return;
   }
   if (cmd === "fit") return document.getElementById("view-fit").click();
   if (cmd === "iso") return document.getElementById("view-iso").click();
   if (cmd === "viewcube") {
-    viewCubeOn = !viewCubeOn;
-    document.getElementById("viewcube-wrap").hidden = !viewCubeOn;
+    S.viewCubeOn = !S.viewCubeOn;
+    document.getElementById("viewcube-wrap").hidden = !S.viewCubeOn;
     return;
   }
   if (cmd === "toggle-outliner") {
