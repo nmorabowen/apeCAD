@@ -32,6 +32,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0020](0020-agent-surface.md) | AGENTS.md is the agent entry point | Proposed |
 | [0021](0021-scratchpad-root-flag.md) | Scratchpad CLI accepts `--root` | Proposed |
 | [0022](0022-ci-gates.md) | CI runs pytest, ruff check and pyright | Proposed |
+| [0023](0023-module-boundaries.md) | Module boundaries and a line budget | Proposed |
 
 ## Template
 

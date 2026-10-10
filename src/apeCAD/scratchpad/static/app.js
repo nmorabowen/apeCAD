@@ -3,6 +3,18 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import {
+  circumcircle,
+  dist3,
+  lineIntersectMm,
+  projectT,
+  regularPolygon,
+  sampleArc,
+  sampleBezier,
+  sampleCircle,
+  sampleEllipse,
+} from "./js/geom.js";
+import { shapeQualifies } from "./js/screen.js";
 
 const SNAP_APERTURE_MM = 400;
 const PICK_POINT_PX = 12;
@@ -1223,18 +1235,6 @@ function formatDeg(rad) {
   return `${Math.round(deg * 10) / 10}°`;
 }
 
-function dist3(a, b) {
-  return Math.hypot(b.x_mm - a.x_mm, b.y_mm - a.y_mm, (b.z_mm || 0) - (a.z_mm || 0));
-}
-
-function midpoint(a, b) {
-  return {
-    x_mm: (a.x_mm + b.x_mm) / 2,
-    y_mm: (a.y_mm + b.y_mm) / 2,
-    z_mm: ((a.z_mm || 0) + (b.z_mm || 0)) / 2,
-  };
-}
-
 function worldToScreen(x, y, z) {
   const vector = new THREE.Vector3(x, y, z).project(camera());
   if (vector.z > 1) return null;
@@ -1351,105 +1351,6 @@ function addCurve(group, pts, color = curveIdle(), entityId = null) {
   line.renderOrder = overlay ? 12 : 0;
   mark(line, entityId);
   group.add(line);
-}
-
-function sampleCircle(center, radius, count = 64) {
-  const pts = [];
-  for (let i = 0; i <= count; i += 1) {
-    const a = (i / count) * Math.PI * 2;
-    pts.push({
-      x_mm: center.x_mm + radius * Math.cos(a),
-      y_mm: center.y_mm + radius * Math.sin(a),
-      z_mm: center.z_mm || 0,
-    });
-  }
-  return pts;
-}
-
-function sampleEllipse(center, rx, ry, count = 64) {
-  const pts = [];
-  for (let i = 0; i <= count; i += 1) {
-    const a = (i / count) * Math.PI * 2;
-    pts.push({
-      x_mm: center.x_mm + rx * Math.cos(a),
-      y_mm: center.y_mm + ry * Math.sin(a),
-      z_mm: center.z_mm || 0,
-    });
-  }
-  return pts;
-}
-
-function circumcircle(a, b, c) {
-  const d = 2 * (
-    a.x_mm * (b.y_mm - c.y_mm)
-    + b.x_mm * (c.y_mm - a.y_mm)
-    + c.x_mm * (a.y_mm - b.y_mm)
-  );
-  if (Math.abs(d) < 1e-8) return null;
-  const a2 = a.x_mm * a.x_mm + a.y_mm * a.y_mm;
-  const b2 = b.x_mm * b.x_mm + b.y_mm * b.y_mm;
-  const c2 = c.x_mm * c.x_mm + c.y_mm * c.y_mm;
-  const ux = (a2 * (b.y_mm - c.y_mm) + b2 * (c.y_mm - a.y_mm) + c2 * (a.y_mm - b.y_mm)) / d;
-  const uy = (a2 * (c.x_mm - b.x_mm) + b2 * (a.x_mm - c.x_mm) + c2 * (b.x_mm - a.x_mm)) / d;
-  return { x_mm: ux, y_mm: uy, z_mm: 0, radius: Math.hypot(ux - a.x_mm, uy - a.y_mm) };
-}
-
-function ccwDelta(from, to) {
-  let delta = to - from;
-  while (delta <= 0) delta += Math.PI * 2;
-  while (delta > Math.PI * 2) delta -= Math.PI * 2;
-  return delta;
-}
-
-function sampleArc(start, mid, end, count = 48) {
-  const circ = circumcircle(start, mid, end);
-  if (!circ) return [start, mid, end];
-  const a0 = Math.atan2(start.y_mm - circ.y_mm, start.x_mm - circ.x_mm);
-  const a1 = Math.atan2(mid.y_mm - circ.y_mm, mid.x_mm - circ.x_mm);
-  const a2 = Math.atan2(end.y_mm - circ.y_mm, end.x_mm - circ.x_mm);
-  const total = ccwDelta(a0, a1) < ccwDelta(a0, a2)
-    ? ccwDelta(a0, a2)
-    : ccwDelta(a0, a2) - Math.PI * 2;
-  const pts = [];
-  for (let i = 0; i <= count; i += 1) {
-    const angle = a0 + total * (i / count);
-    pts.push({
-      x_mm: circ.x_mm + circ.radius * Math.cos(angle),
-      y_mm: circ.y_mm + circ.radius * Math.sin(angle),
-      z_mm: 0,
-    });
-  }
-  return pts;
-}
-
-function sampleBezier(pts, count = 32) {
-  const [p0, p1, p2, p3] = pts;
-  const out = [];
-  for (let i = 0; i <= count; i += 1) {
-    const t = i / count;
-    const u = 1 - t;
-    out.push({
-      x_mm: u * u * u * p0.x_mm + 3 * u * u * t * p1.x_mm + 3 * u * t * t * p2.x_mm + t * t * t * p3.x_mm,
-      y_mm: u * u * u * p0.y_mm + 3 * u * u * t * p1.y_mm + 3 * u * t * t * p2.y_mm + t * t * t * p3.y_mm,
-      z_mm: 0,
-    });
-  }
-  return out;
-}
-
-function regularPolygon(center, rim, sides) {
-  const radius = dist3(center, rim);
-  const a0 = Math.atan2(rim.y_mm - center.y_mm, rim.x_mm - center.x_mm);
-  const pts = [];
-  for (let i = 0; i < sides; i += 1) {
-    const angle = a0 + (i * 2 * Math.PI) / sides;
-    pts.push({
-      x_mm: center.x_mm + radius * Math.cos(angle),
-      y_mm: center.y_mm + radius * Math.sin(angle),
-      z_mm: 0,
-    });
-  }
-  return pts;
 }
 
 async function api(path, method = "GET", body = null) {
@@ -2736,68 +2637,6 @@ function clientOf(xMm, yMm, zMm = 0) {
   };
 }
 
-function inRect(point, rect) {
-  return point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom;
-}
-
-function segmentsCross2d(a1, a2, b1, b2) {
-  const ax = a2.x - a1.x;
-  const ay = a2.y - a1.y;
-  const bx = b2.x - b1.x;
-  const by = b2.y - b1.y;
-  const denom = ax * by - ay * bx;
-  if (Math.abs(denom) < 1e-9) return false;
-  const t = ((b1.x - a1.x) * by - (b1.y - a1.y) * bx) / denom;
-  const u = ((b1.x - a1.x) * ay - (b1.y - a1.y) * ax) / denom;
-  return t >= 0 && t <= 1 && u >= 0 && u <= 1;
-}
-
-function segmentHitsRect(a, b, rect) {
-  if (inRect(a, rect) || inRect(b, rect)) return true;
-  const corners = [
-    { x: rect.left, y: rect.top },
-    { x: rect.right, y: rect.top },
-    { x: rect.right, y: rect.bottom },
-    { x: rect.left, y: rect.bottom },
-  ];
-  for (let i = 0; i < 4; i += 1) {
-    if (segmentsCross2d(a, b, corners[i], corners[(i + 1) % 4])) return true;
-  }
-  return false;
-}
-
-function pointInPolygon2d(point, pts) {
-  let inside = false;
-  for (let i = 0, j = pts.length - 1; i < pts.length; j = i, i += 1) {
-    const a = pts[i];
-    const b = pts[j];
-    const crosses = ((a.y > point.y) !== (b.y > point.y))
-      && (point.x < ((b.x - a.x) * (point.y - a.y)) / ((b.y - a.y) || 1e-12) + a.x);
-    if (crosses) inside = !inside;
-  }
-  return inside;
-}
-
-function shapeQualifies(pts, closed, crossing, rect) {
-  if (!pts.length) return false;
-  if (!crossing) return pts.every((point) => inRect(point, rect));
-  if (pts.some((point) => inRect(point, rect))) return true;
-  const last = closed ? pts.length : pts.length - 1;
-  for (let i = 0; i < last; i += 1) {
-    if (segmentHitsRect(pts[i], pts[(i + 1) % pts.length], rect)) return true;
-  }
-  if (closed) {
-    const corners = [
-      { x: rect.left, y: rect.top },
-      { x: rect.right, y: rect.top },
-      { x: rect.right, y: rect.bottom },
-      { x: rect.left, y: rect.bottom },
-    ];
-    if (corners.some((corner) => pointInPolygon2d(corner, pts))) return true;
-  }
-  return false;
-}
-
 function entityScreenShape(row) {
   const toScreen = (point) => clientOf(point.x_mm, point.y_mm, point.z_mm || 0);
   if (row.kind === "Point") return { pts: [toScreen(row.item)], closed: false };
@@ -3008,37 +2847,6 @@ function updatePreselect(event) {
     if (selectedIds.has(id)) continue;
     drawPreselectEntity(id, shown);
   }
-}
-
-function lineIntersectMm(a1, a2, b1, b2) {
-  const ax = a1.x_mm;
-  const ay = a1.y_mm;
-  const bx = a2.x_mm - ax;
-  const by = a2.y_mm - ay;
-  const cx = b1.x_mm;
-  const cy = b1.y_mm;
-  const dx = b2.x_mm - cx;
-  const dy = b2.y_mm - cy;
-  const denom = bx * dy - by * dx;
-  if (Math.abs(denom) < 1e-12) return null;
-  const t = ((cx - ax) * dy - (cy - ay) * dx) / denom;
-  const u = ((cx - ax) * by - (cy - ay) * bx) / denom;
-  return { x_mm: ax + t * bx, y_mm: ay + t * by, z_mm: 0, t, u };
-}
-
-function segmentsIntersectMm(a1, a2, b1, b2) {
-  const hit = lineIntersectMm(a1, a2, b1, b2);
-  if (!hit) return null;
-  if (hit.t <= 1e-9 || hit.t >= 1 - 1e-9 || hit.u <= 1e-9 || hit.u >= 1 - 1e-9) return null;
-  return hit;
-}
-
-function projectT(point, start, end) {
-  const vx = end.x_mm - start.x_mm;
-  const vy = end.y_mm - start.y_mm;
-  const length2 = vx * vx + vy * vy;
-  if (length2 === 0) return 0;
-  return ((point.x_mm - start.x_mm) * vx + (point.y_mm - start.y_mm) * vy) / length2;
 }
 
 function lineRows() {
