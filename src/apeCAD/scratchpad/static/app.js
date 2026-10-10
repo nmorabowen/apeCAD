@@ -1,5 +1,27 @@
 import * as THREE from "three";
 import { S } from "./js/state.js";
+import { api, createdId } from "./js/api.js";
+import {
+  FILTER_KINDS,
+  SELECT_FILTERS,
+  brepChildren,
+  brepKind,
+  brepRoots,
+  catalog,
+  collectNested,
+  curveWorldPoints,
+  descendantIds,
+  findRecord,
+  gatherPoints,
+  indexBrep,
+  isProfile,
+  lineRows,
+  offsetPoints,
+  owningSolidId,
+  pointById,
+  profileWorldPoints,
+  rootId,
+} from "./js/brep.js";
 import {
   bindProjectionCamera,
   camera,
@@ -38,6 +60,23 @@ import {
   snapButton,
   typedText,
 } from "./js/cmdline.js";
+import {
+  CURVE_HOVER,
+  SNAP_COLOR,
+  addCurve,
+  addCylinder,
+  addFaceGraphic,
+  addPlanarFace,
+  addSolidPrism,
+  addSolidVolumeFallback,
+  addVertexDot,
+  addVolume,
+  clayHex,
+  curveFor,
+  lineOverlay,
+  mark,
+  xyzMm,
+} from "./js/draw.js";
 import {
   circumcircle,
   dist3,
@@ -111,13 +150,6 @@ import {
 const SNAP_APERTURE_MM = 400;
 const PICK_POINT_PX = 12;
 const PICK_LINE_PX = 14;
-const SELECT_FILTERS = ["point", "line", "face", "solid", "element"];
-const FILTER_KINDS = {
-  point: new Set(["Point"]),
-  line: new Set(["Line", "Polyline", "Arc", "Bezier"]),
-  face: new Set(["Face", "Circle", "Ellipse"]),
-  solid: new Set(["Solid", "Box"]),
-};
 
 const treeEl = document.getElementById("tree");
 const propBody = document.getElementById("prop-body");
@@ -127,11 +159,6 @@ initPrefs();
 
 let preselectKey = "";
 let pointerDown = null;
-
-const EDGE_COLOR = 0x111111;
-const CURVE_PICK = 0x4a90d9;
-const CURVE_HOVER = 0x6aa8e8;
-const SNAP_COLOR = 0xd55e00;
 
 
 function setGridSpacing(minor, major) {
@@ -154,299 +181,11 @@ function setDisplayUnit(next) {
   setHint(`Units ${displayUnit()}.`);
 }
 
-function isOverlayGroup(group) {
-  return group === ghosts || group === preselects;
-}
-
 rebuildGrid();
 
 initCamera();
 
 bindViewCube();
-
-function parseCssHex(value, fallback) {
-  const raw = String(value || "").replace("#", "").trim();
-  const hex = raw.length === 3
-    ? raw.split("").map((ch) => ch + ch).join("")
-    : raw;
-  const parsed = Number.parseInt(hex, 16);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
-function clayHex() {
-  const value = Math.max(80, Math.min(230, Number(S.prefs.clay) || 176));
-  return (value << 16) | (value << 8) | value;
-}
-
-function curveIdle() {
-  return parseCssHex(S.prefs.curve, EDGE_COLOR);
-}
-
-function isPicked(entityId) {
-  return entityId != null && S.selectedIds.has(entityId);
-}
-
-function selectionTints(entityId) {
-  if (entityId == null) return false;
-  if (isPicked(entityId)) return true;
-  const seen = new Set();
-  const stack = [...(S.brepParentsOf.get(entityId) || [])];
-  while (stack.length) {
-    const parentId = stack.pop();
-    if (seen.has(parentId)) continue;
-    seen.add(parentId);
-    if (isPicked(parentId)) return true;
-    stack.push(...(S.brepParentsOf.get(parentId) || []));
-  }
-  return false;
-}
-
-function curveFor(entityId) {
-  if (selectionTints(entityId)) return CURVE_PICK;
-  if (entityId != null && S.cutterIds.has(entityId)) return CURVE_HOVER;
-  return curveIdle();
-}
-
-function lineOverlay(entityId) {
-  return S.selectFilter === "line" || selectionTints(entityId);
-}
-
-function clayMat(preview, opacity, entityId = null) {
-  return new THREE.MeshLambertMaterial({
-    color: preview || selectionTints(entityId) ? CURVE_PICK : clayHex(),
-    transparent: preview || opacity < 0.99,
-    opacity,
-    side: THREE.DoubleSide,
-  });
-}
-
-function addEdgeOverlay(group, mesh, entityId, preview) {
-  if (preview || !S.prefs.showEdges) return;
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(mesh.geometry),
-    new THREE.LineBasicMaterial({ color: EDGE_COLOR }),
-  );
-  edges.position.copy(mesh.position);
-  edges.quaternion.copy(mesh.quaternion);
-  mark(edges, entityId);
-  group.add(edges);
-}
-
-function addCurve(group, pts, color = curveIdle(), entityId = null) {
-  if (pts.length < 2) return;
-  if (!isOverlayGroup(group) && !S.prefs.showCurves) return;
-  const overlay = group !== ghosts && lineOverlay(entityId);
-  const line = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(
-      pts.map((point) => {
-        const p = xyzMm(point);
-        return new THREE.Vector3(p.x_mm, p.y_mm, p.z_mm);
-      }),
-    ),
-    new THREE.LineBasicMaterial({ color, depthTest: !overlay }),
-  );
-  line.renderOrder = overlay ? 12 : 0;
-  mark(line, entityId);
-  group.add(line);
-}
-
-async function api(path, method = "GET", body = null) {
-  const options = { method, headers: { "Content-Type": "application/json" } };
-  if (body !== null) options.body = JSON.stringify(body);
-  const response = await fetch(path, options);
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error || response.statusText);
-  return payload;
-}
-
-function createdId(payload, fallbackList) {
-  if (payload.created_id != null) return payload.created_id;
-  const items = payload[fallbackList] || [];
-  if (!items.length) throw new Error("operation did not create an entity");
-  return items[items.length - 1].entity_id;
-}
-
-function mark(object, entityId) {
-  if (entityId == null) return;
-  object.userData.entityId = entityId;
-}
-
-function addVolume(group, origin, size, color, opacity, entityId = null) {
-  const preview = isOverlayGroup(group);
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(size[0], size[1], size[2]),
-    clayMat(preview, opacity, entityId),
-  );
-  mesh.position.set(origin[0] + size[0] / 2, origin[1] + size[1] / 2, origin[2] + size[2] / 2);
-  mark(mesh, entityId);
-  if (!preview && !S.prefs.showFaces) mesh.visible = false;
-  group.add(mesh);
-  addEdgeOverlay(group, mesh, entityId, preview);
-}
-
-function addCylinder(group, cx, cy, radius, originZ, height, color, opacity, entityId = null) {
-  const preview = isOverlayGroup(group);
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius, radius, Math.max(Math.abs(height), 1), 48),
-    clayMat(preview, opacity, entityId),
-  );
-  mesh.rotation.x = Math.PI / 2;
-  mesh.position.set(cx, cy, originZ + height / 2);
-  mark(mesh, entityId);
-  if (!preview && !S.prefs.showFaces) mesh.visible = false;
-  group.add(mesh);
-  addEdgeOverlay(group, mesh, entityId, preview);
-}
-
-function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entityId = null, color = null } = {}) {
-  if (pts.length < 3) return;
-  const preview = isOverlayGroup(group);
-  const z = (Number.isFinite(pts[0].z_mm) ? pts[0].z_mm : 0) + 20;
-  if (fill && (preview || S.prefs.showFaces)) {
-    const vertices = [];
-    const origin = pts[0];
-    for (let i = 1; i < pts.length - 1; i += 1) {
-      vertices.push(
-        origin.x_mm, origin.y_mm, z,
-        pts[i].x_mm, pts[i].y_mm, z,
-        pts[i + 1].x_mm, pts[i + 1].y_mm, z,
-      );
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(
-      geometry,
-      clayMat(preview, preview ? opacity : 0.92, entityId),
-    );
-    if (preview && color != null) mesh.material.color.setHex(color);
-    mesh.renderOrder = 2;
-    mark(mesh, entityId);
-    group.add(mesh);
-  }
-  if (!preview && !S.prefs.showEdges && !S.prefs.showCurves) return;
-  const loop = pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, z + 8));
-  loop.push(loop[0].clone());
-  const outline = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(loop),
-    new THREE.LineBasicMaterial({
-      color: preview ? (color ?? curveIdle()) : EDGE_COLOR,
-    }),
-  );
-  mark(outline, entityId);
-  group.add(outline);
-}
-
-function xyzMm(point) {
-  const x = Number(point.x_mm);
-  const y = Number(point.y_mm);
-  const z = Number(point.z_mm);
-  return {
-    x_mm: Number.isFinite(x) ? x : 0,
-    y_mm: Number.isFinite(y) ? y : 0,
-    z_mm: Number.isFinite(z) ? z : 0,
-  };
-}
-
-function addPlanarFace(group, pts, entityId) {
-  if (pts.length < 3) return;
-  const preview = isOverlayGroup(group);
-  const world = pts.map(xyzMm);
-  if (preview || S.prefs.showFaces) {
-    const vertices = [];
-    const origin = world[0];
-    for (let i = 1; i < world.length - 1; i += 1) {
-      vertices.push(
-        origin.x_mm, origin.y_mm, origin.z_mm,
-        world[i].x_mm, world[i].y_mm, world[i].z_mm,
-        world[i + 1].x_mm, world[i + 1].y_mm, world[i + 1].z_mm,
-      );
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, clayMat(preview, preview ? 0.22 : 1, entityId));
-    mesh.renderOrder = 1;
-    mark(mesh, entityId);
-    group.add(mesh);
-  }
-  if ((preview || S.prefs.showEdges || S.prefs.showCurves) && (preview || S.selectFilter !== "line")) {
-    const loop = world.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm));
-    loop.push(loop[0].clone());
-    const outline = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(loop),
-      new THREE.LineBasicMaterial({
-        color: preview ? CURVE_PICK : (selectionTints(entityId) ? CURVE_PICK : EDGE_COLOR),
-      }),
-    );
-    mark(outline, entityId);
-    group.add(outline);
-  }
-}
-
-function addSolidPrism(group, solid, byId) {
-  const face = (S.sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
-  if (!face) return false;
-  const base = face.point_ids.map((id) => byId.get(id)).filter(Boolean);
-  const cap = (S.sceneState.faces || []).find((item) => item.entity_id === solid.cap_id);
-  const lid = cap
-    ? cap.point_ids.map((id) => byId.get(id)).filter(Boolean)
-    : [];
-  if (base.length < 3 || lid.length !== base.length) return false;
-  addPlanarFace(group, base, face.entity_id);
-  addPlanarFace(group, lid, cap.entity_id);
-  const walls = solid.wall_ids || [];
-  for (let i = 0; i < base.length; i += 1) {
-    const j = (i + 1) % base.length;
-    addPlanarFace(group, [base[i], base[j], lid[j], lid[i]], walls[i] ?? solid.entity_id);
-  }
-  return true;
-}
-
-function addSolidVolumeFallback(group, solid, byId) {
-  const face = (S.sceneState.faces || []).find((item) => item.entity_id === solid.face_id);
-  if (!face) return;
-  const pts = face.point_ids.map((id) => byId.get(id)).filter(Boolean).map(xyzMm);
-  if (!pts.length) return;
-  const height = Math.abs(solid.distance_mm) || 1;
-  const xs = pts.map((p) => p.x_mm);
-  const ys = pts.map((p) => p.y_mm);
-  const zs = pts.map((p) => p.z_mm);
-  const originZ = solid.distance_mm >= 0 ? Math.min(...zs) : Math.min(...zs) - height;
-  addVolume(
-    group,
-    [Math.min(...xs), Math.min(...ys), originZ],
-    [
-      Math.max(Math.max(...xs) - Math.min(...xs), 1),
-      Math.max(Math.max(...ys) - Math.min(...ys), 1),
-      Math.max(height, 1),
-    ],
-    clayHex(),
-    1,
-    solid.entity_id,
-  );
-}
-
-function addVertexDot(group, point) {
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute([point.x_mm, point.y_mm, point.z_mm], 3),
-  );
-  const picked = selectionTints(point.entity_id);
-  const material = new THREE.PointsMaterial({
-    color: picked ? CURVE_PICK : EDGE_COLOR,
-    size: S.selectFilter === "point" || picked ? 11 : 8,
-    sizeAttenuation: false,
-    depthTest: false,
-    depthWrite: false,
-  });
-  const dot = new THREE.Points(geometry, material);
-  dot.renderOrder = 20;
-  dot.raycast = () => {};
-  mark(dot, point.entity_id);
-  group.add(dot);
-}
 
 function rebuild() {
   draft.clear();
@@ -609,192 +348,6 @@ async function refreshFrom(payload) {
     } catch (_ignored) { /* docks need a valid catalog */ }
     setHint(`draw error: ${error.message}`);
   }
-}
-
-function catalog() {
-  const rows = [];
-  const push = (kind, item) => {
-    rows.push({
-      id: item.entity_id,
-      kind,
-      name: item.label || brepKind(kind),
-      item,
-    });
-  };
-  for (const item of S.sceneState.points || []) push("Point", item);
-  for (const item of S.sceneState.lines || []) push("Line", item);
-  for (const item of S.sceneState.polylines || []) push("Polyline", item);
-  for (const item of S.sceneState.faces || []) push("Face", item);
-  for (const item of S.sceneState.circles || []) push("Circle", item);
-  for (const item of S.sceneState.arcs || []) push("Arc", item);
-  for (const item of S.sceneState.ellipses || []) push("Ellipse", item);
-  for (const item of S.sceneState.beziers || []) push("Bezier", item);
-  for (const item of S.sceneState.boxes || []) push("Box", item);
-  for (const item of S.sceneState.solids || []) push("Solid", item);
-  rows.sort((a, b) => a.id - b.id);
-  return rows;
-}
-
-function brepKind(kind) {
-  if (kind === "Point") return "Vertex";
-  if (kind === "Line") return "Edge";
-  return kind;
-}
-
-function lineConnecting(a, b) {
-  return (S.sceneState.lines || []).find((line) => (
-    (line.start_id === a && line.end_id === b)
-    || (line.start_id === b && line.end_id === a)
-  )) || null;
-}
-
-function brepChildrenLocal(row) {
-  const byId = new Map(catalog().map((item) => [item.id, item]));
-  const take = (id) => byId.get(id) || null;
-  if (row.kind === "Solid") {
-    const kids = [];
-    const profile = take(row.item.face_id);
-    if (profile) kids.push(profile);
-    const cap = take(row.item.cap_id);
-    if (cap) kids.push(cap);
-    for (const wallId of row.item.wall_ids || []) {
-      const wall = take(wallId);
-      if (wall) kids.push(wall);
-    }
-    return kids;
-  }
-  if (row.kind === "Face") {
-    const ids = row.item.point_ids || [];
-    if (ids.length < 2) return ids.map(take).filter(Boolean);
-    const edges = [];
-    for (let i = 0; i < ids.length; i += 1) {
-      const line = lineConnecting(ids[i], ids[(i + 1) % ids.length]);
-      if (!line) return ids.map(take).filter(Boolean);
-      edges.push(byId.get(line.entity_id));
-    }
-    return edges.filter(Boolean);
-  }
-  if (row.kind === "Line") {
-    return [take(row.item.start_id), take(row.item.end_id)].filter(Boolean);
-  }
-  if (row.kind === "Circle" || row.kind === "Ellipse") {
-    const center = take(row.item.center_id);
-    return center ? [center] : [];
-  }
-  if (row.kind === "Arc") {
-    return [take(row.item.start_id), take(row.item.mid_id), take(row.item.end_id)].filter(Boolean);
-  }
-  if (row.kind === "Polyline" || row.kind === "Bezier") {
-    return (row.item.point_ids || []).map(take).filter(Boolean);
-  }
-  return [];
-}
-
-function brepChildren(row) {
-  if (S.brepChildrenOf.has(row.id)) {
-    return (S.brepChildrenOf.get(row.id) || []).map(findRecord).filter(Boolean);
-  }
-  return brepChildrenLocal(row);
-}
-
-function collectNested(row, nested) {
-  for (const child of brepChildren(row)) {
-    nested.add(child.id);
-    collectNested(child, nested);
-  }
-}
-
-function brepRoots() {
-  const rows = catalog();
-  const nested = new Set();
-  for (const row of rows) collectNested(row, nested);
-  const rank = {
-    Solid: 0, Box: 1, Face: 2, Circle: 2, Ellipse: 2,
-    Polyline: 3, Bezier: 3, Arc: 3, Line: 4, Point: 5,
-  };
-  return rows
-    .filter((row) => !nested.has(row.id))
-    .sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) || a.id - b.id);
-}
-
-function indexBrep() {
-  S.brepChildrenOf = new Map();
-  S.brepParentsOf = new Map();
-  S.brepRootOf = new Map();
-  S.brepSolidOf = new Map();
-  const raw = S.sceneState.brep;
-  if (raw && raw.children && raw.root) {
-    for (const [key, kids] of Object.entries(raw.children)) {
-      S.brepChildrenOf.set(Number(key), (kids || []).map(Number));
-    }
-    for (const [key, pars] of Object.entries(raw.parents || {})) {
-      S.brepParentsOf.set(Number(key), (pars || []).map(Number));
-    }
-    for (const [key, value] of Object.entries(raw.root)) {
-      S.brepRootOf.set(Number(key), Number(value));
-    }
-    for (const [key, value] of Object.entries(raw.solid || {})) {
-      S.brepSolidOf.set(Number(key), Number(value));
-    }
-    return;
-  }
-  for (const row of catalog()) {
-    const kids = brepChildrenLocal(row);
-    S.brepChildrenOf.set(row.id, kids.map((child) => child.id));
-    for (const child of kids) {
-      const pars = S.brepParentsOf.get(child.id) || [];
-      if (!pars.includes(row.id)) pars.push(row.id);
-      S.brepParentsOf.set(child.id, pars);
-    }
-  }
-  for (const row of catalog()) {
-    S.brepRootOf.set(row.id, walkRoot(row.id));
-    const owner = walkSolid(row.id);
-    if (owner != null) S.brepSolidOf.set(row.id, owner);
-  }
-}
-
-function walkRoot(id) {
-  const seen = new Set();
-  let current = id;
-  while (true) {
-    const pars = S.brepParentsOf.get(current) || [];
-    if (!pars.length) return current;
-    const solid = pars.find((pid) => {
-      const row = findRecord(pid);
-      return row && FILTER_KINDS.solid.has(row.kind);
-    });
-    const nxt = solid != null ? solid : pars[0];
-    if (seen.has(nxt)) return current;
-    seen.add(current);
-    current = nxt;
-  }
-}
-
-function walkSolid(id) {
-  const row = findRecord(id);
-  if (row && FILTER_KINDS.solid.has(row.kind)) return id;
-  const stack = [...(S.brepParentsOf.get(id) || [])];
-  const seen = new Set();
-  while (stack.length) {
-    const pid = stack.pop();
-    if (seen.has(pid)) continue;
-    seen.add(pid);
-    const parent = findRecord(pid);
-    if (parent && FILTER_KINDS.solid.has(parent.kind)) return pid;
-    stack.push(...(S.brepParentsOf.get(pid) || []));
-  }
-  return null;
-}
-
-function rootId(id) {
-  return S.brepRootOf.has(id) ? S.brepRootOf.get(id) : id;
-}
-
-function owningSolidId(id) {
-  const row = findRecord(id);
-  if (row && FILTER_KINDS.solid.has(row.kind)) return id;
-  return S.brepSolidOf.has(id) ? S.brepSolidOf.get(id) : null;
 }
 
 const collapsedTree = new Set();
@@ -965,20 +518,6 @@ function beginRename(row, rowEl) {
   input.addEventListener("blur", () => finish(true));
 }
 
-function gatherPoints(row, into = []) {
-  if (row.kind === "Point") into.push(row.item);
-  if (row.kind === "Box" && row.item.origin_xyz_mm && row.item.size_xyz_mm) {
-    const o = row.item.origin_xyz_mm;
-    const s = row.item.size_xyz_mm;
-    into.push(
-      { x_mm: o[0], y_mm: o[1], z_mm: o[2] },
-      { x_mm: o[0] + s[0], y_mm: o[1] + s[1], z_mm: o[2] + s[2] },
-    );
-  }
-  for (const child of brepChildren(row)) gatherPoints(child, into);
-  return into;
-}
-
 function fitEntity(row) {
   const pts = gatherPoints(row);
   const box = new THREE.Box3();
@@ -1057,15 +596,6 @@ function runTreeCommand(cmd, row) {
     if (!S.selectedIds.has(row.id)) setSelection(row.id);
     commitDelete().catch((error) => setHint(error.message));
   }
-}
-
-function findRecord(id) {
-  return catalog().find((row) => row.id === id) || null;
-}
-
-function isProfile(id) {
-  const row = findRecord(id);
-  return row != null && (row.kind === "Face" || row.kind === "Circle" || row.kind === "Ellipse");
 }
 
 function setSelection(id, { shift = false } = {}) {
@@ -1246,56 +776,6 @@ function rayHitsPolygon(ray, pts) {
     }
   }
   return best;
-}
-
-function profileWorldPoints(row) {
-  if (row.kind === "Face") {
-    return (row.item.point_ids || []).map(pointById).filter(Boolean);
-  }
-  if (row.kind === "Circle") {
-    const center = pointById(row.item.center_id);
-    if (!center) return [];
-    return sampleCircle(center, row.item.radius_mm).slice(0, -1);
-  }
-  if (row.kind === "Ellipse") {
-    const center = pointById(row.item.center_id);
-    if (!center) return [];
-    return sampleEllipse(center, row.item.radius_x_mm, row.item.radius_y_mm).slice(0, -1);
-  }
-  return [];
-}
-
-function offsetPoints(pts, dx, dy, dz) {
-  return pts.map((point) => ({
-    x_mm: point.x_mm + dx,
-    y_mm: point.y_mm + dy,
-    z_mm: (point.z_mm || 0) + dz,
-  }));
-}
-
-function curveWorldPoints(row) {
-  if (row.kind === "Line") {
-    const start = pointById(row.item.start_id);
-    const end = pointById(row.item.end_id);
-    return start && end ? { pts: [start, end], closed: false } : null;
-  }
-  if (row.kind === "Polyline") {
-    const pts = (row.item.point_ids || []).map(pointById).filter(Boolean);
-    return pts.length >= 2 ? { pts, closed: Boolean(row.item.closed) } : null;
-  }
-  if (row.kind === "Bezier") {
-    const pts = (row.item.point_ids || []).map(pointById).filter(Boolean);
-    if (pts.length !== 4) return null;
-    return { pts: sampleBezier(pts), closed: false };
-  }
-  if (row.kind === "Arc") {
-    const start = pointById(row.item.start_id);
-    const mid = pointById(row.item.mid_id);
-    const end = pointById(row.item.end_id);
-    if (!start || !mid || !end) return null;
-    return { pts: sampleArc(start, mid, end), closed: false };
-  }
-  return null;
 }
 
 function pickClosestPoint(event) {
@@ -1521,10 +1001,6 @@ function setSelectFilter(next) {
   rebuild();
 }
 
-function pointById(id) {
-  return (S.sceneState.points || []).find((point) => point.entity_id === id) || null;
-}
-
 function clientOf(xMm, yMm, zMm = 0) {
   const vector = new THREE.Vector3(xMm, yMm, zMm).project(camera());
   const rect = canvas.getBoundingClientRect();
@@ -1642,20 +1118,6 @@ function applyWindowSelect(origin, event) {
     : "Nothing in the window.");
 }
 
-function descendantIds(id) {
-  const out = [];
-  const stack = [...(S.brepChildrenOf.get(id) || [])];
-  const seen = new Set();
-  while (stack.length) {
-    const childId = stack.pop();
-    if (seen.has(childId)) continue;
-    seen.add(childId);
-    out.push(childId);
-    stack.push(...(S.brepChildrenOf.get(childId) || []));
-  }
-  return out;
-}
-
 function addHoverDot(point) {
   const p = xyzMm(point);
   const geometry = new THREE.BufferGeometry();
@@ -1744,10 +1206,6 @@ function updatePreselect(event) {
     if (S.selectedIds.has(id)) continue;
     drawPreselectEntity(id, shown);
   }
-}
-
-function lineRows() {
-  return catalog().filter((row) => row.kind === "Line");
 }
 
 function cutterCandidates(victimId) {
