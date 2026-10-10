@@ -44,21 +44,30 @@ posts. Five of the first eight PRs (#2–#6) were this kind of work. Each item n
 
 ## app.js / static/js / index.html
 
-- [ ] `app.js` is over the 600-line budget and may only shrink (ADR 0023,
-      `LEGACY_CEILINGS` in `tests/test_architecture.py`). New client code goes in a
-      `static/js/<name>.js` module that `app.js` imports as `./js/<name>.js`. Move the code
-      you touch out with it, and lower the ceiling to the new size. Never raise it.
-- [ ] Pure modules (no DOM, no THREE, no shared mutable state) get `node --test` unit tests
-      in `tests/js/*.test.mjs`. `tests/test_client_modules.py` runs them when Node exists.
-
-- [ ] Bump `N` in `<script type="module" src="/app.js?v=N">` in `index.html`. Every PR that
-      changed `app.js` did (10 → 12 → 15 → 49 → 53 → 54); PR test plans hard-refresh to load
-      the new `N`.
+- [ ] `app.js` is only the bootstrap (imports, `init*` / `bind*` calls, the render loop).
+      Behaviour goes in a `static/js/<name>.js` module, each at most 600 lines (ADR 0023,
+      `tests/test_architecture.py`). Split a module by responsibility before it reaches 600.
+- [ ] State that more than one module reassigns lives on `S` in `js/state.js`; an imported
+      `let` binding is read-only. State only one module touches stays a module-level `let`.
+- [ ] A module never imports `app.js`. The page loads it as `/app.js?v=N`, so `../app.js`
+      is a different URL and would evaluate a second copy of the whole client. Modules may
+      import each other in cycles, but top-level module code may only use `viewport.js`,
+      `state.js` and pure modules; anything else runs inside an `init*` / `bind*` function
+      that `app.js` calls.
+- [ ] Pure modules (no DOM, no THREE, no shared mutable state; `state.js` is allowed) get
+      `node --test` unit tests in `tests/js/*.test.mjs`. `tests/test_client_modules.py` runs
+      them when Node exists. Today: `geom`, `screen`, `units`, `prefs`, `brep`.
+- [ ] Bump `N` in `<script type="module" src="/app.js?v=N">` in `index.html` for every client
+      change (10 → 12 → 15 → 49 → 53 → 54 → … 63). The server sends `no-store`, so modules
+      under `js/` need no version of their own.
 - [ ] `tests/test_scratchpad.py::test_static_index_is_served` asserts literal DOM ids and JS
-      identifiers from `index.html` / `app.js` + `js/*.js`. Renaming one fails it: change the assertion
-      deliberately in the same commit. PRs #3–#6 added asserts for their new features.
-- [ ] Code still in `app.js` is covered only by those substring asserts and by looking at it
-      (last section).
+      identifiers from `index.html` / `app.js` + `js/*.js`. Renaming one fails it: change the
+      assertion deliberately in the same commit. `test_client_modules_are_served` fails for a
+      `js/` file that nothing imports.
+- [ ] `node --check` only parses: it does not catch an undefined name. A name dropped while
+      moving code shows up as a `ReferenceError` in the browser console only when that path
+      runs (`pointerDown`, caught only in the browser during the client split). Exercise the
+      handlers you moved.
 
 ## HTTP host and CLI
 
@@ -84,5 +93,9 @@ posts. Five of the first eight PRs (#2–#6) were this kind of work. Each item n
       the port it prints (8765 may belong to another instance, ADR 0019), hard-refresh, and
       exercise the change; capture a screenshot if you can drive a browser. Stop your
       process by PID.
+- [ ] Driving the page from a hidden browser pane: `requestAnimationFrame` does not fire, so
+      named views and the view cube never finish animating and clicks land in the old view.
+      Show the pane, or replace `window.requestAnimationFrame` with a timer before the app
+      loads. Clear `localStorage` (prefs) between runs: grid prefs persist and change snaps.
 - [ ] PR `## Test plan`: tick only what you ran; leave manual browser steps you did not run
       unticked, as the merged PRs do.

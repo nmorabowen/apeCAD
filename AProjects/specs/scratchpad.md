@@ -19,8 +19,9 @@ python -m apeCAD
         → GET  /api/identity  ({name, pid, host, port, root})
 ```
 
-No Node build, no Qt, no TypeScript. Vanilla JS: `app.js` plus native ES modules in
-`static/js/` ([ADR 0023](../adrs/0023-module-boundaries.md)).
+No Node build, no Qt, no TypeScript. Vanilla JS: a bootstrap `app.js` plus native ES
+modules in `static/js/`, with shared client state on one object in `js/state.js`
+([ADR 0023](../adrs/0023-module-boundaries.md)).
 
 ## Tools
 
