@@ -22,7 +22,7 @@ kernel or Qt viewer without an ADR). Cursor gets the English rule from
 
 ```bash
 pip install -e ".[dev]"          # the clone path from README.md
-python -m pytest -q              # 79 tests, ~10 s
+python -m pytest -q              # 81 tests, ~10 s
 python -m ruff check src tests   # rules E, F, I, UP; line length 100
 pyright                          # strict, over src/ only
 ```
@@ -38,12 +38,17 @@ Traps (each verified 2026-09-25):
 2. **pyright strict is clean on `main` (0 errors) — keep it that way.** It
    was red from PR #4 (`dd130c8`) until PR #11 typed the `/api/load` wrapper
    unwrap in `src/apeCAD/scratchpad/server.py`, and nothing noticed because
-   there is no CI. Run `pyright` before every PR; a new error is a finding.
+   there was no CI. CI now runs it (trap 4), but still run `pyright` before
+   every PR; a new error is a finding.
 3. **`ruff format` is not a gate.** `ruff format --check src tests` wants to
    reformat 5 existing files. Do not run `ruff format` over the tree; it buries
    your diff.
-4. **There is no CI.** Nothing runs on push. The PR "Test plan" checklist is
-   the only record of what ran: tick only what you ran.
+4. **CI runs the three gates above, nothing more** (since 2026-10-09,
+   ADR 0022). `.github/workflows/ci.yml` runs pytest, `ruff check` and
+   pyright on Python 3.11 and 3.12, on every PR and on push to `main`. It
+   does not run `ruff format --check` (trap 3), does not drive a browser,
+   and tool versions float with the `dev` extra. The PR "Test plan"
+   checklist still records what *you* ran locally: tick only what you ran.
 5. Python ≥ 3.11 (pyright targets 3.11). Earlier PRs ran `py -3.12`; the suite
    also passes on 3.11.9. The package has no runtime dependencies
    (`dependencies = []`); the HTTP host is stdlib.
