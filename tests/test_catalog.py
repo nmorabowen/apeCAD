@@ -17,7 +17,7 @@ from apeCAD.errors import (
     OpArgumentError,
     UnknownOpError,
 )
-from apeCAD.ops import SCHEMA_ID
+from apeCAD.ops import SCHEMA_ID, SUPPORTED_SCHEMA_IDS
 
 
 def _square(document: Document) -> None:
@@ -179,5 +179,7 @@ def test_split_request_takes_flat_and_nested_forms() -> None:
         split_request({"op": "AddPoint", "params": [1]})
 
 
-def test_schema_id_is_unchanged() -> None:
-    assert SCHEMA_ID == "apeCAD.document.v0"
+def test_schema_id_is_v1_and_v0_still_reads() -> None:
+    """ADR 0024 decision 9: section ops move the writer to v1; v0 logs stay readable."""
+    assert SCHEMA_ID == "apeCAD.document.v1"
+    assert SUPPORTED_SCHEMA_IDS == ("apeCAD.document.v0", "apeCAD.document.v1")

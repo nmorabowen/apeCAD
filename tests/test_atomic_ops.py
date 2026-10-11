@@ -17,13 +17,24 @@ from apeCAD.draft.state import DraftState
 from apeCAD.entities import Line
 from apeCAD.geometry import XYZ
 from apeCAD.ops import (
+    AddCrosstie,
     AddFaceFromLines,
+    AddHoop,
+    AddLine,
+    ArrayLinear,
+    ArrayPolar,
     BreakCrossing,
     ChamferCorner,
+    Delete,
     FilletCorner,
     InsertNode,
     JoinPolyline,
+    Mirror,
     PointAt,
+    SetBarSize,
+    SetMaterial,
+    SetTransverse,
+    Sew,
     Simplify,
     TrimLine,
 )
@@ -35,6 +46,9 @@ _COORDS = (0.0, -1.0, 0.5, 1000.0, 1e300)
 _INTS = (-1, 0, 1, 2, 3)
 _LABELS = (None, "fresh", "corner", "  ")
 _NAMES = ("t", "group", "")
+_DESIGNATIONS = ("Ø16", "Ø10", "Ø32", "#4", "16", "")
+_MATERIALS = ("H30", "H35", "  ")
+_HOOKS = ("135", "135-135", "135-90", "90-90", "180")
 
 
 def _snapshot(document: Document) -> tuple[object, ...]:
@@ -71,6 +85,17 @@ def _fixture() -> Document:
     doc.add_ellipse(e, 200.0, 100.0)
     doc.add_box((-5000.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0))
     doc.tag("group", (a, face.entity_id))
+    # Section mode (ADR 0024): a face, a 2 x 3 bar cage, a hoop and a crosstie.
+    corners = ((0.0, -800.0), (400.0, -800.0), (400.0, -200.0), (0.0, -200.0))
+    doc.add_concrete_face([PointAt(XYZ(x, y, 0.0)) for x, y in corners], "H30")
+    bars = [
+        doc.add_bar(x, y, "Ø16").entity_id
+        for x in (60.0, 340.0)
+        for y in (-740.0, -500.0, -260.0)
+    ]
+    hoop = doc.add_hoop(bars, "Ø10", 100.0)
+    doc.add_crosstie(bars[1], bars[4], "Ø10", 100.0)
+    doc.tag("cage", (hoop.entity_id,))
     return doc
 
 
@@ -109,6 +134,11 @@ def _value(
         return rng.choice(_NAMES)
     if name == "closed":
         return rng.choice((False, True))
+    if name in ("designation", "material", "hooks"):
+        if optional and rng.random() < 0.4:
+            return None
+        pool = {"designation": _DESIGNATIONS, "material": _MATERIALS, "hooks": _HOOKS}[name]
+        return rng.choice(pool)
     vertex = _mentions(hint, PointAt)
     if name == "ring" and rng.random() < 0.5:
         return None
@@ -231,6 +261,50 @@ def _targeted_ops(doc: Document) -> list[object]:
 def test_targeted_edge_cases_are_atomic(index: int) -> None:
     doc = _fixture()
     op = _targeted_ops(doc)[index]
+    json_before = doc.to_json()
+    live_before = _snapshot(doc)
+    try:
+        doc.apply(op)  # type: ignore[arg-type]
+    except DocumentError:
+        assert doc.to_json() == json_before
+        assert _snapshot(doc) == live_before
+    else:
+        _assert_live_equals_replay(doc)
+
+
+def _section_targeted_ops(doc: Document) -> list[object]:
+    """Section ops on the fixture's real bars, face, hoop and crosstie (ADR 0024)."""
+    face = doc.concrete_faces()[0].entity_id
+    bars = [bar.entity_id for bar in doc.bars()]
+    hoop = doc.hoops()[0].entity_id
+    tie = doc.crossties()[0].entity_id
+    return [
+        AddHoop(bar_ids=tuple(bars), designation="Ø12", spacing_mm=80.0),
+        AddHoop(bar_ids=tuple(bars[:3:2]), designation="Ø12", spacing_mm=80.0),  # collinear
+        AddHoop(bar_ids=(bars[0], bars[1], face), designation="Ø12", spacing_mm=80.0),
+        AddCrosstie(bar_a_id=bars[0], bar_b_id=bars[5], designation="Ø10", spacing_mm=100.0),
+        AddCrosstie(bar_a_id=bars[0], bar_b_id=face, designation="Ø10", spacing_mm=100.0),
+        SetBarSize(entity_ids=(bars[0], bars[3]), designation="Ø25"),
+        SetBarSize(entity_ids=(bars[0], hoop), designation="Ø25"),
+        SetMaterial(entity_ids=(face,), material="H40"),
+        SetMaterial(entity_ids=(face, bars[0]), material="H40"),
+        SetTransverse(entity_ids=(hoop, tie), designation="Ø12", spacing_mm=75.0),
+        SetTransverse(entity_ids=(hoop,), hooks="135-90"),
+        SetTransverse(entity_ids=(tie,), hooks="135-90"),
+        Delete(entity_ids=(bars[1],)),
+        Delete(entity_ids=(hoop,)),
+        Mirror(entity_ids=(hoop, face), ax_mm=0.0, ay_mm=0.0, bx_mm=0.0, by_mm=1.0),
+        ArrayLinear(entity_ids=(hoop, tie), dx_mm=1000.0, dy_mm=0.0, copies=2),
+        ArrayPolar(entity_ids=(face, hoop), origin_x_mm=0.0, origin_y_mm=0.0, count=4),
+        AddLine(start_id=doc.bars()[0].point_id, end_id=1),
+        Sew(entity_ids=(bars[0], face), tolerance_mm=1e6),
+    ]
+
+
+@pytest.mark.parametrize("index", range(19))
+def test_section_edge_cases_are_atomic(index: int) -> None:
+    doc = _fixture()
+    op = _section_targeted_ops(doc)[index]
     json_before = doc.to_json()
     live_before = _snapshot(doc)
     try:

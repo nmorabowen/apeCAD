@@ -11,7 +11,22 @@ See ``AProjects/`` for ADRs, memory, specs, and guides.
 from __future__ import annotations
 
 from apeCAD.document import Document
-from apeCAD.entities import Arc, Bezier, Box, Circle, Ellipse, Face, Line, Point, Polyline, Solid
+from apeCAD.entities import (
+    Arc,
+    Bar,
+    Bezier,
+    Box,
+    Circle,
+    ConcreteFace,
+    Crosstie,
+    Ellipse,
+    Face,
+    Hoop,
+    Line,
+    Point,
+    Polyline,
+    Solid,
+)
 from apeCAD.errors import DocumentError, OpArgumentError
 from apeCAD.frame import FrameGraph, FrameMember, FrameNode, FrameVolume
 from apeCAD.geometry import XYZ
@@ -20,9 +35,12 @@ __version__ = "0.0.0"
 
 __all__ = [
     "Arc",
+    "Bar",
     "Bezier",
     "Box",
     "Circle",
+    "ConcreteFace",
+    "Crosstie",
     "Document",
     "DocumentError",
     "Ellipse",
@@ -31,6 +49,7 @@ __all__ = [
     "FrameMember",
     "FrameNode",
     "FrameVolume",
+    "Hoop",
     "Line",
     "OpArgumentError",
     "Point",

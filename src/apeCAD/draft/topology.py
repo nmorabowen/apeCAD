@@ -8,13 +8,17 @@ from dataclasses import replace
 from apeCAD.draft.state import DraftState
 from apeCAD.entities import (
     Arc,
+    Bar,
     Bezier,
     Box,
     Circle,
+    ConcreteFace,
+    Crosstie,
     Ellipse,
     Entity,
     EntityId,
     Face,
+    Hoop,
     Line,
     Point,
     Polyline,
@@ -50,6 +54,14 @@ def referenced_ids(entity: Entity) -> frozenset[EntityId]:
         return frozenset(refs)
     if isinstance(entity, (Circle, Ellipse)):
         return frozenset({entity.center_id})
+    if isinstance(entity, ConcreteFace):
+        return frozenset(entity.point_ids)
+    if isinstance(entity, Bar):
+        return frozenset({entity.point_id})
+    if isinstance(entity, Hoop):
+        return frozenset(entity.bar_ids)
+    if isinstance(entity, Crosstie):
+        return frozenset({entity.bar_a_id, entity.bar_b_id})
     return frozenset({entity.start_id, entity.mid_id, entity.end_id})
 
 
@@ -200,6 +212,12 @@ def absorb_point(state: DraftState, old_id: EntityId, new_id: EntityId) -> None:
     """Rewire every reference from old_id to new_id, then drop old_id."""
     if old_id == new_id:
         return
+    owned = state.bar_points()
+    for point_id in (old_id, new_id):
+        if point_id in owned:
+            raise DocumentError(
+                f"point {point_id} belongs to bar {owned[point_id]}; a bar owns its point"
+            )
     for entity in list(state.entities.values()):
         if isinstance(entity, Line):
             start_id = new_id if entity.start_id == old_id else entity.start_id

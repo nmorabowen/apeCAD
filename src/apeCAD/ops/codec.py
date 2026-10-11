@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import cast
-
-from apeCAD.entities import EntityId
 from apeCAD.errors import DocumentError
-from apeCAD.geometry import XYZ, require_finite
+from apeCAD.geometry import XYZ
+from apeCAD.ops.section import SECTION_OPS
+from apeCAD.ops.section_codec import parse_section_op, section_op_to_dict
 from apeCAD.ops.types import (
     AddArc,
     AddBezier,
@@ -30,7 +29,6 @@ from apeCAD.ops.types import (
     JoinPolyline,
     Mirror,
     Op,
-    PointAt,
     Rotate,
     SetLabel,
     Sew,
@@ -38,11 +36,26 @@ from apeCAD.ops.types import (
     Tag,
     Translate,
     TrimLine,
-    VertexRef,
+)
+from apeCAD.ops.values import (
+    as_entity_id,
+    as_float,
+    as_id_tuple,
+    as_int,
+    as_optional_entity_id,
+    as_optional_str,
+    as_str,
+    as_vertex,
+    as_vertex_tuple,
+    as_xyz,
+    vertex_json,
+    vertices_json,
 )
 
 
 def op_to_dict(op: Op) -> dict[str, object]:
+    if isinstance(op, SECTION_OPS):
+        return section_op_to_dict(op)
     if isinstance(op, AddPoint):
         return {
             "op": "AddPoint",
@@ -55,22 +68,22 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddLine):
         return {
             "op": "AddLine",
-            "start_id": _vertex_json(op.start_id),
-            "end_id": _vertex_json(op.end_id),
+            "start_id": vertex_json(op.start_id),
+            "end_id": vertex_json(op.end_id),
             "label": op.label,
             "entity_id": op.entity_id,
         }
     if isinstance(op, AddLineChain):
         return {
             "op": "AddLineChain",
-            "point_ids": _vertices_json(op.point_ids),
+            "point_ids": vertices_json(op.point_ids),
             "label": op.label,
             "line_ids": None if op.line_ids is None else list(op.line_ids),
         }
     if isinstance(op, AddPolyline):
         return {
             "op": "AddPolyline",
-            "point_ids": _vertices_json(op.point_ids),
+            "point_ids": vertices_json(op.point_ids),
             "closed": op.closed,
             "label": op.label,
             "entity_id": op.entity_id,
@@ -86,7 +99,7 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddFace):
         return {
             "op": "AddFace",
-            "point_ids": _vertices_json(op.point_ids),
+            "point_ids": vertices_json(op.point_ids),
             "label": op.label,
             "entity_id": op.entity_id,
         }
@@ -100,12 +113,12 @@ def op_to_dict(op: Op) -> dict[str, object]:
             "entity_id": op.entity_id,
         }
         if op.ring is not None:  # absent, not null, so a face-only Extrude reads as before
-            extruded["ring"] = _vertices_json(op.ring)
+            extruded["ring"] = vertices_json(op.ring)
         return extruded
     if isinstance(op, AddCircle):
         return {
             "op": "AddCircle",
-            "center_id": _vertex_json(op.center_id),
+            "center_id": vertex_json(op.center_id),
             "radius_mm": op.radius_mm,
             "label": op.label,
             "entity_id": op.entity_id,
@@ -113,16 +126,16 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddArc):
         return {
             "op": "AddArc",
-            "start_id": _vertex_json(op.start_id),
-            "mid_id": _vertex_json(op.mid_id),
-            "end_id": _vertex_json(op.end_id),
+            "start_id": vertex_json(op.start_id),
+            "mid_id": vertex_json(op.mid_id),
+            "end_id": vertex_json(op.end_id),
             "label": op.label,
             "entity_id": op.entity_id,
         }
     if isinstance(op, AddEllipse):
         return {
             "op": "AddEllipse",
-            "center_id": _vertex_json(op.center_id),
+            "center_id": vertex_json(op.center_id),
             "radius_x_mm": op.radius_x_mm,
             "radius_y_mm": op.radius_y_mm,
             "label": op.label,
@@ -131,7 +144,7 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddBezier):
         return {
             "op": "AddBezier",
-            "point_ids": _vertices_json(op.point_ids),
+            "point_ids": vertices_json(op.point_ids),
             "label": op.label,
             "entity_id": op.entity_id,
         }
@@ -280,303 +293,205 @@ def op_from_dict(payload: dict[str, object]) -> Op:
 
 def _parse_op(payload: dict[str, object]) -> Op:
     kind = payload.get("op")
+    section = parse_section_op(kind, payload)
+    if section is not None:
+        return section
     if kind == "AddPoint":
         return AddPoint(
-            x_mm=_as_float("x_mm", payload["x_mm"]),
-            y_mm=_as_float("y_mm", payload["y_mm"]),
-            z_mm=_as_float("z_mm", payload["z_mm"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            x_mm=as_float("x_mm", payload["x_mm"]),
+            y_mm=as_float("y_mm", payload["y_mm"]),
+            z_mm=as_float("z_mm", payload["z_mm"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddLine":
         return AddLine(
-            start_id=_as_vertex("start_id", payload["start_id"]),
-            end_id=_as_vertex("end_id", payload["end_id"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            start_id=as_vertex("start_id", payload["start_id"]),
+            end_id=as_vertex("end_id", payload["end_id"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddLineChain":
         line_ids = payload.get("line_ids")
         return AddLineChain(
-            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
-            label=_as_optional_str(payload.get("label")),
-            line_ids=None if line_ids is None else _as_id_tuple("line_ids", line_ids),
+            point_ids=as_vertex_tuple("point_ids", payload["point_ids"]),
+            label=as_optional_str(payload.get("label")),
+            line_ids=None if line_ids is None else as_id_tuple("line_ids", line_ids),
         )
     if kind == "AddPolyline":
         return AddPolyline(
-            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
+            point_ids=as_vertex_tuple("point_ids", payload["point_ids"]),
             closed=bool(payload.get("closed", False)),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddBox":
         return AddBox(
-            origin_xyz_mm=_as_xyz("origin_xyz_mm", payload["origin_xyz_mm"]),
-            size_xyz_mm=_as_xyz("size_xyz_mm", payload["size_xyz_mm"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            origin_xyz_mm=as_xyz("origin_xyz_mm", payload["origin_xyz_mm"]),
+            size_xyz_mm=as_xyz("size_xyz_mm", payload["size_xyz_mm"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddFace":
         return AddFace(
-            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            point_ids=as_vertex_tuple("point_ids", payload["point_ids"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "Extrude":
         direction = payload.get("direction_xyz")
         ring = payload.get("ring")
         return Extrude(
-            face_id=_as_optional_entity_id(payload.get("face_id")),
-            distance_mm=_as_float("distance_mm", payload["distance_mm"]),
-            direction_xyz=_as_xyz("direction_xyz", direction)
+            face_id=as_optional_entity_id(payload.get("face_id")),
+            distance_mm=as_float("distance_mm", payload["distance_mm"]),
+            direction_xyz=as_xyz("direction_xyz", direction)
             if direction is not None
             else XYZ(0.0, 0.0, 1.0),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
-            ring=None if ring is None else _as_vertex_tuple("ring", ring),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+            ring=None if ring is None else as_vertex_tuple("ring", ring),
         )
     if kind == "AddCircle":
         return AddCircle(
-            center_id=_as_vertex("center_id", payload["center_id"]),
-            radius_mm=_as_float("radius_mm", payload["radius_mm"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            center_id=as_vertex("center_id", payload["center_id"]),
+            radius_mm=as_float("radius_mm", payload["radius_mm"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddArc":
         return AddArc(
-            start_id=_as_vertex("start_id", payload["start_id"]),
-            mid_id=_as_vertex("mid_id", payload["mid_id"]),
-            end_id=_as_vertex("end_id", payload["end_id"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            start_id=as_vertex("start_id", payload["start_id"]),
+            mid_id=as_vertex("mid_id", payload["mid_id"]),
+            end_id=as_vertex("end_id", payload["end_id"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddEllipse":
         return AddEllipse(
-            center_id=_as_vertex("center_id", payload["center_id"]),
-            radius_x_mm=_as_float("radius_x_mm", payload["radius_x_mm"]),
-            radius_y_mm=_as_float("radius_y_mm", payload["radius_y_mm"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            center_id=as_vertex("center_id", payload["center_id"]),
+            radius_x_mm=as_float("radius_x_mm", payload["radius_x_mm"]),
+            radius_y_mm=as_float("radius_y_mm", payload["radius_y_mm"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddBezier":
         return AddBezier(
-            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            point_ids=as_vertex_tuple("point_ids", payload["point_ids"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "Translate":
         return Translate(
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
-            dx_mm=_as_float("dx_mm", payload["dx_mm"]),
-            dy_mm=_as_float("dy_mm", payload["dy_mm"]),
-            dz_mm=_as_float("dz_mm", payload.get("dz_mm", 0.0)),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
+            dx_mm=as_float("dx_mm", payload["dx_mm"]),
+            dy_mm=as_float("dy_mm", payload["dy_mm"]),
+            dz_mm=as_float("dz_mm", payload.get("dz_mm", 0.0)),
         )
     if kind == "InsertNode":
         return InsertNode(
-            target_id=_as_entity_id("target_id", payload["target_id"]),
-            x_mm=_as_float("x_mm", payload["x_mm"]),
-            y_mm=_as_float("y_mm", payload["y_mm"]),
-            z_mm=_as_float("z_mm", payload.get("z_mm", 0.0)),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
-            new_line_id=_as_optional_entity_id(payload.get("new_line_id")),
+            target_id=as_entity_id("target_id", payload["target_id"]),
+            x_mm=as_float("x_mm", payload["x_mm"]),
+            y_mm=as_float("y_mm", payload["y_mm"]),
+            z_mm=as_float("z_mm", payload.get("z_mm", 0.0)),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+            new_line_id=as_optional_entity_id(payload.get("new_line_id")),
         )
     if kind == "TrimLine":
         return TrimLine(
-            line_id=_as_entity_id("line_id", payload["line_id"]),
-            keep_id=_as_entity_id("keep_id", payload["keep_id"]),
-            x_mm=_as_float("x_mm", payload["x_mm"]),
-            y_mm=_as_float("y_mm", payload["y_mm"]),
-            z_mm=_as_float("z_mm", payload.get("z_mm", 0.0)),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            line_id=as_entity_id("line_id", payload["line_id"]),
+            keep_id=as_entity_id("keep_id", payload["keep_id"]),
+            x_mm=as_float("x_mm", payload["x_mm"]),
+            y_mm=as_float("y_mm", payload["y_mm"]),
+            z_mm=as_float("z_mm", payload.get("z_mm", 0.0)),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "BreakCrossing":
         return BreakCrossing(
-            line_a_id=_as_entity_id("line_a_id", payload["line_a_id"]),
-            line_b_id=_as_entity_id("line_b_id", payload["line_b_id"]),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
-            new_line_a_id=_as_optional_entity_id(payload.get("new_line_a_id")),
-            new_line_b_id=_as_optional_entity_id(payload.get("new_line_b_id")),
+            line_a_id=as_entity_id("line_a_id", payload["line_a_id"]),
+            line_b_id=as_entity_id("line_b_id", payload["line_b_id"]),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+            new_line_a_id=as_optional_entity_id(payload.get("new_line_a_id")),
+            new_line_b_id=as_optional_entity_id(payload.get("new_line_b_id")),
         )
     if kind == "AddFaceFromLines":
         return AddFaceFromLines(
-            line_ids=_as_id_tuple("line_ids", payload["line_ids"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            line_ids=as_id_tuple("line_ids", payload["line_ids"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "JoinPolyline":
         return JoinPolyline(
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
-            label=_as_optional_str(payload.get("label")),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "Rotate":
         return Rotate(
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
-            origin_x_mm=_as_float("origin_x_mm", payload["origin_x_mm"]),
-            origin_y_mm=_as_float("origin_y_mm", payload["origin_y_mm"]),
-            angle_deg=_as_float("angle_deg", payload["angle_deg"]),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
+            origin_x_mm=as_float("origin_x_mm", payload["origin_x_mm"]),
+            origin_y_mm=as_float("origin_y_mm", payload["origin_y_mm"]),
+            angle_deg=as_float("angle_deg", payload["angle_deg"]),
         )
     if kind == "Mirror":
         return Mirror(
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
-            ax_mm=_as_float("ax_mm", payload["ax_mm"]),
-            ay_mm=_as_float("ay_mm", payload["ay_mm"]),
-            bx_mm=_as_float("bx_mm", payload["bx_mm"]),
-            by_mm=_as_float("by_mm", payload["by_mm"]),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
+            ax_mm=as_float("ax_mm", payload["ax_mm"]),
+            ay_mm=as_float("ay_mm", payload["ay_mm"]),
+            bx_mm=as_float("bx_mm", payload["bx_mm"]),
+            by_mm=as_float("by_mm", payload["by_mm"]),
         )
     if kind == "ChamferCorner":
         return ChamferCorner(
-            target_id=_as_entity_id("target_id", payload["target_id"]),
-            vertex_id=_as_entity_id("vertex_id", payload["vertex_id"]),
-            distance_mm=_as_float("distance_mm", payload["distance_mm"]),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
-            start_id=_as_optional_entity_id(payload.get("start_id")),
-            end_id=_as_optional_entity_id(payload.get("end_id")),
+            target_id=as_entity_id("target_id", payload["target_id"]),
+            vertex_id=as_entity_id("vertex_id", payload["vertex_id"]),
+            distance_mm=as_float("distance_mm", payload["distance_mm"]),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+            start_id=as_optional_entity_id(payload.get("start_id")),
+            end_id=as_optional_entity_id(payload.get("end_id")),
         )
     if kind == "FilletCorner":
         return FilletCorner(
-            target_id=_as_entity_id("target_id", payload["target_id"]),
-            vertex_id=_as_entity_id("vertex_id", payload["vertex_id"]),
-            radius_mm=_as_float("radius_mm", payload["radius_mm"]),
-            entity_id=_as_optional_entity_id(payload.get("entity_id")),
-            start_id=_as_optional_entity_id(payload.get("start_id")),
-            mid_id=_as_optional_entity_id(payload.get("mid_id")),
-            end_id=_as_optional_entity_id(payload.get("end_id")),
+            target_id=as_entity_id("target_id", payload["target_id"]),
+            vertex_id=as_entity_id("vertex_id", payload["vertex_id"]),
+            radius_mm=as_float("radius_mm", payload["radius_mm"]),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+            start_id=as_optional_entity_id(payload.get("start_id")),
+            mid_id=as_optional_entity_id(payload.get("mid_id")),
+            end_id=as_optional_entity_id(payload.get("end_id")),
         )
     if kind == "Sew":
         return Sew(
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
-            tolerance_mm=_as_float("tolerance_mm", payload.get("tolerance_mm", 1.0)),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
+            tolerance_mm=as_float("tolerance_mm", payload.get("tolerance_mm", 1.0)),
         )
     if kind == "Simplify":
-        return Simplify(entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]))
+        return Simplify(entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]))
     if kind == "ArrayLinear":
         return ArrayLinear(
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
-            dx_mm=_as_float("dx_mm", payload["dx_mm"]),
-            dy_mm=_as_float("dy_mm", payload["dy_mm"]),
-            dz_mm=_as_float("dz_mm", payload.get("dz_mm", 0.0)),
-            copies=_as_int("copies", payload["copies"]),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
+            dx_mm=as_float("dx_mm", payload["dx_mm"]),
+            dy_mm=as_float("dy_mm", payload["dy_mm"]),
+            dz_mm=as_float("dz_mm", payload.get("dz_mm", 0.0)),
+            copies=as_int("copies", payload["copies"]),
         )
     if kind == "ArrayPolar":
         return ArrayPolar(
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
-            origin_x_mm=_as_float("origin_x_mm", payload["origin_x_mm"]),
-            origin_y_mm=_as_float("origin_y_mm", payload["origin_y_mm"]),
-            count=_as_int("count", payload["count"]),
-            angle_deg=_as_float("angle_deg", payload.get("angle_deg", 360.0)),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
+            origin_x_mm=as_float("origin_x_mm", payload["origin_x_mm"]),
+            origin_y_mm=as_float("origin_y_mm", payload["origin_y_mm"]),
+            count=as_int("count", payload["count"]),
+            angle_deg=as_float("angle_deg", payload.get("angle_deg", 360.0)),
         )
     if kind == "Delete":
-        return Delete(entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]))
+        return Delete(entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]))
     if kind == "SetLabel":
         return SetLabel(
-            entity_id=_as_entity_id("entity_id", payload["entity_id"]),
-            label=_as_optional_str(payload.get("label")),
+            entity_id=as_entity_id("entity_id", payload["entity_id"]),
+            label=as_optional_str(payload.get("label")),
         )
     if kind == "Tag":
         return Tag(
-            name=_as_str("name", payload["name"]),
-            entity_ids=_as_id_tuple("entity_ids", payload["entity_ids"]),
+            name=as_str("name", payload["name"]),
+            entity_ids=as_id_tuple("entity_ids", payload["entity_ids"]),
         )
     raise DocumentError(f"unknown operation {kind!r}")
-
-
-def _as_int(name: str, value: object) -> int:
-    if isinstance(value, bool):
-        raise DocumentError(f"{name} must be an integer, got {value!r}")
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    raise DocumentError(f"{name} must be an integer, got {value!r}")
-
-
-def _as_float(name: str, value: object) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise DocumentError(f"{name} must be a number, got {value!r}")
-    return require_finite(name, float(value))
-
-
-def _as_str(name: str, value: object) -> str:
-    if not isinstance(value, str):
-        raise DocumentError(f"{name} must be a string, got {value!r}")
-    return value
-
-
-def _as_optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise DocumentError(f"label must be a string or null, got {value!r}")
-    return value
-
-
-def _as_entity_id(name: str, value: object) -> EntityId:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise DocumentError(f"{name} must be an integer entity id, got {value!r}")
-    if value < 1:
-        raise DocumentError(f"{name} must be a positive entity id, got {value!r}")
-    return value
-
-
-def _as_optional_entity_id(value: object) -> EntityId | None:
-    if value is None:
-        return None
-    return _as_entity_id("entity_id", value)
-
-
-def _as_id_tuple(name: str, value: object) -> tuple[EntityId, ...]:
-    if not isinstance(value, list):
-        raise DocumentError(f"{name} must be a list of entity ids, got {value!r}")
-    items = cast(list[object], value)
-    return tuple(_as_entity_id(name, item) for item in items)
-
-
-def _as_xyz(name: str, value: object) -> XYZ:
-    if not isinstance(value, list):
-        raise DocumentError(f"{name} must be a list of three millimetre components, got {value!r}")
-    coords = cast(list[object], value)
-    if len(coords) != 3:
-        raise DocumentError(f"{name} must be a list of three millimetre components, got {value!r}")
-    return XYZ(
-        _as_float(f"{name}[0]", coords[0]),
-        _as_float(f"{name}[1]", coords[1]),
-        _as_float(f"{name}[2]", coords[2]),
-    )
-
-
-def _vertex_json(ref: VertexRef) -> object:
-    """A point id stays a plain int, as in v0; coordinates become {"xyz": [...], "id": n}."""
-    if not isinstance(ref, PointAt):
-        return ref
-    out: dict[str, object] = {"xyz": list(ref.xyz_mm.to_tuple())}
-    if ref.entity_id is not None:
-        out["id"] = ref.entity_id
-    return out
-
-
-def _vertices_json(refs: tuple[VertexRef, ...]) -> list[object]:
-    return [_vertex_json(ref) for ref in refs]
-
-
-def _as_vertex(name: str, value: object) -> VertexRef:
-    """An int or {"id": n} names a point; {"xyz": [...]} gives coordinates (ADR 0030)."""
-    if not isinstance(value, dict):
-        return _as_entity_id(name, value)
-    ref = cast(dict[object, object], value)
-    if not ref or set(ref) - {"id", "xyz"}:
-        raise DocumentError(f"{name} must be an id, {{id: n}}, or {{xyz: [x, y, z]}}")
-    raw_id = ref.get("id")
-    entity_id = None if raw_id is None else _as_entity_id(name, raw_id)
-    if "xyz" not in ref:
-        if entity_id is None:
-            raise DocumentError(f"{name} needs an id or xyz")
-        return entity_id
-    return PointAt(xyz_mm=_as_xyz(f"{name}.xyz", ref["xyz"]), entity_id=entity_id)
-
-
-def _as_vertex_tuple(name: str, value: object) -> tuple[VertexRef, ...]:
-    if not isinstance(value, list):
-        raise DocumentError(f"{name} must be a list of vertices, got {value!r}")
-    items = cast(list[object], value)
-    return tuple(_as_vertex(name, item) for item in items)

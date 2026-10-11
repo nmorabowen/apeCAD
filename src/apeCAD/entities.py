@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from apeCAD.geometry import XYZ
 
@@ -105,4 +106,68 @@ class Bezier:
     label: str | None = None
 
 
-Entity = Point | Line | Polyline | Box | Face | Solid | Circle | Arc | Ellipse | Bezier
+FaceRole = Literal["solid"]
+"""A concrete face's role. Only "solid" in v1; "void" is reserved (ADR 0024 P3)."""
+HoopHooks = Literal["135"]
+CrosstieHooks = Literal["135-135", "135-90"]
+"""Crosstie hook pairs. "90-90" is refused (specs/section-draft.md)."""
+
+
+@dataclass(frozen=True, slots=True)
+class ConcreteFace:
+    """Section mode: a concrete outline, a simple CCW ring on z = 0 (ADR 0024).
+
+    `material` is a name, not a law; apeConcrete owns the mechanics.
+    """
+
+    entity_id: EntityId
+    point_ids: tuple[EntityId, ...]
+    material: str
+    role: FaceRole = "solid"
+    label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Bar:
+    """Section mode: a longitudinal bar at its own Point (ADR 0024 decision 5)."""
+
+    entity_id: EntityId
+    point_id: EntityId
+    designation: str
+    diameter_mm: float
+    label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Hoop:
+    """Section mode: a closed hoop, the strict CCW convex hull of its bars (ADR 0024 P2)."""
+
+    entity_id: EntityId
+    bar_ids: tuple[EntityId, ...]
+    designation: str
+    diameter_mm: float
+    spacing_mm: float
+    hooks: HoopHooks = "135"
+    label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Crosstie:
+    """Section mode: a crosstie between two distinct bars."""
+
+    entity_id: EntityId
+    bar_a_id: EntityId
+    bar_b_id: EntityId
+    designation: str
+    diameter_mm: float
+    spacing_mm: float
+    hooks: CrosstieHooks = "135-135"
+    label: str | None = None
+
+
+SectionEntity = ConcreteFace | Bar | Hoop | Crosstie
+"""Section-mode kinds (ADR 0024). C2 adds WallLeg and CoverGuide."""
+
+Entity = (
+    Point | Line | Polyline | Box | Face | Solid | Circle | Arc | Ellipse | Bezier | SectionEntity
+)

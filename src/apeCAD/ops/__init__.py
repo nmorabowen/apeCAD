@@ -1,6 +1,7 @@
 """Typed operations and their JSON codec (ADR 0006).
 
-types.py holds one frozen dataclass per op; codec.py maps them to and from JSON.
+types.py holds one frozen dataclass per op (section.py the section-mode ones); codec.py
+and section_codec.py map them to and from JSON.
 Import from here: `from apeCAD.ops import AddPoint, op_from_dict`.
 """
 
@@ -9,14 +10,19 @@ from __future__ import annotations
 from apeCAD.ops.codec import op_from_dict, op_to_dict
 from apeCAD.ops.types import (
     SCHEMA_ID,
+    SUPPORTED_SCHEMA_IDS,
     UNITS,
     AddArc,
+    AddBar,
     AddBezier,
     AddBox,
     AddCircle,
+    AddConcreteFace,
+    AddCrosstie,
     AddEllipse,
     AddFace,
     AddFaceFromLines,
+    AddHoop,
     AddLine,
     AddLineChain,
     AddPoint,
@@ -34,7 +40,10 @@ from apeCAD.ops.types import (
     Op,
     PointAt,
     Rotate,
+    SetBarSize,
     SetLabel,
+    SetMaterial,
+    SetTransverse,
     Sew,
     Simplify,
     Tag,
@@ -45,12 +54,16 @@ from apeCAD.ops.types import (
 
 __all__ = [
     "AddArc",
+    "AddBar",
     "AddBezier",
     "AddBox",
     "AddCircle",
+    "AddConcreteFace",
+    "AddCrosstie",
     "AddEllipse",
     "AddFace",
     "AddFaceFromLines",
+    "AddHoop",
     "AddLine",
     "AddLineChain",
     "AddPoint",
@@ -71,9 +84,13 @@ __all__ = [
     "PointAt",
     "Rotate",
     "SCHEMA_ID",
+    "SetBarSize",
     "SetLabel",
+    "SetMaterial",
+    "SetTransverse",
     "Sew",
     "Simplify",
+    "SUPPORTED_SCHEMA_IDS",
     "Tag",
     "Translate",
     "TrimLine",

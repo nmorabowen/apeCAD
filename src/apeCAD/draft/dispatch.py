@@ -5,17 +5,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from apeCAD.draft import create, edit, meta, transform
+from apeCAD.draft import create, edit, meta, section, transform
 from apeCAD.draft.state import DraftState
 from apeCAD.errors import DocumentError
 from apeCAD.ops import (
     AddArc,
+    AddBar,
     AddBezier,
     AddBox,
     AddCircle,
+    AddConcreteFace,
+    AddCrosstie,
     AddEllipse,
     AddFace,
     AddFaceFromLines,
+    AddHoop,
     AddLine,
     AddLineChain,
     AddPoint,
@@ -32,7 +36,10 @@ from apeCAD.ops import (
     Mirror,
     Op,
     Rotate,
+    SetBarSize,
     SetLabel,
+    SetMaterial,
+    SetTransverse,
     Sew,
     Simplify,
     Tag,
@@ -71,6 +78,13 @@ HANDLERS: dict[type[object], Handler] = {
     Delete: meta.delete,
     Tag: meta.tag,
     SetLabel: meta.set_label,
+    AddConcreteFace: section.add_concrete_face,
+    AddBar: section.add_bar,
+    AddHoop: section.add_hoop,
+    AddCrosstie: section.add_crosstie,
+    SetBarSize: section.set_bar_size,
+    SetMaterial: section.set_material,
+    SetTransverse: section.set_transverse,
 }
 
 

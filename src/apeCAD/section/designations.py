@@ -42,3 +42,13 @@ def require_designation(name: str, diameter_mm: float) -> float:
             f"bar {name} has diameter {known:g} mm, not {diameter_mm!r} mm"
         )
     return known
+
+
+def diameter_of(name: str) -> float:
+    """The diameter in mm of a vocabulary designation: "Ø16" -> 16.0."""
+    known = DESIGNATIONS.get(name)
+    if known is None:
+        raise DocumentError(
+            f"unknown bar designation {name!r}; known: {', '.join(DESIGNATIONS)}"
+        )
+    return known

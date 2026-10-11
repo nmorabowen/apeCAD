@@ -3,6 +3,7 @@ entry here; `tests/test_architecture.py` fails until all four agree (ADR 0028)."
 
 from __future__ import annotations
 
+from apeCAD.catalog.section_entries import SECTION_ENTRIES
 from apeCAD.catalog.spec import ENTITY_IDS, LABEL, OUTPUT_ID, VERTEX, VERTICES, OpSpec, entry
 from apeCAD.ops import (
     AddArc,
@@ -368,5 +369,5 @@ _ENTRIES: tuple[OpSpec, ...] = (
     ),
 )
 
-CATALOG: dict[str, OpSpec] = {spec.name: spec for spec in _ENTRIES}
+CATALOG: dict[str, OpSpec] = {spec.name: spec for spec in (*_ENTRIES, *SECTION_ENTRIES)}
 """One entry per `draft.dispatch.HANDLERS` row, keyed by the codec's "op" name."""
