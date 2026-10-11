@@ -127,3 +127,21 @@ export function projectT(point, start, end) {
   if (length2 === 0) return 0;
   return ((point.x_mm - start.x_mm) * vx + (point.y_mm - start.y_mm) * vy) / length2;
 }
+
+// A creation op's vertex (ADR 0030): a snapped point's id, else its coordinates. The server
+// reuses a point within 1 mm, so one gesture posts one op instead of AddPoint per vertex.
+export function vertexRef(xyz) {
+  if (xyz.entity_id) return xyz.entity_id;
+  return { xyz: [xyz.x_mm, xyz.y_mm, xyz.z_mm || 0] };
+}
+
+// The four corners of the axis-aligned rectangle spanned by a and b on the z = 0 workplane,
+// counter-clockwise from the min corner. Null if thinner than 1 mm.
+export function rectCorners(a, b) {
+  const x0 = Math.min(a.x_mm, b.x_mm);
+  const y0 = Math.min(a.y_mm, b.y_mm);
+  const x1 = Math.max(a.x_mm, b.x_mm);
+  const y1 = Math.max(a.y_mm, b.y_mm);
+  if (x1 - x0 < 1 || y1 - y0 < 1) return null;
+  return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => ({ x_mm: x, y_mm: y, z_mm: 0 }));
+}

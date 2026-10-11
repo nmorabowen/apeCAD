@@ -3,6 +3,7 @@ import { S } from "./state.js";
 import { api } from "./api.js";
 import { bindProjectionCamera, lookAtScene } from "./camera.js";
 import { setHint } from "./cmdline.js";
+import { updateGhost } from "./ghosts.js";
 import { refreshFrom } from "./render.js";
 import { ISO_DIR, WORLD_UP, ghosts, viewUp } from "./viewport.js";
 
@@ -69,6 +70,14 @@ export async function newDocument() {
 }
 
 export async function undoDocument() {
+  if (S.pending && S.pending.kind === "line" && S.pending.pts && S.pending.pts.length > 1) {
+    // Mid-chain nothing is posted yet (ADR 0030): Ctrl+Z takes back the last vertex.
+    S.pending.pts.pop();
+    S.pending.a = S.pending.pts[S.pending.pts.length - 1];
+    updateGhost(S.lastPointer);
+    setHint("Line: last vertex removed.");
+    return;
+  }
   S.pending = null;
   ghosts.clear();
   await refreshFrom(await api("/api/undo", "POST", {}));

@@ -5,6 +5,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 from threading import Thread
+from typing import cast
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -281,6 +282,28 @@ def test_line_and_undo(server: ScratchpadServer) -> None:
     assert len(lines) == 1
     undone = _call(server, "/api/undo", "POST", {})
     assert undone["lines"] == []
+
+
+def test_drawn_box_is_one_op_and_one_undo(server: ScratchpadServer) -> None:
+    """The box tool posts one Extrude with a ring; one undo removes it whole (ADR 0030)."""
+    before = _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 0, "y_mm": 0, "z_mm": 0})
+    drawn = _call(
+        server,
+        "/api/op",
+        "POST",
+        {
+            "op": "Extrude",
+            "ring": [1, {"xyz": [1000, 0, 0]}, {"xyz": [1000, 800, 0]}, {"xyz": [0.4, 800, 0]}],
+            "distance_mm": 500,
+            "label": "box",
+        },
+    )
+    solids = drawn["solids"]
+    assert isinstance(solids, list) and len(solids) == 1
+    assert len(cast(list[object], drawn["points"])) == 8
+    undone = _call(server, "/api/undo", "POST", {})
+    for key in ("points", "lines", "faces", "solids"):
+        assert undone[key] == before[key], key
 
 
 def test_add_box_via_op_api_is_a_solid(server: ScratchpadServer) -> None:
