@@ -10,12 +10,16 @@ from apeCAD.draft.create import ensure_loop_lines
 from apeCAD.draft.state import DraftState
 from apeCAD.entities import (
     Arc,
+    Bar,
     Bezier,
     Box,
     Circle,
+    ConcreteFace,
+    Crosstie,
     Ellipse,
     EntityId,
     Face,
+    Hoop,
     Line,
     Point,
     Polyline,
@@ -24,6 +28,7 @@ from apeCAD.entities import (
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ, mirror_xy, rotate_xy
 from apeCAD.ops import ArrayLinear, ArrayPolar, Mirror, Rotate, Translate
+from apeCAD.section.geometry import Point2, canonical_ring, signed_area
 
 
 def translate(state: DraftState, op: Translate) -> Translate:
@@ -117,7 +122,38 @@ def _transform_points(
             box_moved = True
     if not moved and not box_moved:
         return set()
+    _restore_section_rings(state, moved)
     return moved if moved else {entity_ids[0]}
+
+
+def _restore_section_rings(state: DraftState, moved: set[EntityId]) -> None:
+    """Keep stored section rings CCW after a move; a mirror reverses them (ADR 0024 P2).
+
+    A hoop keeps its members and returns to the hull's form (CCW from the lowest (x, y));
+    a concrete face is reversed when it turned clockwise.
+    """
+    for entity in list(state.entities.values()):
+        if isinstance(entity, (Hoop, ConcreteFace)):
+            point_ids = state.point_ids_of(entity)
+            if moved.isdisjoint(point_ids):
+                continue
+            xy = {pid: _xy(state, pid) for pid in point_ids}
+            if isinstance(entity, ConcreteFace):
+                if signed_area([xy[pid] for pid in point_ids]) < 0.0:
+                    state.entities[entity.entity_id] = replace(
+                        entity, point_ids=entity.point_ids[::-1]
+                    )
+                continue
+            by_bar = dict(zip(entity.bar_ids, point_ids, strict=True))
+            bar_xy = {bar_id: xy[pid] for bar_id, pid in by_bar.items()}
+            ring = tuple(canonical_ring(entity.bar_ids, bar_xy))
+            if ring != entity.bar_ids:
+                state.entities[entity.entity_id] = replace(entity, bar_ids=ring)
+
+
+def _xy(state: DraftState, point_id: EntityId) -> Point2:
+    xyz = state.require_point(point_id).xyz_mm
+    return (xyz.x_mm, xyz.y_mm)
 
 
 def _clone_graph(
@@ -137,11 +173,15 @@ def _clone_graph(
             for wall_id in entity.wall_ids:
                 if wall_id not in entity_ids:
                     extras.append(wall_id)
+        elif isinstance(entity, Hoop):  # a hoop is cloned with its bars
+            extras.extend(bar_id for bar_id in entity.bar_ids if bar_id not in entity_ids)
+        elif isinstance(entity, Crosstie):
+            for bar_id in (entity.bar_a_id, entity.bar_b_id):
+                if bar_id not in entity_ids:
+                    extras.append(bar_id)
     ordered = list(dict.fromkeys([*extras, *entity_ids]))
-    non_solids = [
-        entity_id for entity_id in ordered if not isinstance(state.entity(entity_id), Solid)
-    ]
-    solids = [entity_id for entity_id in ordered if isinstance(state.entity(entity_id), Solid)]
+    # Owners after their parts: bars before the hoops and crossties that use them.
+    ordered.sort(key=lambda entity_id: _clone_rank(state.entity(entity_id)))
     point_map: dict[EntityId, EntityId] = {}
     entity_map: dict[EntityId, EntityId] = {}
 
@@ -159,7 +199,7 @@ def _clone_graph(
         point_map[point_id] = new_id
         return new_id
 
-    for entity_id in non_solids + solids:
+    for entity_id in ordered:
         entity = state.entity(entity_id)
         if isinstance(entity, Point):
             entity_map[entity.entity_id] = mapped_point(entity.entity_id)
@@ -224,6 +264,32 @@ def _clone_graph(
                 point_ids=tuple(mapped_point(pid) for pid in entity.point_ids),
                 label=None,
             )
+        elif isinstance(entity, ConcreteFace):
+            state.entities[new_id] = replace(
+                entity,
+                entity_id=new_id,
+                point_ids=tuple(mapped_point(pid) for pid in entity.point_ids),
+                label=None,
+            )
+        elif isinstance(entity, Bar):
+            state.entities[new_id] = replace(
+                entity, entity_id=new_id, point_id=mapped_point(entity.point_id), label=None
+            )
+        elif isinstance(entity, Hoop):
+            state.entities[new_id] = replace(
+                entity,
+                entity_id=new_id,
+                bar_ids=tuple(entity_map[bar_id] for bar_id in entity.bar_ids),
+                label=None,
+            )
+        elif isinstance(entity, Crosstie):
+            state.entities[new_id] = replace(
+                entity,
+                entity_id=new_id,
+                bar_a_id=entity_map[entity.bar_a_id],
+                bar_b_id=entity_map[entity.bar_b_id],
+                label=None,
+            )
         else:
             assert isinstance(entity, Solid)
             profile_id = entity_map.get(entity.face_id)
@@ -249,3 +315,12 @@ def _clone_graph(
                 wall_ids=tuple(wall_ids),
                 label=None,
             )
+    _restore_section_rings(state, set(point_map.values()))
+
+
+def _clone_rank(entity: object) -> int:
+    if isinstance(entity, Solid):
+        return 2
+    if isinstance(entity, (Hoop, Crosstie)):
+        return 1
+    return 0

@@ -66,11 +66,14 @@ Stop what you started, by PID.
 ```text
 src/apeCAD/              document.py (Document facade: ops log, undo, queries, JSON),
                          typed_ops.py (TypedOps mixin: one typed Document method per op),
-                         ops/ (types.py op dataclasses + SCHEMA_ID, codec.py to/from dict),
-                         draft/ (state, topology, create/edit/transform/meta handlers,
+                         typed_section_ops.py (SectionTypedOps: the section-mode methods),
+                         ops/ (types.py op dataclasses + SCHEMA_ID, section.py section ops,
+                         codec.py + section_codec.py to/from dict, values.py field parsers),
+                         draft/ (state, topology, create/edit/transform/meta/section handlers,
                          dispatch.py HANDLERS table), entities.py, geometry.py, brep.py,
                          frame.py (to_frame), errors.py (error codes),
-                         catalog/ (op catalog: params schema, docs, example; apply)
+                         catalog/ (op catalog: params schema, docs, example; apply),
+                         section/ (section-mode geometry and bar designations, ADR 0024)
 src/apeCAD/scratchpad/   server.py (stdlib HTTP + CLI), payload.py (scene JSON),
                          static/ (index.html, app.js, js/*.js ES modules; three.js from CDN)
 tests/                   pytest; test_scratchpad.py drives the HTTP API on port 0;
@@ -112,7 +115,7 @@ These break a sibling repo if you change them:
 |---|---|
 | `apeCAD.scratchpad.server.main(argv)`: flags `--host`, `--port`, `--no-browser`, `--root` (ADR 0021); instance root from `--root`, else env `APE_HABITAT_ROOT`, else `APECAD_SESSION_SKETCHES` | apeWorkbench `src/apeWorkbench/services/tools.py` (`CadAdapter`); apeGmsh `src/apeGmsh/studio/template/tools/apeCAD/open_interface.py` |
 | `GET /api/identity` → `{name, pid, host, port, root}` (ADR 0019) | apeWorkbench `_probe_identity` |
-| Document JSON `schema: "apeCAD.document.v0"` (`ops/types.py` `SCHEMA_ID`) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`) |
+| Document JSON `schema: "apeCAD.document.v1"` (`ops/types.py` `SCHEMA_ID`); reads v0 and v1 (`SUPPORTED_SCHEMA_IDS`). v1 adds the section-mode ops and is a superset of v0 (ADR 0024 decision 9) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`): it must route `apeCAD.document.v1` too |
 | `Document.to_frame()` (mm internally) | apeSteel, per coupling-map; `to_gmsh` is not implemented |
 
 apeWorkbench's `CadAdapter` passes `--root <folder>`; the CLI accepts it

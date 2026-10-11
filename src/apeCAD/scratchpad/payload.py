@@ -102,6 +102,52 @@ def scene_payload(document: Document) -> dict[str, object]:
             }
             for bezier in document.beziers()
         ],
+        # Section mode (ADR 0024): intent lists; the 3-D client draws bars as dots.
+        "concrete_faces": [
+            {
+                "entity_id": face.entity_id,
+                "point_ids": list(face.point_ids),
+                "material": face.material,
+                "role": face.role,
+                "label": face.label,
+            }
+            for face in document.concrete_faces()
+        ],
+        "bars": [
+            {
+                "entity_id": bar.entity_id,
+                "point_id": bar.point_id,
+                "designation": bar.designation,
+                "diameter_mm": bar.diameter_mm,
+                "label": bar.label,
+            }
+            for bar in document.bars()
+        ],
+        "hoops": [
+            {
+                "entity_id": hoop.entity_id,
+                "bar_ids": list(hoop.bar_ids),
+                "designation": hoop.designation,
+                "diameter_mm": hoop.diameter_mm,
+                "spacing_mm": hoop.spacing_mm,
+                "hooks": hoop.hooks,
+                "label": hoop.label,
+            }
+            for hoop in document.hoops()
+        ],
+        "crossties": [
+            {
+                "entity_id": tie.entity_id,
+                "bar_a_id": tie.bar_a_id,
+                "bar_b_id": tie.bar_b_id,
+                "designation": tie.designation,
+                "diameter_mm": tie.diameter_mm,
+                "spacing_mm": tie.spacing_mm,
+                "hooks": tie.hooks,
+                "label": tie.label,
+            }
+            for tie in document.crossties()
+        ],
         "tags": {name: sorted(ids) for name, ids in document.tags().items()},
         "brep": document.brep().to_payload(),
     }

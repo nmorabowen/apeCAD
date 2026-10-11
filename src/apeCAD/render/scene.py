@@ -148,7 +148,9 @@ def _drawable(
         return Drawable(eid, "edge", ((tuple(pts), False),), pts[len(pts) // 2], label)
     if isinstance(entity, Box):
         return _box(entity)
-    return _solid(entities, entity)
+    if isinstance(entity, Solid):
+        return _solid(entities, entity)
+    return None  # section-mode kinds: a bar's point draws as a point
 
 
 def _radii(entity: Circle | Ellipse) -> tuple[float, float]:

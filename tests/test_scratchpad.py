@@ -536,7 +536,7 @@ def test_ops_route_lists_the_catalog(server: ScratchpadServer) -> None:
 
     listed = _call(server, "/api/ops")
     assert listed["ok"] is True
-    assert listed["schema"] == "apeCAD.document.v0"
+    assert listed["schema"] == "apeCAD.document.v1"
     ops = listed["ops"]
     assert isinstance(ops, list)
     assert [cast(dict[str, object], item)["name"] for item in ops] == list(CATALOG)

@@ -69,6 +69,7 @@ class FrameGraph:
 
 def document_to_frame(document: Document) -> FrameGraph:
     tags_by_entity = _tags_by_entity(document.tags())
+    bar_points = {bar.point_id for bar in document.bars()}  # a bar is not a node (ADR 0024)
     nodes = tuple(
         FrameNode(
             entity_id=point.entity_id,
@@ -77,6 +78,7 @@ def document_to_frame(document: Document) -> FrameGraph:
             tags=_tags_for(point.entity_id, tags_by_entity),
         )
         for point in document.points()
+        if point.entity_id not in bar_points
     )
     points = {point.entity_id: point for point in document.points()}
     solid_edges = _solid_edge_keys(document)

@@ -111,6 +111,28 @@ def is_simple(ring: Sequence[Point2]) -> bool:
     return _simplicity_fault(_points(ring)) is None
 
 
+def require_simple(ring: Sequence[Point2], what: str = "ring") -> None:
+    """Refuse a ring that `is_simple` rejects, saying why."""
+    fault = _simplicity_fault(_points(ring))
+    if fault is not None:
+        raise DocumentError(f"{what} is not simple: {fault}")
+
+
+def canonical_ring(ring: Sequence[int], points: Mapping[int, Point2]) -> list[int]:
+    """A ring of ids, counter-clockwise and starting at its lowest (x, y).
+
+    The form `convex_hull_ccw` returns. A mirror reverses a stored hoop ring; this restores
+    it without recomputing the hull, so the members never change.
+    """
+    ids = list(ring)
+    if len(ids) < 3:
+        raise DocumentError(f"a ring needs at least 3 vertices, got {len(ids)}")
+    if signed_area([points[i] for i in ids]) < 0.0:
+        ids.reverse()
+    start = min(range(len(ids)), key=lambda k: (points[ids[k]], ids[k]))
+    return ids[start:] + ids[:start]
+
+
 def convex_hull_ccw(points: Mapping[int, Point2]) -> list[int]:
     """The strict counter-clockwise convex hull of id -> (x, y), as a ring of ids.
 

@@ -11,13 +11,17 @@ from apeCAD.draft.invariants import check_state
 from apeCAD.draft.state import DraftState, produced_id
 from apeCAD.entities import (
     Arc,
+    Bar,
     Bezier,
     Box,
     Circle,
+    ConcreteFace,
+    Crosstie,
     Ellipse,
     Entity,
     EntityId,
     Face,
+    Hoop,
     Line,
     Point,
     Polyline,
@@ -27,6 +31,7 @@ from apeCAD.errors import DocumentError
 from apeCAD.frame import FrameGraph, document_to_frame
 from apeCAD.ops import (
     SCHEMA_ID,
+    SUPPORTED_SCHEMA_IDS,
     UNITS,
     AddLineChain,
     ArrayLinear,
@@ -35,7 +40,10 @@ from apeCAD.ops import (
     Mirror,
     Op,
     Rotate,
+    SetBarSize,
     SetLabel,
+    SetMaterial,
+    SetTransverse,
     Sew,
     Simplify,
     Tag,
@@ -43,10 +51,10 @@ from apeCAD.ops import (
     op_from_dict,
     op_to_dict,
 )
-from apeCAD.typed_ops import TypedOps
+from apeCAD.typed_section_ops import SectionTypedOps
 
 
-class Document(TypedOps):
+class Document(SectionTypedOps):
     """In-memory scratchpad. Mutate only through ops; JSON replays the log."""
 
     def __init__(self) -> None:
@@ -108,6 +116,18 @@ class Document(TypedOps):
     def beziers(self) -> tuple[Bezier, ...]:
         return tuple(e for e in self._state.ordered() if isinstance(e, Bezier))
 
+    def concrete_faces(self) -> tuple[ConcreteFace, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, ConcreteFace))
+
+    def bars(self) -> tuple[Bar, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, Bar))
+
+    def hoops(self) -> tuple[Hoop, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, Hoop))
+
+    def crossties(self) -> tuple[Crosstie, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, Crosstie))
+
     def brep(self) -> BrepIndex:
         """Evaluated vertex/edge/face/solid graph (ADR 0018)."""
         return build_brep(self._state.entities)
@@ -142,8 +162,10 @@ class Document(TypedOps):
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> Document:
         schema = payload.get("schema")
-        if schema != SCHEMA_ID:
-            raise DocumentError(f"unsupported schema {schema!r}, expected {SCHEMA_ID!r}")
+        if schema not in SUPPORTED_SCHEMA_IDS:
+            raise DocumentError(
+                f"unsupported schema {schema!r}, expected one of {SUPPORTED_SCHEMA_IDS!r}"
+            )
         units = payload.get("units")
         if units != UNITS:
             raise DocumentError(f"unsupported units {units!r}, expected {UNITS!r}")
@@ -206,6 +228,9 @@ _NO_PRODUCT = (
     ArrayPolar,
     Delete,
     SetLabel,
+    SetBarSize,
+    SetMaterial,
+    SetTransverse,
 )
 """Ops that change the draft without producing exactly one entity to return."""
 
