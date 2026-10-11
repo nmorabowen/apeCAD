@@ -1,0 +1,411 @@
+<title>apeCAD APE Identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;600&family=Saira+Semi+Condensed:wght@600&display=swap">
+<style>
+/* Layout: a proposal sheet. Numbered parts follow ADR 0031's three decisions.
+   Page chrome follows the viewer's theme; the two scratchpad frames are pinned
+   to light and dark; the drawing is always on white paper. */
+:root {
+  --paper: #f7f6f3;
+  --paper-2: #efede8;
+  --ink: #1c2127;
+  --ink-soft: #4a525c;
+  --line: #d8d5cd;
+  --steel: #2f74ad;
+  --steel-text: #28679c;
+  --vest: #c64a1a;
+  --font-ui: "Archivo Narrow", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Saira Semi Condensed", "Bahnschrift SemiBold Condensed", "Archivo Narrow", sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0c1016; --paper-2: #14181d; --ink: #e8ecf1; --ink-soft: #97a1ad;
+    --line: #232a33; --steel: #3d8fce; --steel-text: #3d8fce; --vest: #e2703a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0c1016; --paper-2: #14181d; --ink: #e8ecf1; --ink-soft: #97a1ad;
+  --line: #232a33; --steel: #3d8fce; --steel-text: #3d8fce; --vest: #e2703a;
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink);
+  font: 16px/1.55 var(--font-ui); letter-spacing: 0.004em;
+}
+.wrap { max-width: 1240px; margin-inline: auto; padding-inline: 20px; padding-block: 28px 64px; }
+header.top { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 32px; padding-block: 8px 24px; border-bottom: 1px solid var(--line); }
+header.top h1 { font: 600 clamp(1.8rem, 4vw, 2.6rem)/1.05 var(--font-display); margin: 0; text-wrap: balance; }
+header.top p { margin: 0; max-width: 60ch; color: var(--ink-soft); }
+.kicker { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--steel-text); }
+section { padding-block: 40px 8px; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; border-top: 1px solid var(--line); padding-top: 14px; margin-bottom: 20px; }
+.sec-num { font-size: 0.85rem; font-weight: 600; color: var(--steel-text); letter-spacing: 0.06em; font-variant-numeric: tabular-nums; }
+.sec-title { font: 600 1.55rem/1.1 var(--font-display); margin: 0; }
+.sec-sub { color: var(--ink-soft); margin-left: auto; max-width: 52ch; font-size: 0.95rem; }
+@media (max-width: 760px) { .sec-sub { margin-left: 0; } }
+.frames { display: grid; grid-template-columns: 1fr; gap: 24px; }
+@media (min-width: 1180px) { .frames { grid-template-columns: 1fr 1fr; } }
+figure { margin: 0; min-width: 0; }
+figcaption { font-size: 0.9rem; color: var(--ink-soft); padding-top: 8px; }
+figcaption b { color: var(--ink); font-weight: 600; }
+.scroll { overflow-x: auto; border: 1px solid var(--line); }
+table.t { border-collapse: collapse; width: 100%; font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+table.t th { text-align: left; font-size: 0.74rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); font-weight: 600; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--ink); white-space: nowrap; }
+table.t td { padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.t td.old { color: var(--ink-soft); text-decoration: line-through; text-decoration-color: var(--vest); }
+code, .mono { font-family: var(--font-mono); font-size: 0.85em; }
+.sw { display: inline-block; width: 14px; height: 14px; border: 1px solid var(--line); vertical-align: -2px; margin-right: 6px; }
+.two { display: grid; grid-template-columns: 1fr; gap: 28px; }
+@media (min-width: 980px) { .two { grid-template-columns: 1.15fr 0.85fr; } }
+.two > * { min-width: 0; }
+.notes { margin: 0; padding-left: 1.1em; color: var(--ink-soft); font-size: 0.95rem; }
+.notes li + li { margin-top: 6px; }
+.notes b { color: var(--ink); font-weight: 600; }
+footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 0.88rem; }
+
+/* ---------- scratchpad frame (pinned themes) ---------- */
+.ui { --r: 2px; width: 100%; min-width: 760px; font: 13px/1.4 var(--font-ui); display: grid;
+  grid-template-rows: 28px 1fr 74px; height: 470px; background: var(--s0); color: var(--tx); }
+.ui-light { --s0:#f7f6f3; --s1:#efede8; --s2:#ffffff; --ln:#d8d5cd; --tx:#1c2127; --mu:#4a525c;
+  --ac:#2f74ad; --act:#28679c; --sg:#c64a1a; --sgt:#b0441a; --cv:#f7f6f3; --gmaj:#d8d5cd; --gmin:#e7e4dd;
+  --edge:#14181d; --rebar:#000077; --conc:#d2d2d2; --ghost:#2f74ad; }
+.ui-dark { --s0:#0c1016; --s1:#14181d; --s2:#1c2127; --ln:#232a33; --tx:#e8ecf1; --mu:#97a1ad;
+  --ac:#3d8fce; --act:#3d8fce; --sg:#e2703a; --sgt:#e2703a; --cv:#1c2127; --gmaj:#2c333c; --gmin:#232a33;
+  --edge:#c9d1da; --rebar:#8c9cf0; --conc:#3a4048; --ghost:#6cb3ff; }
+.ui .bar { display: flex; align-items: center; gap: 2px; padding: 0 8px; background: var(--s1); border-bottom: 1px solid var(--ln); }
+.ui .mark { display: flex; align-items: center; margin-right: 12px; color: var(--tx); }
+.ui .mark svg { height: 14px; width: auto; display: block; }
+.ui .menu { padding: 2px 8px; color: var(--tx); }
+.ui .menu.open { background: var(--s2); }
+.ui .chips { margin-left: auto; display: flex; gap: 10px; font-variant-numeric: tabular-nums; font-size: 12px; letter-spacing: 0.04em; }
+.ui .chip { color: var(--mu); padding: 1px 0; border-bottom: 1px solid transparent; }
+.ui .chip.on { color: var(--act); border-bottom-color: var(--ac); }
+.ui .ws { display: grid; grid-template-columns: 210px 40px 1fr; min-height: 0; }
+.ui .dock { background: var(--s1); border-right: 1px solid var(--ln); display: grid; grid-template-rows: auto 1fr auto auto; min-height: 0; }
+.ui .head { font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mu); padding: 8px 10px 6px; }
+.ui .tree { padding: 0 6px; font-variant-numeric: tabular-nums; }
+.ui .row { display: flex; gap: 6px; height: 22px; align-items: center; padding: 0 6px; border-left: 2px solid transparent; }
+.ui .row .k { width: 64px; color: var(--mu); font-size: 12px; }
+.ui .row.sel { background: var(--s2); border-left-color: var(--ac); }
+.ui .row.kid { padding-left: 18px; }
+.ui .props { border-top: 1px solid var(--ln); padding: 0 10px 8px; }
+.ui dl { display: grid; grid-template-columns: 74px 1fr; gap: 3px 8px; margin: 0; font-variant-numeric: tabular-nums; }
+.ui dt { color: var(--mu); } .ui dd { margin: 0; }
+.ui .rail { background: var(--s1); border-right: 1px solid var(--ln); display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; }
+.ui .ib { width: 32px; height: 32px; display: grid; place-items: center; color: var(--tx); border: 1px solid transparent; border-radius: var(--r); }
+.ui .ib.on { color: var(--act); border-color: var(--ac); background: var(--s2); }
+.ui .ib svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: square; stroke-linejoin: miter; }
+.ui .sep { width: 22px; height: 1px; background: var(--ln); margin: 3px 0; }
+.ui .stage { position: relative; background: var(--cv); min-width: 0; overflow: hidden; }
+.ui .stage > svg.cv { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ui .cube { position: absolute; top: 10px; right: 10px; width: 64px; height: 64px; background: var(--s1); border: 1px solid var(--ln); display: grid; place-items: center; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; color: var(--tx); }
+.ui .dim { position: absolute; padding: 1px 6px; border: 1px solid var(--ac); color: var(--act); background: color-mix(in srgb, var(--s2) 92%, transparent); font-variant-numeric: tabular-nums; font-size: 12px; border-radius: var(--r); }
+.ui .filters { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 2px; padding: 3px; background: var(--s1); border: 1px solid var(--ln); }
+.ui .filters .ib { width: 26px; height: 26px; }
+.ui .filters .ib svg { width: 15px; height: 15px; }
+.ui .con { background: var(--s0); border-top: 1px solid var(--ln); font: 12px/1.45 var(--font-mono); display: grid; grid-template-rows: 1fr auto; min-height: 0; }
+.ui .log { padding: 4px 10px 0; color: var(--mu); overflow: hidden; }
+.ui .log .last { color: var(--tx); }
+.ui .log .ref { color: var(--sgt); }
+.ui .cmd { display: flex; gap: 10px; align-items: center; padding: 3px 10px 5px; border-top: 1px solid var(--ln); }
+.ui .cmd .p { color: var(--act); }
+.ui .cmd .in { flex: 1; color: var(--mu); }
+.ui .cmd .xyz { color: var(--tx); font-variant-numeric: tabular-nums; }
+.ui svg .gmaj { stroke: var(--gmaj); } .ui svg .gmin { fill: var(--gmin); }
+.ui svg .conc { fill: var(--conc); stroke: var(--edge); }
+.ui svg .rb { fill: var(--rebar); } .ui svg .rbl { stroke: var(--rebar); fill: none; }
+.ui svg .selc { stroke: var(--ac); fill: none; }
+.ui svg .snap { stroke: var(--sg); fill: none; }
+.ui svg .gh { stroke: var(--ghost); fill: none; }
+.ui svg .axisx { stroke: #c64a1a; } .ui svg .axisy { stroke: #2f74ad; }
+
+/* ---------- drawing sheet (always paper) ---------- */
+.sheet { background: #ffffff; border: 1px solid var(--line); padding: 12px; }
+.sheet svg { display: block; width: 100%; height: auto; max-width: 720px; margin-inline: auto; }
+.before { background: #ffffff; border: 1px solid var(--line); padding: 8px; }
+.before svg { display: block; width: 100%; height: auto; max-width: 340px; margin-inline: auto; }
+@media (prefers-reduced-motion: no-preference) { .ui .ib, .ui .row { transition: background 0.15s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="kicker">apeCAD · Proposal · ADR 0031</div>
+      <h1>APE identity for apeCAD</h1>
+    </div>
+    <p>Mockups of the restyled scratchpad in APE paper and carbon, and one section rendered to APE drawing standards. Docs only: nothing under <code>src/</code> changes until the stages in the ADR are scheduled.</p>
+  </header>
+
+  <section aria-labelledby="s1">
+    <div class="sec-head">
+      <span class="sec-num">01</span>
+      <h2 class="sec-title" id="s1">Scratchpad, light and dark</h2>
+      <p class="sec-sub">Steel marks state (selection, active tool, modes that are on). Vest orange marks attention (snap, crossing, refusals). On the light canvas, section entities already wear their drawing ink.</p>
+    </div>
+    <div class="frames">
+      <figure>
+        <div class="scroll"><div class="ui ui-light" id="frame-light"></div></div>
+        <figcaption><b>Light, APE paper.</b> Surfaces <span class="mono">#f7f6f3 / #efede8 / #fff</span>, steel <span class="mono">#2f74ad</span>, rebar in annotation blue <span class="mono">#000077</span>, concrete on Grey210.</figcaption>
+      </figure>
+      <figure>
+        <div class="scroll"><div class="ui ui-dark" id="frame-dark"></div></div>
+        <figcaption><b>Dark, APE carbon.</b> Surfaces <span class="mono">#0c1016 / #14181d / #1c2127</span>, steel <span class="mono">#3d8fce</span>, rebar lifted to <span class="mono">#8c9cf0</span> (annotation blue is 1.07 : 1 on carbon).</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section aria-labelledby="s2">
+    <div class="sec-head">
+      <span class="sec-num">02</span>
+      <h2 class="sec-title" id="s2">Section C1, rendered to APE standards</h2>
+      <p class="sec-sub">ADR-005 pens and ink, ADR-007 Arial Narrow notes in (0, 0, 119), ADR-009 Bahnschrift title, ADR-010 Grey210 cut. Spanish on the sheet, office tag grammar.</p>
+    </div>
+    <div class="two">
+      <figure>
+        <div class="sheet" id="sheet"></div>
+        <figcaption><b>Proposed.</b> 400 × 600 mm column at 1:10, true paper millimetres. Concrete cut <span class="mono">0.40mm S-Black</span>; hoop <span class="mono">0.30mm S-Blue</span>; crossties <span class="mono">0.20mm S-Blue</span>; cover guide <span class="mono">0.10mm H-Grey</span>; bars as Φ20 discs at true size.</figcaption>
+      </figure>
+      <div style="display:grid; gap:20px; align-content:start; min-width:0">
+        <figure>
+          <div class="before" id="before"></div>
+          <figcaption><b>Today</b> (<span class="mono">render/svg.py</span>): one 1.5 px weight for every edge, a 15 % blue face tint, generic sans-serif, English "top".</figcaption>
+        </figure>
+        <ul class="notes">
+          <li><b>Pens on screen</b> without a plot scale: <span class="mono">max(0.75, 5 × mm)</span> px, so 0.10 → 0.75, 0.20 → 1.0, 0.30 → 1.5, 0.40 → 2.0, 0.50 → 2.5.</li>
+          <li><b>Ø → Φ</b> is render-only. The document keeps apeConcrete's <span class="mono">Ø20</span>.</li>
+          <li><b>No Mc marks, no lengths.</b> Marks and planillas stay with the Revit set.</li>
+          <li><b>Review highlight</b> draws in vest orange over the drawing and never reaches DXF.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="s3">
+    <div class="sec-head">
+      <span class="sec-num">03</span>
+      <h2 class="sec-title" id="s3">UI voice, sample rewrites</h2>
+      <p class="sec-sub">The tone standard's notas de plano register, in English: imperative, telegraphic, no dash pauses, no OK, refusals named as refusals. The full inventory is in <span class="mono">specs/ape-design.md</span> §2.</p>
+    </div>
+    <div class="scroll" style="border:0">
+      <table class="t">
+        <thead><tr><th>Where</th><th>Today</th><th>Proposed</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">tools.js:215</td><td class="old">Trim: click a free end — the stub past the nearest cutter.</td><td>Trim: click a free end. The stub past the nearest cutter goes.</td><td>No dash pause</td></tr>
+          <tr><td class="mono">tools.js:214</td><td class="old">Extend: click the short end toward a boundary (implied intersection is OK).</td><td>Extend: click the short end toward a boundary. Implied intersections count.</td><td>No verdict words</td></tr>
+          <tr><td class="mono">tools.js:81</td><td class="old">Trim (T): click the part to remove. 2 cutter(s) pinned. Shift pins more.</td><td>Trim: click the part to remove. 2 cutters pinned; Shift pins more.</td><td>Shortcuts in tooltips</td></tr>
+          <tr><td class="mono">commands.js:224</td><td class="old">lines do not cross</td><td>Refused: lines do not cross.</td><td>Refusal grammar</td></tr>
+          <tr><td class="mono">modify.js:206</td><td class="old">Sewed coincident points.</td><td>Merged 4 coincident points.</td><td>Count and noun</td></tr>
+          <tr><td class="mono">create.js:140</td><td class="old">Rect placed.</td><td>Rectangle placed.</td><td>One noun per concept</td></tr>
+          <tr><td class="mono">index.html</td><td class="old">SNAP · GRIDSNAP 100/1000 · GRID</td><td>chips <span class="mono">SNAP</span> <span class="mono">GRID 100 / 1000 mm</span> <span class="mono">ORTHO</span>, on in steel, off muted</td><td>State is visible</td></tr>
+          <tr><td class="mono">svg.py</td><td class="old">empty draft · top</td><td>Dibujo vacío · PLANTA</td><td>Spanish on the sheet</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="s4">
+    <div class="sec-head">
+      <span class="sec-num">04</span>
+      <h2 class="sec-title" id="s4">Tokens</h2>
+      <p class="sec-sub">Colour by role, read by CSS and by three.js through one module. Values from the APE web stylesheet, apeGraphStyle and the drawing token card.</p>
+    </div>
+    <div class="scroll" style="border:0">
+      <table class="t">
+        <thead><tr><th>Role</th><th>Light</th><th>Dark</th><th>Use</th></tr></thead>
+        <tbody id="tok"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>apeCAD · APE Ingeniería · Proposal of 2026-10-10. Sources: <span class="mono">ape WebPage/src/styles/global.css</span>, <span class="mono">apeGraphStyle</span>, <span class="mono">drawing-standards</span> ADR-004 to ADR-010, skill <span class="mono">ape-tono</span>.</footer>
+</div>
+
+<script>
+(function () {
+  const WORDMARK = '<svg viewBox="70 40 530 84" aria-label="apeCAD" role="img"><g fill="none" stroke="currentColor" stroke-width="5" stroke-linejoin="miter" stroke-linecap="square">'
+    + '<path d="M86 108 L114 52 L142 108"/><path d="M98 86 H130"/>'
+    + '<path d="M166 52 V108"/><path d="M166 52 H198 C214 52 220 60 220 72 C220 84 214 92 198 92 H166"/>'
+    + '<path d="M248 52 H292 M248 52 V108 H292 M248 80 H280"/>'
+    + '<path d="M402 64 C394 52 378 50 364 58 C348 68 344 92 360 106 C374 116 392 114 402 102"/>'
+    + '<path d="M428 108 L456 52 L484 108"/><path d="M440 86 H472"/>'
+    + '<path d="M508 52 V108"/><path d="M508 52 H540 C572 52 586 68 586 80 C586 92 572 108 540 108 H508"/></g>'
+    + '<line x1="86" y1="119" x2="586" y2="119" stroke="#c64a1a" stroke-width="3"/></svg>';
+
+  const V = (x, y) => '<rect x="' + (x - 1.5) + '" y="' + (y - 1.5) + '" width="3" height="3" fill="currentColor" stroke="none"/>';
+  const ICONS = {
+    select: '<path d="M5 3 L15 13 L11 14 L14 21 L11.8 22 L8.8 15 L5 19 Z"/>',
+    line: '<path d="M4 18 L20 6"/>' + V(4, 18) + V(20, 6),
+    poly: '<path d="M3 18 L8 8 L14 16 L21 6"/>' + V(3, 18) + V(21, 6),
+    rect: '<rect x="4" y="6" width="16" height="12"/>',
+    circle: '<circle cx="12" cy="12" r="7"/>' + V(12, 12),
+    box: '<path d="M4 8 L12 4 L20 8 L20 16 L12 20 L4 16 Z"/><path d="M4 8 L12 12 L20 8 M12 12 L12 20"/>',
+    move: '<path d="M12 3 V21 M3 12 H21 M8 7 L12 3 L16 7 M8 17 L12 21 L16 17 M7 8 L3 12 L7 16 M17 8 L21 12 L17 16"/>',
+    trim: '<path d="M4 20 L12 12"/><path d="M12 12 L20 4" stroke-dasharray="2 2"/><path d="M5 8 L16 19"/>',
+    face: '<path d="M5 18 L12 5 L19 18 Z" fill="currentColor" fill-opacity="0.2"/>',
+    bar: '<circle cx="12" cy="12" r="4.5" fill="currentColor" stroke="none"/><path d="M4 20 L8.5 15.5"/>',
+    hoop: '<rect x="4" y="4" width="16" height="16" rx="3.5"/>' + '<circle cx="7.5" cy="7.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="16.5" cy="7.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="7.5" cy="16.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="16.5" cy="16.5" r="1.6" fill="currentColor" stroke="none"/>',
+    snap: '<rect x="7" y="7" width="10" height="10"/><path d="M12 3 V7 M12 17 V21 M3 12 H7 M17 12 H21"/>',
+    grid: '<path d="M5 5 H19 V19 H5 Z M12 5 V19 M5 12 H19"/>',
+    pt: '<rect x="9" y="9" width="6" height="6"/><path d="M12 4 V8 M12 16 V20 M4 12 H8 M16 12 H20"/>',
+    el: '<rect x="4" y="4" width="16" height="16" stroke-dasharray="2 2"/><path d="M7 10 L12 7 L17 10 L17 15 L12 18 L7 15 Z" fill="currentColor" fill-opacity="0.2"/>'
+  };
+  const ib = (k, on, title) => '<span class="ib' + (on ? ' on' : '') + '" title="' + title + '"><svg viewBox="0 0 24 24">' + ICONS[k] + '</svg></span>';
+
+  // Canvas: plan view of section C1 (400 x 600 mm), 0.5 px per mm, origin at (190, 60) in canvas px.
+  const S = 0.5, OX = 190, OY = 50;
+  const P = (x, y) => [OX + x * S, OY + (600 - y) * S];
+  const bars = [[60,60],[200,60],[340,60],[60,220],[340,220],[60,380],[340,380],[60,540],[200,540],[340,540]];
+  function canvas() {
+    let g = '<svg class="cv" viewBox="0 0 510 368" preserveAspectRatio="xMidYMid slice">';
+    g += '<defs><pattern id="pmin-X" width="10" height="10" patternUnits="userSpaceOnUse"><circle class="gmin" cx="0" cy="0" r="0.9"/></pattern></defs>';
+    g += '<rect width="510" height="368" fill="url(#pmin-X)"/>';
+    for (let x = 40; x < 510; x += 50) g += '<line class="gmaj" x1="' + x + '" y1="0" x2="' + x + '" y2="368" stroke-width="0.6"/>';
+    for (let y = 0; y < 368; y += 50) g += '<line class="gmaj" x1="0" y1="' + y + '" x2="510" y2="' + y + '" stroke-width="0.6"/>';
+    const a = P(0, 0), b = P(400, 600);
+    g += '<rect class="conc" x="' + a[0] + '" y="' + b[1] + '" width="' + (400 * S) + '" height="' + (600 * S) + '" stroke-width="1.6"/>';
+    const h0 = P(45, 45), h1 = P(355, 555);
+    g += '<rect class="rbl" x="' + h0[0] + '" y="' + h1[1] + '" width="' + (310 * S) + '" height="' + (510 * S) + '" rx="' + (15 * S) + '" stroke-width="1.2"/>';
+    [[[60,220],[340,220]],[[60,380],[340,380]],[[200,60],[200,540]]].forEach(function (t) {
+      const p = P(t[0][0], t[0][1]), q = P(t[1][0], t[1][1]);
+      g += '<line class="rbl" x1="' + p[0] + '" y1="' + p[1] + '" x2="' + q[0] + '" y2="' + q[1] + '" stroke-width="0.8"/>';
+    });
+    bars.forEach(function (c, i) {
+      const p = P(c[0], c[1]);
+      g += '<circle class="rb" cx="' + p[0] + '" cy="' + p[1] + '" r="' + (10 * S) + '"/>';
+      if (i === 4 || i === 6) g += '<circle class="selc" cx="' + p[0] + '" cy="' + p[1] + '" r="' + (10 * S + 3) + '" stroke-width="1.5"/>';
+    });
+    // ghost: next bar being placed, with a snap marker on the cover guide corner
+    const gp = P(200, 300);
+    g += '<circle class="gh" cx="' + gp[0] + '" cy="' + gp[1] + '" r="' + (10 * S) + '" stroke-width="1.2" stroke-dasharray="3 2"/>';
+    const sp = P(340, 300);
+    g += '<rect class="snap" x="' + (sp[0] - 5) + '" y="' + (sp[1] - 5) + '" width="10" height="10" stroke-width="1.5"/>';
+    g += '<line class="gh" x1="' + gp[0] + '" y1="' + gp[1] + '" x2="' + (sp[0] - 5) + '" y2="' + sp[1] + '" stroke-width="1" stroke-dasharray="3 2"/>';
+    // axes triad
+    g += '<line class="axisx" x1="24" y1="340" x2="52" y2="340" stroke-width="1.5"/><line class="axisy" x1="24" y1="340" x2="24" y2="312" stroke-width="1.5"/>';
+    return g + '</svg>';
+  }
+
+  function frame(id, dark) {
+    const el = document.getElementById(id);
+    const tree = [
+      ['ConcreteFace', 'C1', true, false], ['Bar', 'Ø20 × 10', false, true], ['Hoop', 'Ø10 @100', false, true],
+      ['Crosstie', 'Ø10 × 3', false, true], ['CoverGuide', '40 mm', false, true], ['WallLeg', '—', false, true]
+    ];
+    let rows = '';
+    tree.forEach(function (r) { rows += '<div class="row' + (r[2] ? '' : '') + (r[3] ? ' kid' : '') + (r[0] === 'Bar' ? ' sel' : '') + '"><span class="k">' + r[0] + '</span><span>' + r[1] + '</span></div>'; });
+    rows = rows.replace('<span>—</span>', '<span style="opacity:.55">none</span>');
+    el.innerHTML =
+      '<div class="bar"><span class="mark">' + WORDMARK + '</span>'
+      + '<span class="menu">File</span><span class="menu">Edit</span><span class="menu' + (dark ? '' : ' open') + '">View</span><span class="menu">Grid</span><span class="menu">Section</span><span class="menu">Help</span>'
+      + '<span class="chips"><span class="chip on">SNAP</span><span class="chip on">GRID 100 / 1000 mm</span><span class="chip">ORTHO</span><span class="chip on">FILTER Element</span></span></div>'
+      + '<div class="ws"><aside class="dock"><div class="head">Model</div><div class="tree">' + rows + '</div>'
+      + '<div class="props"><div class="head" style="padding-left:0">Properties</div><dl><dt>Selection</dt><dd>2 bars</dd><dt>Designation</dt><dd>Ø20</dd><dt>Diameter</dt><dd>20 mm</dd><dt>Y</dt><dd>220 · 380 mm</dd></dl></div><div></div></aside>'
+      + '<nav class="rail">' + ib('select', false, 'Select (Esc)') + '<span class="sep"></span>' + ib('line', false, 'Line') + ib('poly', false, 'Polyline') + ib('rect', false, 'Rectangle') + ib('circle', false, 'Circle')
+      + '<span class="sep"></span>' + ib('box', false, 'Box') + ib('face', false, 'Face from the selected lines') + '<span class="sep"></span>' + ib('move', false, 'Move (M)') + ib('trim', false, 'Trim (T)')
+      + '<span class="sep"></span>' + ib('bar', true, 'Bar') + ib('hoop', false, 'Hoop') + '<span class="sep"></span>' + ib('snap', true, 'Snap to nodes (F3)') + ib('grid', true, 'Show grid (F9)') + '</nav>'
+      + '<div class="stage">' + canvas().replace(/pmin-X/g, 'pmin-' + id) + '<div class="cube">TOP</div>'
+      + '<span class="dim" style="left:56%; top:44%">140 mm</span>'
+      + '<div class="filters">' + ib('pt', false, 'Points (1)') + ib('line', false, 'Lines (2)') + ib('face', false, 'Faces (3)') + ib('box', false, 'Solids (4)') + ib('el', true, 'Whole element (5)') + '</div></div></div>'
+      + '<div class="con"><div class="log"><div>Rectangle placed.</div><div class="ref">Refused: bar Ø21 is not in the designation list.</div><div class="last">Placed 2 bars Ø20.</div></div>'
+      + '<div class="cmd"><span class="p">Bar:</span><span class="in">click the centre, or type x, y and Enter</span><span>Label <span style="opacity:.6">optional</span></span><span class="xyz">X 340  Y 300  Z 0  mm</span></div></div>';
+  }
+  frame('frame-light', false);
+  frame('frame-dark', true);
+
+  // ---------- APE drawing sheet: true paper mm, 1:10 ----------
+  const BLUE = '#000077', K = 10, X0 = 22, Y0 = 14;
+  const Q = (x, y) => [+(X0 + x / K).toFixed(3), +(Y0 + (600 - y) / K).toFixed(3)];
+  const WF = 'font-family="Arial Narrow, Archivo Narrow, sans-serif"';
+  const DF = 'font-family="Bahnschrift SemiBold Condensed, Saira Semi Condensed, Bahnschrift, sans-serif" font-weight="600"';
+  function sheet() {
+    let s = '<svg viewBox="0 0 120 104" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sección C1 en estilo APE">';
+    s += '<rect width="120" height="104" fill="#ffffff"/>';
+    const a = Q(0, 600);
+    // CONCRETE-FILL + CONCRETE-CUT
+    s += '<rect x="' + a[0] + '" y="' + a[1] + '" width="40" height="60" fill="#d2d2d2" stroke="#000000" stroke-width="0.40"/>';
+    // COVER-GUIDE 0.10mm H-Grey
+    const c = Q(40, 560);
+    s += '<rect x="' + c[0] + '" y="' + c[1] + '" width="32" height="52" fill="none" stroke="#c0c0c0" stroke-width="0.10" stroke-dasharray="2 1"/>';
+    // HOOP 0.30mm S-Blue: hull of corner bars offset by (20+10)/2 = 15 mm
+    const h = Q(45, 555);
+    s += '<rect x="' + h[0] + '" y="' + h[1] + '" width="31" height="51" rx="1.5" fill="none" stroke="' + BLUE + '" stroke-width="0.30"/>';
+    // hook ticks at the closing corner (top-left), 135 deg, 6 db = 60 mm
+    const hk = Q(45, 540);
+    s += '<path d="M' + (hk[0] + 1.06) + ' ' + (hk[1] - 2.6) + ' l4.24 4.24 M' + (hk[0] + 2.6) + ' ' + (hk[1] - 1.06) + ' l4.24 4.24" fill="none" stroke="' + BLUE + '" stroke-width="0.30"/>';
+    // CROSSTIES 0.20mm S-Blue
+    [[[60,220],[340,220]],[[60,380],[340,380]],[[200,60],[200,540]]].forEach(function (t) {
+      const p = Q(t[0][0], t[0][1]), q = Q(t[1][0], t[1][1]);
+      s += '<line x1="' + p[0] + '" y1="' + p[1] + '" x2="' + q[0] + '" y2="' + q[1] + '" stroke="' + BLUE + '" stroke-width="0.20"/>';
+    });
+    // BARS: discs at true diameter (20 mm -> 2 mm at 1:10)
+    bars.forEach(function (b) { const p = Q(b[0], b[1]); s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="1" fill="' + BLUE + '" stroke="' + BLUE + '" stroke-width="0.10"/>'; });
+    // DIMENSIONS 0.10mm S-Blue, Arial Narrow 2.5
+    const dy = Y0 + 60 + 7, l = X0, r = X0 + 40;
+    s += '<g stroke="' + BLUE + '" stroke-width="0.10" fill="none">'
+      + '<line x1="' + l + '" y1="' + (Y0 + 61.5) + '" x2="' + l + '" y2="' + (dy + 1.5) + '"/><line x1="' + r + '" y1="' + (Y0 + 61.5) + '" x2="' + r + '" y2="' + (dy + 1.5) + '"/>'
+      + '<line x1="' + l + '" y1="' + dy + '" x2="' + r + '" y2="' + dy + '"/>'
+      + '<line x1="' + (X0 - 1.5) + '" y1="' + Y0 + '" x2="' + (X0 - 8.5) + '" y2="' + Y0 + '"/><line x1="' + (X0 - 1.5) + '" y1="' + (Y0 + 60) + '" x2="' + (X0 - 8.5) + '" y2="' + (Y0 + 60) + '"/>'
+      + '<line x1="' + (X0 - 7) + '" y1="' + Y0 + '" x2="' + (X0 - 7) + '" y2="' + (Y0 + 60) + '"/></g>';
+    const arrow = (x, y, ang) => '<path d="M0 0 L2 -0.54 L2 0.54 Z" fill="' + BLUE + '" transform="translate(' + x + ' ' + y + ') rotate(' + ang + ')"/>';
+    s += arrow(l, dy, 0) + arrow(r, dy, 180) + arrow(X0 - 7, Y0, 90) + arrow(X0 - 7, Y0 + 60, -90);
+    s += '<g ' + WF + ' font-size="2.5" fill="' + BLUE + '">'
+      + '<text x="' + (X0 + 20) + '" y="' + (dy - 0.8) + '" text-anchor="middle">400</text>'
+      + '<text transform="translate(' + (X0 - 7.8) + ' ' + (Y0 + 30) + ') rotate(-90)" text-anchor="middle">600</text></g>';
+    // TAGS: leaders 0.10mm S-Blue, Arial Narrow 2.0
+    const tag = (from, ty, text) => {
+      const p = Q(from[0], from[1]); const tx = X0 + 50;
+      return '<path d="M' + p[0] + ' ' + p[1] + ' L' + (tx - 3) + ' ' + ty + ' L' + (tx - 0.8) + ' ' + ty + '" fill="none" stroke="' + BLUE + '" stroke-width="0.10"/>'
+        + '<text x="' + tx + '" y="' + (ty + 0.7) + '" ' + WF + ' font-size="2" fill="' + BLUE + '">' + text + '</text>';
+    };
+    s += tag([340, 540], Y0 + 4, '10 Φ20');
+    s += tag([355, 470], Y0 + 15, 'Est Φ10 @10 cm');
+    s += tag([270, 380], Y0 + 26, 'Vincha Φ10 @10 cm');
+    s += tag([360, 120], Y0 + 50, 'Recubrimiento 40 mm');
+    // VIEW-TITLE: Bahnschrift SemiBold Condensed 3.5, underline 0.30 S-Blue, scale line Arial Narrow 2.0
+    s += '<text x="' + X0 + '" y="92" ' + DF + ' font-size="3.5" fill="' + BLUE + '">SECCIÓN C1</text>';
+    s += '<line x1="' + X0 + '" y1="93.4" x2="' + (X0 + 40) + '" y2="93.4" stroke="' + BLUE + '" stroke-width="0.30"/>';
+    s += '<text x="' + X0 + '" y="97.2" ' + WF + ' font-size="2" fill="' + BLUE + '">ESC 1:10</text>';
+    return s + '</svg>';
+  }
+  document.getElementById('sheet').innerHTML = sheet();
+
+  // ---------- today's render, for comparison ----------
+  function before() {
+    const T = (x, y) => [20 + x * 0.32, 14 + (600 - y) * 0.32];
+    let s = '<svg viewBox="0 0 200 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Current render style">';
+    s += '<rect width="200" height="230" fill="#ffffff"/>';
+    const a = T(0, 600);
+    s += '<rect x="' + a[0] + '" y="' + a[1] + '" width="128" height="192" fill="#3b6ea5" fill-opacity="0.15" stroke="#1f2933" stroke-width="1.5"/>';
+    bars.forEach(function (b) { const p = T(b[0], b[1]); s += '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="1.5" fill="#1f2933"/>'; });
+    s += '<g font-family="sans-serif" font-size="11" fill="#1f2933"><text x="12" y="206">top</text>'
+      + '<path d="M12 214 L12 218 L76 218 L76 214" fill="none" stroke="#1f2933"/><text x="82" y="218">200 mm</text></g>';
+    return s + '</svg>';
+  }
+  document.getElementById('before').innerHTML = before();
+
+  // ---------- token table ----------
+  const TOK = [
+    ['--surface-0', '#f7f6f3', '#0c1016', 'App background, command line'],
+    ['--surface-1', '#efede8', '#14181d', 'Menubar, panels, menus, dialogs'],
+    ['--surface-2', '#ffffff', '#1c2127', 'Inputs, hover and selected rows'],
+    ['--line', '#d8d5cd', '#232a33', 'Borders, separators'],
+    ['--text', '#1c2127', '#e8ecf1', 'Body text'],
+    ['--muted', '#4a525c', '#97a1ad', 'Labels, kickers, off chips'],
+    ['--accent', '#2f74ad', '#3d8fce', 'Selection, active tool, focus, on chips'],
+    ['--signal', '#c64a1a', '#e2703a', 'Snap, crossing window, trim discard, refusals'],
+    ['--canvas', '#f7f6f3', '#1c2127', '3-D view background'],
+    ['--ink-edge', '#14181d', '#c9d1da', 'Sketch curves and solid edges'],
+    ['--ink-rebar', '#000077', '#8c9cf0', 'Bars, hoops, crossties, tags'],
+    ['--fill-concrete', '#d2d2d2', '#3a4048', 'Concrete face fill'],
+    ['--ghost', '#2f74ad', '#6cb3ff', 'Rubber-band previews, trim keep']
+  ];
+  document.getElementById('tok').innerHTML = TOK.map(function (t) {
+    return '<tr><td class="mono">' + t[0] + '</td><td><span class="sw" style="background:' + t[1] + '"></span><span class="mono">' + t[1] + '</span></td><td><span class="sw" style="background:' + t[2] + '"></span><span class="mono">' + t[2] + '</span></td><td>' + t[3] + '</td></tr>';
+  }).join('');
+})();
+</script>
