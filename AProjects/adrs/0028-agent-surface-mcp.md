@@ -1,4 +1,4 @@
-# ADR 0027 — One op catalog behind every surface; agents get MCP, render and query tools
+# ADR 0028 — One op catalog behind every surface; agents get MCP, render and query tools
 
 **Status:** Proposed (2026-10-10)
 
@@ -29,8 +29,9 @@ with their parameters.
 CAD whose MCP server is a set of thin aliases over one command registry, plus a headless
 render tool that returns a PNG. It was studied for principles only, under
 [ADR 0007](0007-clean-room-inspiration.md)'s rules: no code, no file layout and no schema was
-copied, and agents writing apeCAD code must not be pointed at its tree. This ADR adds cadcraft
-to 0007's list of principle sources and leaves 0007's decision unchanged.
+copied, and agents writing apeCAD code must not be pointed at its tree. [ADR 0027](0027-atomic-ops.md)
+already adds cadcraft to 0007's list of principle sources. This ADR takes further principles
+from it (below) and leaves 0007's decision unchanged.
 
 | Principle taken from cadcraft | Where it lands here |
 |---|---|
@@ -105,9 +106,8 @@ agent surface first means those ops arrive already listed, schema'd and renderab
    - HTTP keeps its status codes: `/api/op` still answers 400 for both classes (ADR 0026
      decision 2), and the transport still answers 422 for refusals. Both bodies gain the
      `code` field.
-   - "The draft is unchanged after a refusal" requires that every handler is atomic. A sibling
-     change (branch `fix/atomic-ops`) is making that hold. Until it lands, the adapters do not
-     promise it.
+   - "The draft is unchanged after a refusal" requires that every handler is atomic. [ADR 0027](0027-atomic-ops.md)
+     (atomic ops, PR #17) makes that hold. Until it lands, the adapters do not promise it.
 6. **Retry rules.**
    - Reads (`list_ops`, `inspect`, `query_entities`, `render`, `get_document`) may be retried
      freely.

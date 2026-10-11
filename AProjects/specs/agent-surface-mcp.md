@@ -1,9 +1,9 @@
 # Spec — agent surface: op catalog, MCP server, render and query tools
 
 **Status:** Proposed (2026-10-10)
-**ADRs:** 0006, 0019, 0023, 0026, 0027
+**ADRs:** 0006, 0019, 0023, 0026, 0027, 0028
 
-What agents call to draw with apeCAD, and the order to build it in. ADR 0027 holds the
+What agents call to draw with apeCAD, and the order to build it in. ADR 0028 holds the
 reasons; this file holds the shapes. Units are millimetres throughout (ADR 0006). Every JSON
 example is a shape, not a fixture.
 
@@ -330,7 +330,7 @@ what its tests prove.
 | **S8 — DXF (optional)** | `dxf` extra (ezdxf): `import_dxf` → ops, `export_dxf` | Import of a fixture produces only catalog ops and replays. Export then import keeps line and arc counts. Not started before section mode's C-stages need it |
 
 S1 should land before section mode's first composite op (ADR 0024), so that op arrives with
-its catalog entry. S2 needs the atomic-handler change (`fix/atomic-ops`) for its batch and
+its catalog entry. S2 needs ADR 0027 (atomic ops, PR #17) for its batch and
 "unchanged after refusal" tests. S3 and S4 can go in either order.
 
 ## Out of scope for v1
