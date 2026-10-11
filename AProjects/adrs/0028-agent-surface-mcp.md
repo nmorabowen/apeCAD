@@ -107,7 +107,7 @@ agent surface first means those ops arrive already listed, schema'd and renderab
      decision 2), and the transport still answers 422 for refusals. Both bodies gain the
      `code` field.
    - "The draft is unchanged after a refusal" requires that every handler is atomic. [ADR 0027](0027-atomic-ops.md)
-     (atomic ops, PR #17) makes that hold. Until it lands, the adapters do not promise it.
+     (atomic ops, PR #17) makes that hold (merged 2026-10-10).
 6. **Retry rules.**
    - Reads (`list_ops`, `inspect`, `query_entities`, `render`, `get_document`) may be retried
      freely.
