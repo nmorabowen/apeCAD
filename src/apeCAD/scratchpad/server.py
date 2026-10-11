@@ -11,11 +11,12 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import cast
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
+from apeCAD import catalog
 from apeCAD.document import Document
-from apeCAD.errors import DocumentError
-from apeCAD.ops import Op, op_from_dict
+from apeCAD.errors import DocumentError, OpArgumentError
+from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import RenderArgumentError
 from apeCAD.render.query import render_from_query
 from apeCAD.scratchpad.payload import scene_payload
@@ -105,6 +106,9 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/render.svg":
             self._render_svg(parsed.query)
             return
+        if parsed.path == "/api/ops":
+            self._list_ops(parsed.query)
+            return
         self._send_json(404, {"error": f"unknown path {parsed.path}"})
 
     def do_POST(self) -> None:
@@ -139,17 +143,25 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
                 self._send_json(200, scene_payload(self.server.document))
                 return
         except DocumentError as exc:
-            self._send_json(400, {"error": str(exc)})
+            self._send_json(400, {"error": str(exc), "code": exc.code})
             return
         self._send_json(404, {"error": f"unknown path {parsed.path}"})
 
     def _apply_op(self) -> None:
-        payload = self._read_json_object()
-        op: Op = op_from_dict(payload)
-        entity = self.server.document.apply(op)
+        name, params = catalog.split_request(self._read_json_object())
+        applied = catalog.apply(self.server.document, name, params)
         scene = scene_payload(self.server.document)
-        scene["created_id"] = None if entity is None else entity.entity_id
+        scene["created_id"] = applied.created_id
         self._send_json(200, scene)
+
+    def _list_ops(self, query: str) -> None:
+        names = parse_qs(query).get("name")
+        try:
+            ops = catalog.list_ops(None if not names else names[-1])
+        except DocumentError as exc:
+            self._send_json(400, {"error": str(exc), "code": exc.code})
+            return
+        self._send_json(200, {"ok": True, "schema": SCHEMA_ID, "ops": ops})
 
     def _render_svg(self, query: str) -> None:
         try:
@@ -162,14 +174,17 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
     def _read_json_object(self) -> dict[str, object]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
-        parsed: object = json.loads(raw.decode("utf-8") or "null")
+        try:
+            parsed: object = json.loads(raw.decode("utf-8") or "null")
+        except ValueError as exc:
+            raise OpArgumentError(f"body is not JSON: {exc}") from exc
         if not isinstance(parsed, dict):
-            raise DocumentError("JSON body must be an object")
+            raise OpArgumentError("JSON body must be an object")
         typed: dict[str, object] = {}
         source = cast(dict[object, object], parsed)
         for key, value in source.items():
             if not isinstance(key, str):
-                raise DocumentError("JSON keys must be strings")
+                raise OpArgumentError("JSON keys must be strings")
             typed[key] = value
         return typed
 

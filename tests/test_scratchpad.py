@@ -488,6 +488,69 @@ def test_bad_op_is_400(server: ScratchpadServer) -> None:
     assert error.value.code == 400
 
 
+def _post_error(server: ScratchpadServer, path: str, body: object) -> tuple[int, dict[str, object]]:
+    port = server.server_address[1]
+    request = Request(
+        f"http://127.0.0.1:{port}{path}",
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(HTTPError) as error:
+        urlopen(request)
+    loaded: object = json.loads(error.value.read().decode("utf-8"))
+    assert isinstance(loaded, dict)
+    return error.value.code, cast(dict[str, object], loaded)
+
+
+def test_op_api_codes_unknown_ops_and_refusals(server: ScratchpadServer) -> None:
+    """Spec agent-surface-mcp S1: both stay 400 (ADR 0026), and the body gains a code."""
+    status, body = _post_error(server, "/api/op", {"op": "AddTeapot", "x_mm": 0})
+    assert status == 400 and body["code"] == "UNKNOWN_OP"
+    status, body = _post_error(server, "/api/op", {"op": "AddLine", "start_id": 1, "end_id": 2})
+    assert status == 400 and body["code"] == "REFUSED"
+    assert body["error"]  # the DocumentError text
+    status, body = _post_error(server, "/api/op", {"op": "AddPoint", "x_mm": 0, "y_mm": 0})
+    assert status == 400 and body["code"] == "INVALID_ARGUMENT"
+    status, body = _post_error(
+        server, "/api/op", {"op": "AddPoint", "x_mm": 0, "y_mm": 0, "z_mm": 0, "entity_id": 9}
+    )
+    assert status == 400 and body["code"] == "INVALID_ARGUMENT"
+    assert _call(server, "/api/scene")["points"] == []
+
+
+def test_op_api_accepts_op_and_params(server: ScratchpadServer) -> None:
+    payload = _call(
+        server,
+        "/api/op",
+        "POST",
+        {"op": "AddPoint", "params": {"x_mm": 5, "y_mm": 0, "z_mm": 0, "label": "P"}},
+    )
+    assert payload["created_id"] == 1
+    points = payload["points"]
+    assert isinstance(points, list) and points[0]["label"] == "P"
+
+
+def test_ops_route_lists_the_catalog(server: ScratchpadServer) -> None:
+    from apeCAD.catalog import CATALOG
+
+    listed = _call(server, "/api/ops")
+    assert listed["ok"] is True
+    assert listed["schema"] == "apeCAD.document.v0"
+    ops = listed["ops"]
+    assert isinstance(ops, list)
+    assert [cast(dict[str, object], item)["name"] for item in ops] == list(CATALOG)
+    one = _call(server, "/api/ops?name=Extrude")["ops"]
+    assert isinstance(one, list) and len(one) == 1
+    status, _type, raw = _get_raw(server, "/api/ops?name=AddTeapot")
+    assert status == 400 and json.loads(raw)["code"] == "UNKNOWN_OP"
+
+
+def test_undo_with_nothing_to_undo_is_refused(server: ScratchpadServer) -> None:
+    status, body = _post_error(server, "/api/undo", {})
+    assert status == 400 and body["code"] == "REFUSED"
+
+
 def test_load_json_replaces_the_document(server: ScratchpadServer) -> None:
     _call(
         server,

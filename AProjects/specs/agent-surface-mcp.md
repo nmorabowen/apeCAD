@@ -18,6 +18,7 @@ class OpSpec:
     params: dict[str, object]   # JSON Schema (draft 2020-12), type "object"
     produces: Literal["entity", "entities", "none"]
     fields: dict[str, str]      # field name -> one-line description
+    example: dict[str, object]  # params that pass `params` and decode
 
 CATALOG: dict[str, OpSpec]       # one entry per HANDLERS row
 
@@ -37,7 +38,7 @@ def apply(document: Document, name: str, params: dict[str, object]) -> Applied: 
 - **Decoding.** `apply` builds `{"op": name, **params}` and calls `op_from_dict`. A decode
   failure becomes `OpArgumentError`. Then it calls `Document.apply`. A `DocumentError` from
   there is a refusal.
-- **`Applied`** is `{op, revision, created_id, added, removed}`. `op` is the committed op as
+- **`Applied`** is `{op, revision, created_id, added, removed}` (`revision` arrives with S2). `op` is the committed op as
   a dict, with its allocated ids. `added` and `removed` are entity ids, from comparing the
   entity id sets before and after.
 - **Guards** (in `test_architecture.py`): the `CATALOG` keys, the `HANDLERS` rows and both

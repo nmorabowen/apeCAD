@@ -34,11 +34,15 @@ posts. Five of the first eight PRs (#2–#6) were this kind of work. Each item n
 - [ ] Follow an existing op end to end: dataclass + `Op` union in `ops/types.py`, an
       `op_to_dict` and a `_parse_op` branch in `ops/codec.py`, a handler
       `fn(state, op) -> op` in the matching `draft/` family module (create, edit, transform,
-      meta), one `HANDLERS` row in `draft/dispatch.py`, and a typed method on `Document`.
+      meta), one `HANDLERS` row in `draft/dispatch.py`, a typed method on `Document`, and
+      a `catalog/entries.py` entry (summary, a description per field, outputs, an example).
       It must round-trip through `to_json` / `from_json` under `SCHEMA_ID`.
-      `tests/test_architecture.py` fails on a missing handler or codec branch. ADR 0023.
-- [ ] Invalid input raises `DocumentError`, which the server turns into HTTP 400
-      (`server.py` `do_POST`); cover it the way `test_bad_op_is_400` does.
+      `tests/test_architecture.py` fails on a missing handler, codec branch or catalog
+      entry, and on an example that does not validate and decode. ADRs 0023, 0028.
+- [ ] `/api/op` sends every op through `catalog.apply`. Bad arguments raise
+      `OpArgumentError` (`INVALID_ARGUMENT`, or `UNKNOWN_OP`); a refusal raises
+      `DocumentError` (`REFUSED`). Both are HTTP 400 with `{error, code}` (`server.py`
+      `do_POST`); cover it the way `test_op_api_codes_unknown_ops_and_refusals` does.
 - [ ] Millimetres internally. ADR 0006; `memory/coupling-map.md` (apeSteel row).
 - [ ] If it changes what `to_frame()` returns, update `specs/to-frame.md`.
 
