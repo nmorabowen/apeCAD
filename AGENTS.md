@@ -22,7 +22,7 @@ kernel or Qt viewer without an ADR). Cursor gets the English rule from
 
 ```bash
 pip install -e ".[dev]"          # the clone path from README.md
-python -m pytest -q              # 93 tests, ~12 s
+python -m pytest -q              # 139 tests, ~18 s
 python -m ruff check src tests   # rules E, F, I, UP; line length 100
 pyright                          # strict, over src/ only
 ```

@@ -43,6 +43,15 @@ class DraftState:
         self.labels: dict[str, EntityId] = {}
         self.tags: dict[str, set[EntityId]] = {}
 
+    def copy(self) -> DraftState:
+        """An independent trial copy. Entities are frozen, so sharing them is safe."""
+        trial = DraftState()
+        trial.next_id = self.next_id
+        trial.entities = dict(self.entities)
+        trial.labels = dict(self.labels)
+        trial.tags = {name: set(members) for name, members in self.tags.items()}
+        return trial
+
     def entity(self, entity_id: EntityId) -> Entity:
         try:
             return self.entities[entity_id]

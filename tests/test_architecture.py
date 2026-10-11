@@ -22,6 +22,7 @@ LEGACY_CEILINGS: dict[str, int] = {}
 DRAFT_RANK: dict[str, int] = {
     "state": 0,
     "topology": 1,
+    "invariants": 2,
     "create": 2,
     "edit": 3,
     "transform": 3,
