@@ -16,6 +16,7 @@ from apeCAD.ops.types import (
     AddFace,
     AddFaceFromLines,
     AddLine,
+    AddLineChain,
     AddPoint,
     AddPolyline,
     ArrayLinear,
@@ -29,6 +30,7 @@ from apeCAD.ops.types import (
     JoinPolyline,
     Mirror,
     Op,
+    PointAt,
     Rotate,
     SetLabel,
     Sew,
@@ -36,6 +38,7 @@ from apeCAD.ops.types import (
     Tag,
     Translate,
     TrimLine,
+    VertexRef,
 )
 
 
@@ -52,15 +55,22 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddLine):
         return {
             "op": "AddLine",
-            "start_id": op.start_id,
-            "end_id": op.end_id,
+            "start_id": _vertex_json(op.start_id),
+            "end_id": _vertex_json(op.end_id),
             "label": op.label,
             "entity_id": op.entity_id,
+        }
+    if isinstance(op, AddLineChain):
+        return {
+            "op": "AddLineChain",
+            "point_ids": _vertices_json(op.point_ids),
+            "label": op.label,
+            "line_ids": None if op.line_ids is None else list(op.line_ids),
         }
     if isinstance(op, AddPolyline):
         return {
             "op": "AddPolyline",
-            "point_ids": list(op.point_ids),
+            "point_ids": _vertices_json(op.point_ids),
             "closed": op.closed,
             "label": op.label,
             "entity_id": op.entity_id,
@@ -76,12 +86,12 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddFace):
         return {
             "op": "AddFace",
-            "point_ids": list(op.point_ids),
+            "point_ids": _vertices_json(op.point_ids),
             "label": op.label,
             "entity_id": op.entity_id,
         }
     if isinstance(op, Extrude):
-        return {
+        extruded: dict[str, object] = {
             "op": "Extrude",
             "face_id": op.face_id,
             "distance_mm": op.distance_mm,
@@ -89,10 +99,13 @@ def op_to_dict(op: Op) -> dict[str, object]:
             "label": op.label,
             "entity_id": op.entity_id,
         }
+        if op.ring is not None:  # absent, not null, so a face-only Extrude reads as before
+            extruded["ring"] = _vertices_json(op.ring)
+        return extruded
     if isinstance(op, AddCircle):
         return {
             "op": "AddCircle",
-            "center_id": op.center_id,
+            "center_id": _vertex_json(op.center_id),
             "radius_mm": op.radius_mm,
             "label": op.label,
             "entity_id": op.entity_id,
@@ -100,16 +113,16 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddArc):
         return {
             "op": "AddArc",
-            "start_id": op.start_id,
-            "mid_id": op.mid_id,
-            "end_id": op.end_id,
+            "start_id": _vertex_json(op.start_id),
+            "mid_id": _vertex_json(op.mid_id),
+            "end_id": _vertex_json(op.end_id),
             "label": op.label,
             "entity_id": op.entity_id,
         }
     if isinstance(op, AddEllipse):
         return {
             "op": "AddEllipse",
-            "center_id": op.center_id,
+            "center_id": _vertex_json(op.center_id),
             "radius_x_mm": op.radius_x_mm,
             "radius_y_mm": op.radius_y_mm,
             "label": op.label,
@@ -118,7 +131,7 @@ def op_to_dict(op: Op) -> dict[str, object]:
     if isinstance(op, AddBezier):
         return {
             "op": "AddBezier",
-            "point_ids": list(op.point_ids),
+            "point_ids": _vertices_json(op.point_ids),
             "label": op.label,
             "entity_id": op.entity_id,
         }
@@ -277,14 +290,21 @@ def _parse_op(payload: dict[str, object]) -> Op:
         )
     if kind == "AddLine":
         return AddLine(
-            start_id=_as_entity_id("start_id", payload["start_id"]),
-            end_id=_as_entity_id("end_id", payload["end_id"]),
+            start_id=_as_vertex("start_id", payload["start_id"]),
+            end_id=_as_vertex("end_id", payload["end_id"]),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
         )
+    if kind == "AddLineChain":
+        line_ids = payload.get("line_ids")
+        return AddLineChain(
+            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
+            label=_as_optional_str(payload.get("label")),
+            line_ids=None if line_ids is None else _as_id_tuple("line_ids", line_ids),
+        )
     if kind == "AddPolyline":
         return AddPolyline(
-            point_ids=_as_id_tuple("point_ids", payload["point_ids"]),
+            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
             closed=bool(payload.get("closed", False)),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
@@ -298,39 +318,41 @@ def _parse_op(payload: dict[str, object]) -> Op:
         )
     if kind == "AddFace":
         return AddFace(
-            point_ids=_as_id_tuple("point_ids", payload["point_ids"]),
+            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "Extrude":
         direction = payload.get("direction_xyz")
+        ring = payload.get("ring")
         return Extrude(
-            face_id=_as_entity_id("face_id", payload["face_id"]),
+            face_id=_as_optional_entity_id(payload.get("face_id")),
             distance_mm=_as_float("distance_mm", payload["distance_mm"]),
             direction_xyz=_as_xyz("direction_xyz", direction)
             if direction is not None
             else XYZ(0.0, 0.0, 1.0),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
+            ring=None if ring is None else _as_vertex_tuple("ring", ring),
         )
     if kind == "AddCircle":
         return AddCircle(
-            center_id=_as_entity_id("center_id", payload["center_id"]),
+            center_id=_as_vertex("center_id", payload["center_id"]),
             radius_mm=_as_float("radius_mm", payload["radius_mm"]),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddArc":
         return AddArc(
-            start_id=_as_entity_id("start_id", payload["start_id"]),
-            mid_id=_as_entity_id("mid_id", payload["mid_id"]),
-            end_id=_as_entity_id("end_id", payload["end_id"]),
+            start_id=_as_vertex("start_id", payload["start_id"]),
+            mid_id=_as_vertex("mid_id", payload["mid_id"]),
+            end_id=_as_vertex("end_id", payload["end_id"]),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
         )
     if kind == "AddEllipse":
         return AddEllipse(
-            center_id=_as_entity_id("center_id", payload["center_id"]),
+            center_id=_as_vertex("center_id", payload["center_id"]),
             radius_x_mm=_as_float("radius_x_mm", payload["radius_x_mm"]),
             radius_y_mm=_as_float("radius_y_mm", payload["radius_y_mm"]),
             label=_as_optional_str(payload.get("label")),
@@ -338,7 +360,7 @@ def _parse_op(payload: dict[str, object]) -> Op:
         )
     if kind == "AddBezier":
         return AddBezier(
-            point_ids=_as_id_tuple("point_ids", payload["point_ids"]),
+            point_ids=_as_vertex_tuple("point_ids", payload["point_ids"]),
             label=_as_optional_str(payload.get("label")),
             entity_id=_as_optional_entity_id(payload.get("entity_id")),
         )
@@ -521,3 +543,40 @@ def _as_xyz(name: str, value: object) -> XYZ:
         _as_float(f"{name}[1]", coords[1]),
         _as_float(f"{name}[2]", coords[2]),
     )
+
+
+def _vertex_json(ref: VertexRef) -> object:
+    """A point id stays a plain int, as in v0; coordinates become {"xyz": [...], "id": n}."""
+    if not isinstance(ref, PointAt):
+        return ref
+    out: dict[str, object] = {"xyz": list(ref.xyz_mm.to_tuple())}
+    if ref.entity_id is not None:
+        out["id"] = ref.entity_id
+    return out
+
+
+def _vertices_json(refs: tuple[VertexRef, ...]) -> list[object]:
+    return [_vertex_json(ref) for ref in refs]
+
+
+def _as_vertex(name: str, value: object) -> VertexRef:
+    """An int or {"id": n} names a point; {"xyz": [...]} gives coordinates (ADR 0030)."""
+    if not isinstance(value, dict):
+        return _as_entity_id(name, value)
+    ref = cast(dict[object, object], value)
+    if not ref or set(ref) - {"id", "xyz"}:
+        raise DocumentError(f"{name} must be an id, {{id: n}}, or {{xyz: [x, y, z]}}")
+    raw_id = ref.get("id")
+    entity_id = None if raw_id is None else _as_entity_id(name, raw_id)
+    if "xyz" not in ref:
+        if entity_id is None:
+            raise DocumentError(f"{name} needs an id or xyz")
+        return entity_id
+    return PointAt(xyz_mm=_as_xyz(f"{name}.xyz", ref["xyz"]), entity_id=entity_id)
+
+
+def _as_vertex_tuple(name: str, value: object) -> tuple[VertexRef, ...]:
+    if not isinstance(value, list):
+        raise DocumentError(f"{name} must be a list of vertices, got {value!r}")
+    items = cast(list[object], value)
+    return tuple(_as_vertex(name, item) for item in items)

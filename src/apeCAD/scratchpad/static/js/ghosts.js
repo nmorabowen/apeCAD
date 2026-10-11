@@ -175,7 +175,8 @@ export function updateGhost(event) {
   if (S.pending.kind === "line" || S.pending.kind === "move" || S.pending.kind === "array" || S.pending.kind === "mirror") {
     const end = currentEnd(event);
     if (end) {
-      ghostLine(S.pending.a, end);
+      if (S.pending.pts) ghostPolyline(S.pending.pts, end);
+      else ghostLine(S.pending.a, end);
       setCoords(end, S.pending.a);
     }
     return;

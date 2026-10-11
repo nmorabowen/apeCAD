@@ -39,6 +39,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0027](0027-atomic-ops.md) | Ops are atomic; a refused op changes nothing | Proposed |
 | [0028](0028-agent-surface-mcp.md) | One op catalog behind every surface; MCP, render and query tools | Proposed |
 | [0029](0029-delete-takes-the-brep-subtree.md) | Delete takes the selection's whole B-rep subtree | Proposed |
+| [0030](0030-one-gesture-one-op.md) | One drawing gesture is one op: creation ops take vertex references | Proposed |
 
 ## Template
 

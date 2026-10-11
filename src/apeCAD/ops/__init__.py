@@ -18,6 +18,7 @@ from apeCAD.ops.types import (
     AddFace,
     AddFaceFromLines,
     AddLine,
+    AddLineChain,
     AddPoint,
     AddPolyline,
     ArrayLinear,
@@ -31,6 +32,7 @@ from apeCAD.ops.types import (
     JoinPolyline,
     Mirror,
     Op,
+    PointAt,
     Rotate,
     SetLabel,
     Sew,
@@ -38,6 +40,7 @@ from apeCAD.ops.types import (
     Tag,
     Translate,
     TrimLine,
+    VertexRef,
 )
 
 __all__ = [
@@ -49,6 +52,7 @@ __all__ = [
     "AddFace",
     "AddFaceFromLines",
     "AddLine",
+    "AddLineChain",
     "AddPoint",
     "AddPolyline",
     "ArrayLinear",
@@ -64,6 +68,7 @@ __all__ = [
     "Op",
     "op_from_dict",
     "op_to_dict",
+    "PointAt",
     "Rotate",
     "SCHEMA_ID",
     "SetLabel",
@@ -73,4 +78,5 @@ __all__ = [
     "Translate",
     "TrimLine",
     "UNITS",
+    "VertexRef",
 ]

@@ -30,6 +30,23 @@ def _require_name(name: str) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class PointAt:
+    """A vertex given by coordinates (ADR 0030).
+
+    Live, the handler reuses a point within 1 mm or creates one. The committed op records
+    a reused point as its plain id and a created one as `PointAt` with `entity_id` set, so
+    replay recreates that exact id without searching.
+    """
+
+    xyz_mm: XYZ
+    entity_id: EntityId | None = None
+
+
+VertexRef = EntityId | PointAt
+"""A creation op's vertex: an existing point id, or coordinates (ADR 0030)."""
+
+
+@dataclass(frozen=True, slots=True)
 class AddPoint:
     x_mm: float
     y_mm: float
@@ -46,8 +63,8 @@ class AddPoint:
 
 @dataclass(frozen=True, slots=True)
 class AddLine:
-    start_id: EntityId
-    end_id: EntityId
+    start_id: VertexRef
+    end_id: VertexRef
     label: str | None = None
     entity_id: EntityId | None = None
 
@@ -57,7 +74,7 @@ class AddLine:
 
 @dataclass(frozen=True, slots=True)
 class AddPolyline:
-    point_ids: tuple[EntityId, ...]
+    point_ids: tuple[VertexRef, ...]
     closed: bool = False
     label: str | None = None
     entity_id: EntityId | None = None
@@ -91,7 +108,7 @@ class AddBox:
 
 @dataclass(frozen=True, slots=True)
 class AddFace:
-    point_ids: tuple[EntityId, ...]
+    point_ids: tuple[VertexRef, ...]
     label: str | None = None
     entity_id: EntityId | None = None
 
@@ -105,14 +122,22 @@ class AddFace:
 
 @dataclass(frozen=True, slots=True)
 class Extrude:
-    face_id: EntityId
+    """Extrude a profile. Given a `ring` instead, it first makes the face (ADR 0030): one op
+    for the box tool. The committed op then records the created face as `face_id`."""
+
+    face_id: EntityId | None
     distance_mm: float
     direction_xyz: XYZ = XYZ(0.0, 0.0, 1.0)
     label: str | None = None
     entity_id: EntityId | None = None
+    ring: tuple[VertexRef, ...] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "label", _optional_label(self.label))
+        if self.ring is None and self.face_id is None:
+            raise DocumentError("extrude needs a face_id or a ring")
+        if self.ring is not None and len(self.ring) < 3:
+            raise DocumentError("extrude ring needs at least three vertices")
         require_finite("distance_mm", self.distance_mm)
         if self.distance_mm == 0.0:
             raise DocumentError("extrude distance_mm cannot be zero")
@@ -122,7 +147,7 @@ class Extrude:
 
 @dataclass(frozen=True, slots=True)
 class AddCircle:
-    center_id: EntityId
+    center_id: VertexRef
     radius_mm: float
     label: str | None = None
     entity_id: EntityId | None = None
@@ -136,9 +161,9 @@ class AddCircle:
 
 @dataclass(frozen=True, slots=True)
 class AddArc:
-    start_id: EntityId
-    mid_id: EntityId
-    end_id: EntityId
+    start_id: VertexRef
+    mid_id: VertexRef
+    end_id: VertexRef
     label: str | None = None
     entity_id: EntityId | None = None
 
@@ -151,7 +176,7 @@ class AddArc:
 
 @dataclass(frozen=True, slots=True)
 class AddEllipse:
-    center_id: EntityId
+    center_id: VertexRef
     radius_x_mm: float
     radius_y_mm: float
     label: str | None = None
@@ -167,7 +192,7 @@ class AddEllipse:
 
 @dataclass(frozen=True, slots=True)
 class AddBezier:
-    point_ids: tuple[EntityId, ...]
+    point_ids: tuple[VertexRef, ...]
     label: str | None = None
     entity_id: EntityId | None = None
 
@@ -177,6 +202,23 @@ class AddBezier:
             raise DocumentError("cubic Bézier needs exactly four control point ids")
         if len(set(self.point_ids)) != 4:
             raise DocumentError("Bézier control point ids must be unique")
+
+
+@dataclass(frozen=True, slots=True)
+class AddLineChain:
+    """One line-tool gesture (ADR 0030): a Line per consecutive pair of vertices.
+
+    `label` names the first line. The committed op records the lines it made in `line_ids`.
+    """
+
+    point_ids: tuple[VertexRef, ...]
+    label: str | None = None
+    line_ids: tuple[EntityId, ...] | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "label", _optional_label(self.label))
+        if len(self.point_ids) < 2:
+            raise DocumentError("line chain needs at least two vertices")
 
 
 @dataclass(frozen=True, slots=True)
@@ -426,6 +468,7 @@ class SetLabel:
 Op = (
     AddPoint
     | AddLine
+    | AddLineChain
     | AddPolyline
     | AddBox
     | AddFace

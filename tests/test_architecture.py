@@ -120,6 +120,25 @@ def test_draft_rank_covers_every_module() -> None:
     assert modules == set(DRAFT_RANK)
 
 
+# apeCAD.section is pure geometry and vocabulary beside draft/ (ADR 0024 decision 7): it sits
+# below the handlers, so it may import only these.
+SECTION_MAY_IMPORT = ("apeCAD.section", "apeCAD.geometry", "apeCAD.entities", "apeCAD.errors")
+
+
+def test_section_imports_only_geometry_entities_and_errors() -> None:
+    violations = [
+        f"{path.relative_to(SRC).as_posix()} imports {imported}"
+        for path in sorted((SRC / "section").glob("*.py"))
+        for imported in sorted(_apecad_imports(path))
+        if imported != "apeCAD"  # `from apeCAD import x` also yields the bare package
+        and not any(
+            imported == allowed or imported.startswith(f"{allowed}.")
+            for allowed in SECTION_MAY_IMPORT
+        )
+    ]
+    assert not violations, "\n".join(violations)
+
+
 def test_core_never_imports_the_scratchpad() -> None:
     offenders = [
         path.relative_to(SRC).as_posix()

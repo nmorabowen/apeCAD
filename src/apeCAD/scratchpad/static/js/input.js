@@ -16,6 +16,7 @@ import {
   snapButton,
 } from "./cmdline.js";
 import { closeMenus, commitWithEnter } from "./commands.js";
+import { finishLineChain, pendingChain } from "./create.js";
 import { newDocument, openDocument, redoDocument, saveDocument, undoDocument } from "./docfile.js";
 import { updateGhost } from "./ghosts.js";
 import { setGridOn, setGridSnapOn } from "./grid-ui.js";
@@ -198,17 +199,20 @@ export function bindKeys() {
         return;
       }
       if (document.querySelector("dialog[open]")) return;
+      if (pendingChain()) {
+        finishLineChain()
+          .then(() => setHint("Line chain placed. Click to start another, or Esc for Select."))
+          .catch((error) => setHint(error.message));
+        return;
+      }
       if (S.pending) {
-        const endedChain = S.pending.kind === "line" && S.pending.chain;
         S.pending = null;
         clearTyped();
         ghosts.clear();
         S.ghostDims = [];
         hideMarquee();
         refreshToggles();
-        setHint(endedChain
-          ? "Line chain ended. Click to start another, or Esc for Select."
-          : "Cancelled.");
+        setHint("Cancelled.");
         return;
       }
       if (S.tool !== "select") {

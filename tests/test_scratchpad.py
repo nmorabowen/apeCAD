@@ -5,6 +5,7 @@ import re
 from collections.abc import Iterator
 from pathlib import Path
 from threading import Thread
+from typing import cast
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -283,6 +284,28 @@ def test_line_and_undo(server: ScratchpadServer) -> None:
     assert undone["lines"] == []
 
 
+def test_drawn_box_is_one_op_and_one_undo(server: ScratchpadServer) -> None:
+    """The box tool posts one Extrude with a ring; one undo removes it whole (ADR 0030)."""
+    before = _call(server, "/api/op", "POST", {"op": "AddPoint", "x_mm": 0, "y_mm": 0, "z_mm": 0})
+    drawn = _call(
+        server,
+        "/api/op",
+        "POST",
+        {
+            "op": "Extrude",
+            "ring": [1, {"xyz": [1000, 0, 0]}, {"xyz": [1000, 800, 0]}, {"xyz": [0.4, 800, 0]}],
+            "distance_mm": 500,
+            "label": "box",
+        },
+    )
+    solids = drawn["solids"]
+    assert isinstance(solids, list) and len(solids) == 1
+    assert len(cast(list[object], drawn["points"])) == 8
+    undone = _call(server, "/api/undo", "POST", {})
+    for key in ("points", "lines", "faces", "solids"):
+        assert undone[key] == before[key], key
+
+
 def test_add_box_via_op_api_is_a_solid(server: ScratchpadServer) -> None:
     payload = _call(
         server,
@@ -509,3 +532,34 @@ def test_load_bad_json_is_400(server: ScratchpadServer) -> None:
     with pytest.raises(HTTPError) as error:
         urlopen(request)
     assert error.value.code == 400
+
+
+def _get_raw(server: ScratchpadServer, path: str) -> tuple[int, str, bytes]:
+    port = server.server_address[1]
+    try:
+        with urlopen(f"http://127.0.0.1:{port}{path}") as response:
+            return response.status, response.headers["Content-Type"], response.read()
+    except HTTPError as exc:
+        return exc.code, exc.headers["Content-Type"], exc.read()
+
+
+def test_render_svg_route_serves_the_current_draft(server: ScratchpadServer) -> None:
+    server.document.add_box((0.0, 0.0, 0.0), (1000.0, 600.0, 400.0), label="<b>block</b>")
+    status, content_type, body = _get_raw(server, "/api/render.svg?view=top&width=400&height=300")
+    assert status == 200
+    assert content_type.startswith("image/svg+xml")
+    svg = body.decode("utf-8")
+    assert svg.startswith("<svg ") and 'data-view="top"' in svg
+    assert 'width="400" height="300"' in svg
+    assert "&lt;b&gt;block&lt;/b&gt;" in svg and "<b>" not in svg
+    _status, _type, default = _get_raw(server, "/api/render.svg")
+    assert 'data-view="iso"' in default.decode("utf-8")
+
+
+def test_render_svg_route_refuses_bad_parameters(server: ScratchpadServer) -> None:
+    for query in ("view=bottom", "format=png", "save_to=x.svg", "ids=42"):
+        status, content_type, body = _get_raw(server, f"/api/render.svg?{query}")
+        assert status == 400, query
+        assert content_type.startswith("application/json")
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["code"] == "INVALID_ARGUMENT", query

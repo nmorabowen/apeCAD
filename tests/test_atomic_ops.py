@@ -23,6 +23,7 @@ from apeCAD.ops import (
     FilletCorner,
     InsertNode,
     JoinPolyline,
+    PointAt,
     Simplify,
     TrimLine,
 )
@@ -83,6 +84,19 @@ def _pick_id(rng: random.Random, ids: list[int], point_ids: list[int]) -> int:
     return rng.choice((0, -1, 999))
 
 
+def _mentions(hint: Any, target: type) -> bool:
+    return hint is target or any(_mentions(arg, target) for arg in get_args(hint))
+
+
+def _vertex(rng: random.Random, ids: list[int], point_ids: list[int]) -> object:
+    """A vertex reference (ADR 0030): mostly ids, else coordinates, some on fixture points."""
+    if rng.random() < 0.5:
+        return _pick_id(rng, ids, point_ids)
+    coords = _COORDS + (4000.0, 3000.0)
+    xyz = XYZ(rng.choice(coords), rng.choice(coords), rng.choice((0.0, 0.5, 500.0)))
+    return PointAt(xyz, _pick_id(rng, ids, point_ids) if rng.random() < 0.2 else None)
+
+
 def _value(
     rng: random.Random, name: str, hint: Any, ids: list[int], point_ids: list[int]
 ) -> object:
@@ -95,12 +109,16 @@ def _value(
         return rng.choice(_NAMES)
     if name == "closed":
         return rng.choice((False, True))
-    if name.endswith("_ids"):
-        return tuple(_pick_id(rng, ids, point_ids) for _ in range(rng.randint(0, 5)))
+    vertex = _mentions(hint, PointAt)
+    if name == "ring" and rng.random() < 0.5:
+        return None
+    if name.endswith("_ids") or name == "ring":
+        pick = _vertex if vertex else _pick_id
+        return tuple(pick(rng, ids, point_ids) for _ in range(rng.randint(0, 5)))
     if name.endswith("_id"):
         if optional and rng.random() < 0.7:
             return None  # an id the handler allocates, not a reference
-        return _pick_id(rng, ids, point_ids)
+        return _vertex(rng, ids, point_ids) if vertex else _pick_id(rng, ids, point_ids)
     if name in ("copies", "count"):
         return rng.choice(_INTS)
     return rng.choice(_FLOATS)
