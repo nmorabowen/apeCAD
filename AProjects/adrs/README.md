@@ -36,6 +36,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0024](0024-section-mode-rc-intent.md) | Section mode: RC section entities are drawing intent | Proposed |
 | [0025](0025-section-draft-contract.md) | The `apeCAD.section-draft` v1 contract | Proposed |
 | [0026](0026-section-transport-and-client.md) | Stateless op transport and a 2-D section client | Proposed |
+| [0027](0027-agent-surface-mcp.md) | One op catalog behind every surface; MCP, render and query tools | Proposed |
 
 ## Template
 

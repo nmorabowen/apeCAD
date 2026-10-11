@@ -22,6 +22,7 @@ Cursor (human + agent)
 | **apeSteel** | Frame graph in N-mm-tonne-s | apeCAD stores mm internally ([ADR 0006](../adrs/0006-one-source-of-truth.md)). |
 | **apeConcrete** | `apeCAD.section-draft` v1, `section` block only ([spec](../specs/section-draft.md), ADR 0025); writes `apeCAD.section-seed` v1 back | Never imports apeCAD (its ADR-0025 D8); copies fixtures at a pinned apeCAD sha. |
 | **ape-web-tools** | `scratchpad.transport.handle` behind `POST /api/cad/transport`; the 2-D client from `section_assets.client_files()` (ADR 0026) | HA-04 Geometria tab; stores the draft in a run (its ADR-0006). |
+| **Agents (MCP)** | `python -m apeCAD.mcp` tools over the op catalog; `render` writes SVG into apeWorkbench `pictures/` via `save_to` ([ADR 0027](../adrs/0027-agent-surface-mcp.md), [spec](../specs/agent-surface-mcp.md)) | Proposed; not implemented. Attach mode targets one instance by `/api/identity` (ADR 0019) and never falls back. |
 | **Studio** | Names-first selection envelope | Studio never write-backs the document ([ADR 0005](../adrs/0005-studio-is-consumer.md)). |
 
 apeGmsh `.py` scripts remain the source of truth for **analysis**.
