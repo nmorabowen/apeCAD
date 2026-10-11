@@ -19,6 +19,7 @@ from apeCAD.entities import (
 )
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ
+from apeCAD.ops import PointAt, VertexRef
 
 
 class Produced(Protocol):
@@ -133,6 +134,29 @@ class DraftState:
             label=None,
         )
         return entity_id, True
+
+    def resolve(self, ref: VertexRef) -> tuple[EntityId, VertexRef]:
+        """A vertex reference as a point id, plus the form the committed op records.
+
+        Coordinates reuse a point within 1 mm (as the client's snap did) or create one,
+        recorded as PointAt with its id; replay recreates that id without searching.
+        """
+        if not isinstance(ref, PointAt):
+            self.require_point(ref)
+            return ref, ref
+        xyz = ref.xyz_mm
+        if ref.entity_id is not None:
+            entity_id = self.allocate_id(ref.entity_id)
+            self.entities[entity_id] = Point(entity_id=entity_id, xyz_mm=xyz, label=None)
+            return entity_id, ref
+        entity_id, created = self.point_at(xyz.x_mm, xyz.y_mm, xyz.z_mm, requested=None)
+        return entity_id, PointAt(xyz, entity_id) if created else entity_id
+
+    def resolve_all(
+        self, refs: tuple[VertexRef, ...]
+    ) -> tuple[tuple[EntityId, ...], tuple[VertexRef, ...]]:
+        resolved = [self.resolve(ref) for ref in refs]
+        return tuple(i for i, _ in resolved), tuple(r for _, r in resolved)
 
     def point_ids_of(self, entity: Entity) -> tuple[EntityId, ...]:
         if isinstance(entity, Point):
