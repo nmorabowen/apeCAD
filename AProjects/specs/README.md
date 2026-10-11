@@ -11,7 +11,7 @@ to implement without re-arguing the ADR.
 | [section-draft v1](section-draft.md) | Proposed | 0006, 0023, 0024, 0025, 0026 |
 | [agent surface (MCP)](agent-surface-mcp.md) | Proposed | 0006, 0019, 0023, 0026, 0028 |
 | [APE design system](ape-design.md) | Proposed | 0014, 0023, 0024, 0028, 0031 |
-| [modelling helpers](modeling-helpers.md) | In part | 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013, 0015, 0016, 0017, 0018 |
+| [modelling helpers](modeling-helpers.md) | In part | 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013, 0015, 0016, 0017, 0018, 0029 |
 
 When a spec conflicts with an ADR, the ADR wins until a successor ADR
 is accepted.

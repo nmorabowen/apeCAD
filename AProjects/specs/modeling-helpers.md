@@ -1,7 +1,7 @@
 # Spec — modelling helpers (scratchpad + intent)
 
 **Status:** Implemented in part (2026-08-14)  
-**ADRs:** 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013, 0015, 0016, 0017, 0018
+**ADRs:** 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013, 0015, 0016, 0017, 0018, 0029
 
 ## In the document (library base)
 
@@ -37,7 +37,9 @@ open or closed. `AddFaceFromLines` needs ≥3 lines that form one cycle. `Chamfe
 Face/Polyline vertex. `Sew` merges coincident points. `Simplify`
 drops unshared collinear vertices. Arrays clone the selection.
 `Delete` removes the named entities, anything that still referenced
-them, and unused endpoints left behind. Extrude of a Face also writes a
+them, and the whole B-rep subtree of the selection and of any solid that
+dies (profile, cap, walls, edges, vertices), except parts something kept
+still uses ([ADR 0029](../adrs/0029-delete-takes-the-brep-subtree.md)). Extrude of a Face also writes a
 wall Face per profile edge (`Solid.wall_ids`) so every side is selectable.
 A rectangular box therefore has six faces and twelve lines (shared edges
 are one record). Extrude of a Circle or Ellipse writes a cap of the same

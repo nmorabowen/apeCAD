@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from apeCAD.document import Document
 from apeCAD.entities import Arc, Bezier, Box, Circle, Ellipse, Face, Line, Point, Polyline, Solid
-from apeCAD.errors import DocumentError
+from apeCAD.errors import DocumentError, OpArgumentError
 from apeCAD.frame import FrameGraph, FrameMember, FrameNode, FrameVolume
 from apeCAD.geometry import XYZ
 
@@ -32,6 +32,7 @@ __all__ = [
     "FrameNode",
     "FrameVolume",
     "Line",
+    "OpArgumentError",
     "Point",
     "Polyline",
     "Solid",

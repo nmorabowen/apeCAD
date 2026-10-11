@@ -410,22 +410,17 @@ def test_delete_point_cascades_to_users() -> None:
     assert len(document.lines()) == 2
 
 
-def test_delete_solid_keeps_profile() -> None:
+def test_delete_solid_takes_its_profile() -> None:
+    """ADR 0029 amends the old rule: a solid's profile, cap and walls go with it."""
     document, _lines, face = _square()
     solid = document.extrude(face.entity_id, 200.0, label="wall")
-    cap_id = solid.cap_id
     document.delete((solid.entity_id,))
     assert document.solids() == ()
-    assert document.entity(face.entity_id)
-    assert len(document.faces()) == 1
-    assert len(document.points()) == 4
-    assert len(document.lines()) == 4
-    if cap_id is not None:
-        with pytest.raises(DocumentError, match="unknown entity"):
-            document.entity(cap_id)
+    assert document.faces() == ()
+    assert document.lines() == ()
+    assert document.points() == ()
     loaded = Document.from_json(document.to_json())
-    assert loaded.solids() == ()
-    assert loaded.entity(face.entity_id)
+    assert loaded.faces() == ()
 
 
 def test_delete_face_cascades_to_solid() -> None:
