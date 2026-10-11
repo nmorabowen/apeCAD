@@ -7,6 +7,7 @@ from typing import TypeVar, cast
 
 from apeCAD.brep import BrepIndex, build_brep
 from apeCAD.draft.dispatch import apply_op
+from apeCAD.draft.invariants import check_state
 from apeCAD.draft.state import DraftState, produced_id
 from apeCAD.entities import (
     Arc,
@@ -420,7 +421,7 @@ class Document:
     def redo(self) -> None:
         if not self._redo:
             raise DocumentError("nothing to redo")
-        self._apply(self._redo.pop(), from_redo=True)
+        self._apply(self._redo[-1], from_redo=True)
 
     def entity(self, entity_id: EntityId) -> Entity:
         return self._state.entity(entity_id)
@@ -510,8 +511,8 @@ class Document:
         if not isinstance(raw_ops, list):
             raise DocumentError("ops must be a list")
         document = cls()
-        for raw_op in cast(list[object], raw_ops):
-            document._apply(op_from_dict(_as_string_dict(raw_op)))
+        ops = [op_from_dict(_as_string_dict(raw)) for raw in cast(list[object], raw_ops)]
+        document._replay(ops)
         return document
 
     @classmethod
@@ -521,21 +522,37 @@ class Document:
 
 
     def _apply(self, op: Op, *, from_redo: bool = False) -> Entity | None:
-        committed = apply_op(self._state, op)
+        """Run the op on a trial copy; commit only if it succeeds and passes the guard."""
+        trial = self._state.copy()
+        committed = _run(trial, op)
+        check_state(self._state, trial)
+        self._state = trial
         self._ops.append(committed)
-        if not from_redo:
+        if from_redo:
+            self._redo.pop()
+        else:
             self._redo.clear()
         if isinstance(committed, _NO_PRODUCT):
             return None
         return self._state.entities[produced_id(committed)]
 
     def _rebuild(self) -> None:
-        ops = list(self._ops)
-        self._ops = []
-        self._state = DraftState()
-        for op in ops:
-            apply_op(self._state, op)
-            self._ops.append(op)
+        self._replay(list(self._ops))
+
+    def _replay(self, ops: list[Op]) -> None:
+        """Rebuild from a whole log into a fresh state; one guard at the end keeps it linear."""
+        fresh = DraftState()
+        committed = [_run(fresh, op) for op in ops]
+        check_state(DraftState(), fresh)
+        self._state = fresh
+        self._ops = committed
+
+
+def _run(state: DraftState, op: Op) -> Op:
+    try:
+        return apply_op(state, op)
+    except ArithmeticError as exc:  # float overflow is a refusal, not a crash
+        raise DocumentError(f"{type(op).__name__} is out of range: {exc}") from exc
 
 
 _NO_PRODUCT = (
