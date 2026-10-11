@@ -38,6 +38,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0026](0026-section-transport-and-client.md) | Stateless op transport and a 2-D section client | Proposed |
 | [0027](0027-atomic-ops.md) | Ops are atomic; a refused op changes nothing | Proposed |
 | [0028](0028-agent-surface-mcp.md) | One op catalog behind every surface; MCP, render and query tools | Proposed |
+| [0029](0029-delete-takes-the-brep-subtree.md) | Delete takes the selection's whole B-rep subtree | Proposed |
 
 ## Template
 
