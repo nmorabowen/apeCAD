@@ -20,8 +20,10 @@ import {
   finishExtrude,
   finishFace,
   finishLine,
+  finishLineChain,
   finishPolygon,
   finishPolyline,
+  pendingChain,
 } from "./create.js";
 import { newDocument, openDocument, redoDocument, saveDocument, undoDocument } from "./docfile.js";
 import { currentEnd, updateGhost } from "./ghosts.js";
@@ -167,6 +169,11 @@ export async function commitWithEnter() {
           Math.atan2(end.y_mm - S.pending.a.y_mm, end.x_mm - S.pending.a.x_mm) * 180 / Math.PI,
         );
       }
+      return;
+    }
+    if (pendingChain() && activeLength() == null) {
+      await finishLineChain();
+      setHint("Line chain placed.");
       return;
     }
     if (!S.lastPointer) return;

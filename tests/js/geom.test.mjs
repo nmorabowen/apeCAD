@@ -7,9 +7,11 @@ import {
   dist3,
   lineIntersectMm,
   projectT,
+  rectCorners,
   regularPolygon,
   sampleArc,
   sampleCircle,
+  vertexRef,
 } from "../../src/apeCAD/scratchpad/static/js/geom.js";
 import {
   pointInPolygon2d,
@@ -92,4 +94,15 @@ test("crossing selection takes a closed shape that surrounds the window", () => 
   assert.ok(pointInPolygon2d(xy(5, 5), big));
   assert.ok(shapeQualifies(big, true, true, rect));
   assert.ok(!shapeQualifies(big, false, false, rect));
+});
+
+test("vertexRef posts a snapped id, else coordinates (ADR 0030)", () => {
+  assert.equal(vertexRef({ ...p(5, 6), entity_id: 7 }), 7);
+  assert.deepEqual(vertexRef(p(5, 6, 2)), { xyz: [5, 6, 2] });
+  assert.deepEqual(vertexRef({ x_mm: 5, y_mm: 6 }), { xyz: [5, 6, 0] });
+});
+
+test("rectCorners runs counter-clockwise from the min corner and refuses slivers", () => {
+  assert.deepEqual(rectCorners(p(10, 20), p(0, 0)), [p(0, 0), p(10, 0), p(10, 20), p(0, 20)]);
+  assert.equal(rectCorners(p(0, 0), p(10, 0.5)), null);
 });

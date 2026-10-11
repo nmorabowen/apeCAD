@@ -17,6 +17,7 @@ from apeCAD.ops import (
     AddFace,
     AddFaceFromLines,
     AddLine,
+    AddLineChain,
     AddPoint,
     AddPolyline,
     ArrayLinear,
@@ -44,6 +45,7 @@ Handler = Callable[[DraftState, Any], Op]
 HANDLERS: dict[type[object], Handler] = {
     AddPoint: create.add_point,
     AddLine: create.add_line,
+    AddLineChain: create.add_line_chain,
     AddPolyline: create.add_polyline,
     AddBox: create.add_box,
     AddFace: create.add_face,

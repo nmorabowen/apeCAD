@@ -1,7 +1,7 @@
 # Spec — scratchpad client
 
 **Status:** Implemented (2026-08-14)  
-**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0023
+**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0023, 0030
 
 ## Goal
 
@@ -25,8 +25,8 @@ modules in `static/js/`, with shared client state on one object in `js/state.js`
 
 ## Tools
 
-Line (chains until Esc), polyline (Enter to finish, click start to close), rectangle (face), circle, arc, ellipse, polygon, Bézier, box
-(face then extrude). Select (click, window, crossing; filter Point / Line / Face / Solid / Element; hover preselects the B-rep hit). Move, rotate,
+Line (chains until Esc or Enter, posted as one `AddLineChain`), polyline (Enter to finish, click start to close), rectangle (face), circle, arc, ellipse, polygon, Bézier, box
+(one `Extrude` with a ring). Each draw gesture posts one op whose vertices are snapped point ids or coordinates, so one undo removes the whole shape ([ADR 0030](../adrs/0030-one-gesture-one-op.md)). Select (click, window, crossing; filter Point / Line / Face / Solid / Element; hover preselects the B-rep hit). Move, rotate,
 mirror, array, polar, trim (T), extend (E), break, insert-node,
 face-from-lines, join (J), chamfer, fillet, sew, simplify, delete (Del).
 Undo / redo / clear. Save JSON.
