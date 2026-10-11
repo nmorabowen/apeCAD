@@ -12,7 +12,9 @@ import {
   finishExtrude,
   finishFace,
   finishLine,
+  finishLineChain,
   finishPolygon,
+  pendingChain,
   profileExtents,
 } from "./create.js";
 import { currentEnd } from "./ghosts.js";
@@ -59,6 +61,7 @@ export function setTool(next) {
     return;
   }
   const previous = S.tool;
+  if (pendingChain()) finishLineChain().catch((error) => setHint(error.message));
   S.tool = next;
   S.pending = null;
   clearTyped();
@@ -380,7 +383,7 @@ export async function onClick(event) {
 
 const toolHints = {
   select: "Select: click, or drag L→R window / R→L crossing. Filter 1–5. Shift adds. Delete removes.",
-  line: "Line: click to chain segments. Type a length, Enter to commit. Esc ends the chain.",
+  line: "Line: click to chain segments, or type a length and Enter. Enter or Esc places the chain.",
   polyline: "Polyline: click vertices. Enter finishes. Click start or type C to close.",
   rect: "Rect: two clicks for a rectangle on XY.",
   circle: "Circle: centre, then radius. Then Select + Extrude.",

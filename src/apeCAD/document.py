@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import TypeVar, cast
 
 from apeCAD.brep import BrepIndex, build_brep
@@ -37,6 +38,7 @@ from apeCAD.ops import (
     AddFace,
     AddFaceFromLines,
     AddLine,
+    AddLineChain,
     AddPoint,
     AddPolyline,
     ArrayLinear,
@@ -57,6 +59,7 @@ from apeCAD.ops import (
     Tag,
     Translate,
     TrimLine,
+    VertexRef,
     op_from_dict,
     op_to_dict,
 )
@@ -87,8 +90,8 @@ class Document:
 
     def add_line(
         self,
-        start_id: EntityId,
-        end_id: EntityId,
+        start_id: VertexRef,
+        end_id: VertexRef,
         *,
         label: str | None = None,
     ) -> Line:
@@ -97,9 +100,18 @@ class Document:
             Line,
         )
 
+    def add_line_chain(
+        self, point_ids: Sequence[VertexRef], *, label: str | None = None
+    ) -> tuple[Line, ...]:
+        """One line-tool gesture: a Line per consecutive pair, one op (ADR 0030)."""
+        self._apply(AddLineChain(point_ids=tuple(point_ids), label=label))
+        committed = self._ops[-1]
+        assert isinstance(committed, AddLineChain) and committed.line_ids is not None
+        return tuple(self._require_produced(self.entity(i), Line) for i in committed.line_ids)
+
     def add_polyline(
         self,
-        point_ids: tuple[EntityId, ...] | list[EntityId],
+        point_ids: Sequence[VertexRef],
         *,
         closed: bool = False,
         label: str | None = None,
@@ -126,7 +138,7 @@ class Document:
 
     def add_face(
         self,
-        point_ids: tuple[EntityId, ...] | list[EntityId],
+        point_ids: Sequence[VertexRef],
         *,
         label: str | None = None,
     ) -> Face:
@@ -137,12 +149,14 @@ class Document:
 
     def extrude(
         self,
-        face_id: EntityId,
+        face_id: EntityId | None,
         distance_mm: float,
         *,
         direction_xyz: tuple[float, float, float] | XYZ | None = None,
         label: str | None = None,
+        ring: Sequence[VertexRef] | None = None,
     ) -> Solid:
+        """Extrude a profile, or with `ring` (and face_id None) make the face too (ADR 0030)."""
         op = Extrude(
             face_id=face_id,
             distance_mm=distance_mm,
@@ -150,12 +164,13 @@ class Document:
             if direction_xyz is None
             else XYZ.from_sequence(direction_xyz),
             label=label,
+            ring=None if ring is None else tuple(ring),
         )
         return self._require_produced(self._apply(op), Solid)
 
     def add_circle(
         self,
-        center_id: EntityId,
+        center_id: VertexRef,
         radius_mm: float,
         *,
         label: str | None = None,
@@ -167,9 +182,9 @@ class Document:
 
     def add_arc(
         self,
-        start_id: EntityId,
-        mid_id: EntityId,
-        end_id: EntityId,
+        start_id: VertexRef,
+        mid_id: VertexRef,
+        end_id: VertexRef,
         *,
         label: str | None = None,
     ) -> Arc:
@@ -182,7 +197,7 @@ class Document:
 
     def add_ellipse(
         self,
-        center_id: EntityId,
+        center_id: VertexRef,
         radius_x_mm: float,
         radius_y_mm: float,
         *,
@@ -202,7 +217,7 @@ class Document:
 
     def add_bezier(
         self,
-        point_ids: tuple[EntityId, ...] | list[EntityId],
+        point_ids: Sequence[VertexRef],
         *,
         label: str | None = None,
     ) -> Bezier:
@@ -520,7 +535,6 @@ class Document:
         parsed: object = json.loads(text)
         return cls.from_dict(_as_string_dict(parsed))
 
-
     def _apply(self, op: Op, *, from_redo: bool = False) -> Entity | None:
         """Run the op on a trial copy; commit only if it succeeds and passes the guard."""
         trial = self._state.copy()
@@ -556,6 +570,7 @@ def _run(state: DraftState, op: Op) -> Op:
 
 
 _NO_PRODUCT = (
+    AddLineChain,
     Tag,
     Translate,
     Rotate,
@@ -567,7 +582,7 @@ _NO_PRODUCT = (
     Delete,
     SetLabel,
 )
-"""Ops that change the draft without producing one entity to return."""
+"""Ops that change the draft without producing exactly one entity to return."""
 
 
 def _as_string_dict(payload: object) -> dict[str, object]:
