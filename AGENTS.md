@@ -64,7 +64,8 @@ Stop what you started, by PID.
 ## Layout
 
 ```text
-src/apeCAD/              document.py (Document facade: typed API, ops log, undo, JSON),
+src/apeCAD/              document.py (Document facade: ops log, undo, queries, JSON),
+                         typed_ops.py (TypedOps mixin: one typed Document method per op),
                          ops/ (types.py op dataclasses + SCHEMA_ID, codec.py to/from dict),
                          draft/ (state, topology, create/edit/transform/meta handlers,
                          dispatch.py HANDLERS table), entities.py, geometry.py, brep.py,

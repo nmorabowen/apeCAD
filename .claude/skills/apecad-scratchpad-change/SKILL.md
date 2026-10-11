@@ -34,7 +34,8 @@ posts. Five of the first eight PRs (#2–#6) were this kind of work. Each item n
 - [ ] Follow an existing op end to end: dataclass + `Op` union in `ops/types.py`, an
       `op_to_dict` and a `_parse_op` branch in `ops/codec.py`, a handler
       `fn(state, op) -> op` in the matching `draft/` family module (create, edit, transform,
-      meta), one `HANDLERS` row in `draft/dispatch.py`, a typed method on `Document`, and
+      meta), one `HANDLERS` row in `draft/dispatch.py`, a typed `Document` method (in the
+      `TypedOps` mixin, `typed_ops.py`), and
       a `catalog/entries.py` entry (summary, a description per field, outputs, an example).
       It must round-trip through `to_json` / `from_json` under `SCHEMA_ID`.
       `tests/test_architecture.py` fails on a missing handler, codec branch or catalog
