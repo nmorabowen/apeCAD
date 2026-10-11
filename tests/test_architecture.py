@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import ast
+import dataclasses
+import re
 from pathlib import Path
 from typing import get_args
 
+from apeCAD.catalog import CATALOG
+from apeCAD.catalog.schema import validate
+from apeCAD.document import _NO_PRODUCT  # pyright: ignore[reportPrivateUsage]
 from apeCAD.draft.dispatch import HANDLERS
-from apeCAD.ops import Op
+from apeCAD.ops import Op, op_from_dict
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "apeCAD"
 
@@ -98,6 +103,42 @@ def test_every_op_has_a_codec_entry() -> None:
         or f'kind == "{op_type.__name__}"' not in codec
     ]
     assert not missing, f"ops without a to_dict and a parse branch: {missing}"
+
+
+def test_catalog_handlers_and_codec_name_the_same_ops() -> None:
+    """ADR 0028: an op is sendable by agents exactly when it can be applied and serialized."""
+    codec = (SRC / "ops" / "codec.py").read_text(encoding="utf-8")
+    to_dict = set(re.findall(r'"op": "(\w+)"', codec))
+    parse = set(re.findall(r'kind == "(\w+)"', codec))
+    handlers = {op_type.__name__ for op_type in HANDLERS}
+    assert set(CATALOG) == handlers, "catalog keys differ from draft.dispatch.HANDLERS"
+    assert to_dict == handlers, "op_to_dict branches differ from HANDLERS"
+    assert parse == handlers, "_parse_op branches differ from HANDLERS"
+    for name, spec in CATALOG.items():
+        assert spec.name == name == spec.op_type.__name__
+
+
+def test_every_catalog_field_has_a_description() -> None:
+    for spec in CATALOG.values():
+        names = [field.name for field in dataclasses.fields(spec.op_type)]
+        assert list(spec.fields) == names, spec.name
+        assert all(text.strip() for text in spec.fields.values()), spec.name
+        properties = spec.params["properties"]
+        assert isinstance(properties, dict)
+        assert set(properties) <= set(names), spec.name
+
+
+def test_every_catalog_example_validates_and_decodes() -> None:
+    for spec in CATALOG.values():
+        validate(spec.params, spec.example, spec.name)
+        decoded = op_from_dict({"op": spec.name, **spec.example})
+        assert type(decoded) is spec.op_type, spec.name
+
+
+def test_catalog_produces_matches_what_apply_returns() -> None:
+    for spec in CATALOG.values():
+        returns_entity = spec.op_type not in _NO_PRODUCT
+        assert returns_entity == (spec.produces == "entity"), spec.name
 
 
 def test_draft_imports_point_down() -> None:

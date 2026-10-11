@@ -68,7 +68,8 @@ src/apeCAD/              document.py (Document facade: typed API, ops log, undo,
                          ops/ (types.py op dataclasses + SCHEMA_ID, codec.py to/from dict),
                          draft/ (state, topology, create/edit/transform/meta handlers,
                          dispatch.py HANDLERS table), entities.py, geometry.py, brep.py,
-                         frame.py (to_frame), errors.py
+                         frame.py (to_frame), errors.py (error codes),
+                         catalog/ (op catalog: params schema, docs, example; apply)
 src/apeCAD/scratchpad/   server.py (stdlib HTTP + CLI), payload.py (scene JSON),
                          static/ (index.html, app.js, js/*.js ES modules; three.js from CDN)
 tests/                   pytest; test_scratchpad.py drives the HTTP API on port 0;
@@ -80,7 +81,8 @@ logo/                    brand assets
 ```
 
 Do not list ops, endpoints, or entities in this file: consult
-`ops/codec.py` (`_parse_op`), `draft/dispatch.py` (`HANDLERS`) and `server.py`
+`catalog/entries.py` (`GET /api/ops`), `ops/codec.py` (`_parse_op`),
+`draft/dispatch.py` (`HANDLERS`) and `server.py`
 (`do_GET` / `do_POST`).
 
 No god files ([ADR 0023](AProjects/adrs/0023-module-boundaries.md)): every source

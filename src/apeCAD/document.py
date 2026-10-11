@@ -441,6 +441,9 @@ class Document:
     def entity(self, entity_id: EntityId) -> Entity:
         return self._state.entity(entity_id)
 
+    def entity_ids(self) -> frozenset[EntityId]:
+        return frozenset(self._state.entities)
+
     def entity_by_label(self, label: str) -> Entity:
         try:
             entity_id = self._state.labels[label]
