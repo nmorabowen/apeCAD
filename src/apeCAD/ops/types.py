@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from apeCAD.entities import EntityId
@@ -115,12 +116,7 @@ class Extrude:
         require_finite("distance_mm", self.distance_mm)
         if self.distance_mm == 0.0:
             raise DocumentError("extrude distance_mm cannot be zero")
-        length = (
-            self.direction_xyz.x_mm**2
-            + self.direction_xyz.y_mm**2
-            + self.direction_xyz.z_mm**2
-        ) ** 0.5
-        if length == 0.0:
+        if math.hypot(*self.direction_xyz.to_tuple()) == 0.0:
             raise DocumentError("extrude direction cannot be a zero vector")
 
 
