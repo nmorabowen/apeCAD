@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="iso">
+<rect width="800" height="600" fill="#ffffff"/>
+<g class="faces" fill="#3b6ea5" fill-opacity="0.15" stroke="none">
+<g data-id="7"><path d="M181.98 383.92 L509.01 572.73 L618.02 509.79 L400 383.92 L545.35 300 L436.34 237.06 Z"/></g>
+<g data-id="20"><path d="M181.98 174.13 L509.01 362.94 L618.02 300 L400 174.13 L545.35 90.21 L436.34 27.27 Z"/></g>
+<g data-id="27"><path d="M181.98 383.92 L509.01 572.73 L509.01 362.94 L181.98 174.13 Z"/></g>
+<g data-id="30"><path d="M509.01 572.73 L618.02 509.79 L618.02 300 L509.01 362.94 Z"/></g>
+<g data-id="32"><path d="M618.02 509.79 L400 383.92 L400 174.13 L618.02 300 Z"/></g>
+<g data-id="34"><path d="M400 383.92 L545.35 300 L545.35 90.21 L400 174.13 Z"/></g>
+<g data-id="36"><path d="M545.35 300 L436.34 237.06 L436.34 27.27 L545.35 90.21 Z"/></g>
+<g data-id="38"><path d="M436.34 237.06 L181.98 383.92 L181.98 174.13 L436.34 27.27 Z"/></g>
+</g>
+<g class="edges" fill="none" stroke="#1f2933" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="8"><path d="M181.98 383.92 L509.01 572.73"/></g>
+<g data-id="9"><path d="M509.01 572.73 L618.02 509.79"/></g>
+<g data-id="10"><path d="M618.02 509.79 L400 383.92"/></g>
+<g data-id="11"><path d="M400 383.92 L545.35 300"/></g>
+<g data-id="12"><path d="M545.35 300 L436.34 237.06"/></g>
+<g data-id="13"><path d="M436.34 237.06 L181.98 383.92"/></g>
+<g data-id="21"><path d="M181.98 174.13 L509.01 362.94"/></g>
+<g data-id="22"><path d="M509.01 362.94 L618.02 300"/></g>
+<g data-id="23"><path d="M618.02 300 L400 174.13"/></g>
+<g data-id="24"><path d="M400 174.13 L545.35 90.21"/></g>
+<g data-id="25"><path d="M545.35 90.21 L436.34 27.27"/></g>
+<g data-id="26"><path d="M436.34 27.27 L181.98 174.13"/></g>
+<g data-id="28"><path d="M509.01 572.73 L509.01 362.94"/></g>
+<g data-id="29"><path d="M181.98 174.13 L181.98 383.92"/></g>
+<g data-id="31"><path d="M618.02 509.79 L618.02 300"/></g>
+<g data-id="33"><path d="M400 383.92 L400 174.13"/></g>
+<g data-id="35"><path d="M545.35 300 L545.35 90.21"/></g>
+<g data-id="37"><path d="M436.34 237.06 L436.34 27.27"/></g>
+<g data-id="39"></g>
+</g>
+<g class="points" fill="#1f2933">
+<g data-id="1"><circle cx="181.98" cy="383.92" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="2"><circle cx="509.01" cy="572.73" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="3"><circle cx="618.02" cy="509.79" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="4"><circle cx="400" cy="383.92" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="5"><circle cx="545.35" cy="300" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="6"><circle cx="436.34" cy="237.06" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="14"><circle cx="181.98" cy="174.13" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="15"><circle cx="509.01" cy="362.94" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="16"><circle cx="618.02" cy="300" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="17"><circle cx="400" cy="174.13" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="18"><circle cx="545.35" cy="90.21" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="19"><circle cx="436.34" cy="27.27" r="1.5" fill="#1f2933" stroke="none"/></g>
+</g>
+<g class="text" font-family="sans-serif" font-size="11" fill="#1f2933">
+<text x="453.45" y="288.01" data-for="39">ell</text>
+</g>
+<g class="legend" font-family="sans-serif" font-size="11" fill="#1f2933" stroke="#1f2933" stroke-width="1">
+<path d="M12 584 L12 588 L114.78 588 L114.78 584" fill="none"/>
+<text x="120.78" y="588" stroke="none">200 mm</text>
+<text x="12" y="578" stroke="none">iso</text>
+</g>
+</svg>

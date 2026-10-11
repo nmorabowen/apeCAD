@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 from apeCAD.document import Document
 from apeCAD.errors import DocumentError
 from apeCAD.ops import Op, op_from_dict
+from apeCAD.render.api import RenderArgumentError
+from apeCAD.render.query import render_from_query
 from apeCAD.scratchpad.payload import scene_payload
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -100,6 +102,9 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         if parsed.path == "/api/identity":
             self._send_json(200, self.server.identity_payload())
             return
+        if parsed.path == "/api/render.svg":
+            self._render_svg(parsed.query)
+            return
         self._send_json(404, {"error": f"unknown path {parsed.path}"})
 
     def do_POST(self) -> None:
@@ -146,6 +151,14 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         scene["created_id"] = None if entity is None else entity.entity_id
         self._send_json(200, scene)
 
+    def _render_svg(self, query: str) -> None:
+        try:
+            result = render_from_query(self.server.document, query)
+        except RenderArgumentError as exc:
+            self._send_json(400, {"error": str(exc), "code": exc.code})
+            return
+        self._send_bytes(200, result.svg.encode("utf-8"), "image/svg+xml; charset=utf-8")
+
     def _read_json_object(self) -> dict[str, object]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
@@ -172,8 +185,10 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         if not path.is_file():
             self._send_json(404, {"error": f"missing static file {path.name}"})
             return
-        body = path.read_bytes()
-        self.send_response(200)
+        self._send_bytes(200, path.read_bytes(), content_type)
+
+    def _send_bytes(self, status: int, body: bytes, content_type: str) -> None:
+        self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store, max-age=0")

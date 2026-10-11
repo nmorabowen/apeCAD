@@ -221,7 +221,7 @@ Filters are ANDed. Results are sorted by entity id. Result:
 | `document` | string | | |
 | `view` | `"top"`\|`"front"`\|`"right"`\|`"iso"` | `"iso"` if any solid, else `"top"` | |
 | `width`, `height` | int | 800, 600 | each clamped to 64–2048 |
-| `margin` | number | 0.05 | fraction of the larger side, clamped to 0–0.4 |
+| `margin` | number | 0.05 | fraction of the larger side of the projected extents, added on every side; clamped to 0–0.4 |
 | `ids` | array of int \| null | null | Draw only these; the extents follow them |
 | `highlight` | array of int \| null | null | Drawn in the accent colour, on top |
 | `labels` | bool | true | Entity labels as text |
@@ -246,9 +246,14 @@ Rendering rules:
   labels are user input. The output is deterministic: the same draft and params give the same
   bytes.
 - A scale bar and the view name go in the lower left corner.
+- `ids` and `highlight` take in what each entity is built from (a solid brings its faces,
+  their edges and vertices). An unknown id is `INVALID_ARGUMENT`.
+- `window` is two 3D corners in mm; the view box is the projection of that box.
 
 Result for `svg`: MCP content `[{type: "text", text: "<svg …>…</svg>"}]`, plus the envelope
 `{ok, revision, view, width, height, scale_px_per_mm, extents_mm, entities: N, path?}`.
+`extents_mm` is the visible rectangle on the view plane, `{min: [u, v], max: [u, v]}` with u
+right and v up. The function behind it is `apeCAD.render.render_svg`.
 Result for `png`: MCP content `[{type: "image", mimeType: "image/png", data: <base64>}]` plus
 the same envelope.
 
@@ -279,7 +284,7 @@ attached scratchpad.
 | `GET /api/ops` | | `list_ops` result |
 | `GET /api/inspect` | | `inspect` result |
 | `GET /api/entities` | query string mirrors `query_entities` (`kind`, `tag`, `label`, `ids=1,2`, `window=x0,y0,z0,x1,y1,z1`, `mode`, `detail`, `limit`, `cursor`) | `query_entities` result |
-| `GET /api/render.svg` | query mirrors `render` (svg only) | `image/svg+xml` |
+| `GET /api/render.svg` | query mirrors `render` (svg only, no `save_to`): `ids=1,2`, `window=x0,y0,z0,x1,y1,z1`, booleans `true`/`false` | `image/svg+xml`; a bad parameter is 400 `{error, code: "INVALID_ARGUMENT"}` |
 | `GET /api/document` | | `get_document` result |
 | `GET /api/revision` | | `{revision}`; the browser polls it about once a second |
 | `POST /api/op` (changed) | adds optional `expect_revision`; also accepts `{op, params}` | as today, plus `revision`; errors gain `code` |

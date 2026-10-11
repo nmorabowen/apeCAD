@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="right">
+<rect width="800" height="600" fill="#ffffff"/>
+<g class="faces" fill="#3b6ea5" fill-opacity="0.15" stroke="none">
+<g data-id="7"><path d="M36.36 559.74 L36.36 559.74 L348.05 559.74 L348.05 559.74 L763.64 559.74 L763.64 559.74 Z"/></g>
+<g data-id="20"><path d="M36.36 40.26 L36.36 40.26 L348.05 40.26 L348.05 40.26 L763.64 40.26 L763.64 40.26 Z"/></g>
+<g data-id="27"><path d="M36.36 559.74 L36.36 559.74 L36.36 40.26 L36.36 40.26 Z"/></g>
+<g data-id="30"><path d="M36.36 559.74 L348.05 559.74 L348.05 40.26 L36.36 40.26 Z"/></g>
+<g data-id="32"><path d="M348.05 559.74 L348.05 559.74 L348.05 40.26 L348.05 40.26 Z"/></g>
+<g data-id="34"><path d="M348.05 559.74 L763.64 559.74 L763.64 40.26 L348.05 40.26 Z"/></g>
+<g data-id="36"><path d="M763.64 559.74 L763.64 559.74 L763.64 40.26 L763.64 40.26 Z"/></g>
+<g data-id="38"><path d="M763.64 559.74 L36.36 559.74 L36.36 40.26 L763.64 40.26 Z"/></g>
+</g>
+<g class="edges" fill="none" stroke="#1f2933" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="8"><path d="M36.36 559.74 L36.36 559.74"/></g>
+<g data-id="9"><path d="M36.36 559.74 L348.05 559.74"/></g>
+<g data-id="10"><path d="M348.05 559.74 L348.05 559.74"/></g>
+<g data-id="11"><path d="M348.05 559.74 L763.64 559.74"/></g>
+<g data-id="12"><path d="M763.64 559.74 L763.64 559.74"/></g>
+<g data-id="13"><path d="M763.64 559.74 L36.36 559.74"/></g>
+<g data-id="21"><path d="M36.36 40.26 L36.36 40.26"/></g>
+<g data-id="22"><path d="M36.36 40.26 L348.05 40.26"/></g>
+<g data-id="23"><path d="M348.05 40.26 L348.05 40.26"/></g>
+<g data-id="24"><path d="M348.05 40.26 L763.64 40.26"/></g>
+<g data-id="25"><path d="M763.64 40.26 L763.64 40.26"/></g>
+<g data-id="26"><path d="M763.64 40.26 L36.36 40.26"/></g>
+<g data-id="28"><path d="M36.36 559.74 L36.36 40.26"/></g>
+<g data-id="29"><path d="M36.36 40.26 L36.36 559.74"/></g>
+<g data-id="31"><path d="M348.05 559.74 L348.05 40.26"/></g>
+<g data-id="33"><path d="M348.05 559.74 L348.05 40.26"/></g>
+<g data-id="35"><path d="M763.64 559.74 L763.64 40.26"/></g>
+<g data-id="37"><path d="M763.64 559.74 L763.64 40.26"/></g>
+<g data-id="39"></g>
+</g>
+<g class="points" fill="#1f2933">
+<g data-id="1"><circle cx="36.36" cy="559.74" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="2"><circle cx="36.36" cy="559.74" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="3"><circle cx="348.05" cy="559.74" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="4"><circle cx="348.05" cy="559.74" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="5"><circle cx="763.64" cy="559.74" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="6"><circle cx="763.64" cy="559.74" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="14"><circle cx="36.36" cy="40.26" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="15"><circle cx="36.36" cy="40.26" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="16"><circle cx="348.05" cy="40.26" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="17"><circle cx="348.05" cy="40.26" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="18"><circle cx="763.64" cy="40.26" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="19"><circle cx="763.64" cy="40.26" r="1.5" fill="#1f2933" stroke="none"/></g>
+</g>
+<g class="text" font-family="sans-serif" font-size="11" fill="#1f2933">
+<text x="387.68" y="295" data-for="39">ell</text>
+</g>
+<g class="legend" font-family="sans-serif" font-size="11" fill="#1f2933" stroke="#1f2933" stroke-width="1">
+<path d="M12 584 L12 588 L115.9 588 L115.9 584" fill="none"/>
+<text x="121.9" y="588" stroke="none">100 mm</text>
+<text x="12" y="578" stroke="none">right</text>
+</g>
+</svg>
