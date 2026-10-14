@@ -1,6 +1,6 @@
 # ADR 0024 — Section mode: RC section entities are drawing intent; apeConcrete owns the mechanics
 
-**Status:** Proposed (2026-10-09)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-09; accepted by the owner on 2026-10-14
 
 Amends [ADR 0002](0002-spatial-scratchpad.md) for one consumer: an RC section draft is the
 source of truth for that section's geometry and reinforcement layout, not only an
@@ -114,11 +114,14 @@ entity kinds, and their meaning needs a single owner.
 - Implementation follows plan stages C1–C3 (entities and ops, geometry, layout ops and lint),
   re-pathed to `ops/`, `draft/section.py` and `apeCAD/section/`.
 
-## Open (owner, plan §9)
+## Owner decisions (2026-10-14)
 
-- Several disjoint solid faces (coupled piers): a lint warning in v1 (proposed), or several
-  faces translated and combined (q5)?
-- Cover guide: clear cover to the outside of the transverse bar (proposed, ACI §20.5.1.3), or
-  to the longitudinal bar for walls without hoops (q6)?
-- `AddBarRow` remainder: centred (proposed) or end-justified (q7)?
-- Curves (arc edges, circular hoops) and openings stay out of scope for HA-04 (q14).
+The owner accepted this record and confirmed the proposed answers to the open questions from
+the plan's §9. The plan's decisions P1–P15 that this record relies on are signed with it.
+
+- **Several disjoint solid faces** (coupled piers, q5) stay a lint warning in v1
+  (`more-than-one-solid-face`). apeConcrete's reader refuses them.
+- **Cover guide** (q6): clear cover is measured to the outside of the transverse bar
+  (ACI §20.5.1.3).
+- **`AddBarRow` remainder** (q7): centred.
+- **Curves** (arc edges, circular hoops) **and openings** stay out of scope for HA-04 (q14).

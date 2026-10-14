@@ -1,6 +1,6 @@
 # ADR 0032 — Bar layouts snap to a lattice so inclined rows stay exactly collinear
 
-**Status:** Proposed (2026-10-14)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-14; accepted by the owner on 2026-10-14
 
 Settles the question PR #18 left open for plan stage C3 and apeConcrete's stage A11: exact
 hull arithmetic, or a shared tolerance. Builds on [ADR 0024](0024-section-mode-rc-intent.md)

@@ -1,6 +1,6 @@
 # ADR 0025 — The `apeCAD.section-draft` v1 contract
 
-**Status:** Proposed (2026-10-09)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-09; accepted by the owner on 2026-10-14
 
 Plan number 0021 (see the numbering table in [ADR 0024](0024-section-mode-rc-intent.md)).
 Builds on ADR 0024 (section mode) and [ADR 0006](0006-one-source-of-truth.md) (one writer).
