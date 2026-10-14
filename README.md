@@ -70,6 +70,21 @@ Opens `http://127.0.0.1:8765` (or the next free port). One process, one document
 python -m apeCAD --no-browser --port 8765
 ```
 
+## MCP server
+
+Agents draw through the same document over MCP (stdio, local mode):
+
+```bash
+pip install "apeCAD[mcp]"
+python -m apeCAD.mcp
+```
+
+```json
+{"mcpServers": {"apecad": {"command": "python", "args": ["-m", "apeCAD.mcp"]}}}
+```
+
+Tools: `list_ops`, `new_document`, `open_document`, `save_document`, `apply_op`, `apply_ops`, `undo`, `redo`, `inspect`, `query_entities`, `render` (SVG as text) and `get_document` — see [the spec](AProjects/specs/agent-surface-mcp.md). stdout carries JSON-RPC only; logs go to stderr.
+
 ## Install
 
 ```bash
@@ -81,7 +96,7 @@ Python ≥ 3.11. Pre-alpha. To work on this tree:
 ```bash
 git clone https://github.com/nmorabowen/apeCAD.git
 cd apeCAD
-pip install -e ".[dev]"
+pip install -e ".[dev,mcp]"
 pytest
 ```
 

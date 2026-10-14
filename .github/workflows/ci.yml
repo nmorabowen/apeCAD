@@ -27,11 +27,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: pyproject.toml
+      # With the mcp extra, so the MCP adapter tests run and pyright sees the SDK's types.
       - name: Install
-        run: python -m pip install -e ".[dev]"
+        run: python -m pip install -e ".[dev,mcp]"
       - name: pytest
         run: python -m pytest -q
       - name: ruff check
         run: python -m ruff check src tests
       - name: pyright (strict, src/)
         run: pyright
+
+  core:
+    # The core package without extras: it imports, and the MCP tests skip cleanly.
+    name: core without extras (py3.11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: pytest
+        run: python -m pytest -q -rs
