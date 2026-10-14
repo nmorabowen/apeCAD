@@ -18,6 +18,7 @@ from apeCAD import catalog
 from apeCAD.agent import Session, ToolError, tools
 from apeCAD.agent.args import opt_int
 from apeCAD.agent.errors import Envelope, guarded
+from apeCAD.agent.hosted import INSTANCE_HEADER, call_hosted
 from apeCAD.agent.query import query_from_string
 from apeCAD.document import Document
 from apeCAD.errors import DETACHED, STALE, DocumentError, OpArgumentError
@@ -61,6 +62,8 @@ class ScratchpadServer(ThreadingHTTPServer):
     ) -> None:
         self.session = Session(document)
         self.root = root
+        # The instance id attached callers must name; a restarted scratchpad has a new one.
+        self.pid = os.getpid()
         # One request at a time touches the session: the browser and an agent may both post.
         self.lock = threading.Lock()
         super().__init__(address, ScratchpadHandler)
@@ -73,7 +76,7 @@ class ScratchpadServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
         return {
             "name": "apeCAD",
-            "pid": os.getpid(),
+            "pid": self.pid,
             "host": host,
             "port": port,
             "root": None if self.root is None else str(self.root),
@@ -109,6 +112,8 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             self._send_file(STATIC_DIR / name, mime)
             return
         if parsed.path.startswith("/api/"):
+            if self._detached():
+                return
             with self.server.lock:
                 if self._get_api(parsed.path, parsed.query):
                     return
@@ -140,8 +145,22 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         session = self.server.session
         return {"ok": True, "revision": session.revision, **query_from_string(session, query)}
 
+    def _detached(self) -> bool:
+        """Answer 409 `DETACHED` when the caller is attached to another instance (a restart)."""
+        claimed = self.headers.get(INSTANCE_HEADER)
+        if claimed is None or claimed.strip() == str(self.server.pid):
+            return False
+        message = (
+            f"this scratchpad is instance {self.server.pid}, not {claimed.strip()}: "
+            "it was restarted; restart the attached agent"
+        )
+        self._send_json(409, {"error": message, "code": DETACHED})
+        return True
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if self._detached():
+            return
         with self.server.lock:
             try:
                 if self._post_api(parsed.path):
@@ -166,6 +185,9 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
                 raise OpArgumentError(f"/api/ops takes only ops and expect_revision: {extra}")
             ops, expect = body.get("ops"), body.get("expect_revision")
             self._send_envelope(tools.apply_ops(session, ops, expect))
+            return True
+        if path == "/api/tool":
+            self._send_envelope(call_hosted(session, self._read_json_object()))
             return True
         if path == "/api/undo":
             session.undo(expect_revision=self._expect_revision())

@@ -1,4 +1,7 @@
-"""MCP adapter (spec agent-surface-mcp, stage S3): serves `LocalTools` over the `mcp` SDK.
+"""MCP adapter (spec agent-surface-mcp, stages S3 and S5): serves a tool set over the `mcp` SDK.
+
+Local mode serves `LocalTools`; `--attach-port N` / `--attach URL` serve `AttachTools`, which
+edit the document of a running scratchpad (exit status 2 if its identity does not check out).
 
 Needs the `mcp` extra (`pip install apeCAD[mcp]`); nothing outside this module and
 `apeCAD.mcp` imports it, so `import apeCAD` stays stdlib-only.
@@ -27,9 +30,10 @@ from mcp.server.stdio import stdio_server
 from mcp.shared.exceptions import MCPError
 
 import apeCAD
+from apeCAD.agent.attach import AttachTools, attach_or_exit
 from apeCAD.agent.errors import Envelope
 from apeCAD.agent.local import LocalTools
-from apeCAD.agent.mcp_tools import TOOLS, ArgumentProblem, check_arguments
+from apeCAD.agent.mcp_tools import TOOLS, ArgumentProblem, ToolSet, check_arguments
 
 SERVER_NAME = "apeCAD"
 
@@ -53,9 +57,33 @@ def tool_result(name: str, envelope: Envelope) -> types.CallToolResult:
     )
 
 
-def build_server(tools: LocalTools | None = None) -> Server:
-    """An MCP server over one `LocalTools` (a fresh one unless given)."""
-    local = tools if tools is not None else LocalTools()
+LOCAL_INSTRUCTIONS = (
+    "apeCAD draws structural intent in millimetres. Call new_document, read "
+    "list_ops for the op schemas, then apply_op / apply_ops; inspect, query_entities "
+    "and render to look at the result."
+)
+
+
+def attach_instructions(document: str) -> str:
+    return (
+        "apeCAD draws structural intent in millimetres. This server is attached to a running "
+        f"scratchpad: its one document is {document!r}, which a human may be editing too. "
+        "Read list_ops for the op schemas, then apply_op / apply_ops with expect_revision; "
+        "inspect, query_entities and render to look at the result. new_document, "
+        "open_document and save_document are not available. DETACHED means the scratchpad "
+        "stopped or restarted."
+    )
+
+
+def build_server(tools: ToolSet | None = None, *, instructions: str | None = None) -> Server:
+    """An MCP server over one tool set (a fresh `LocalTools` unless given)."""
+    local: ToolSet = tools if tools is not None else LocalTools()
+    if instructions is None:
+        instructions = (
+            attach_instructions(local.document_id)
+            if isinstance(local, AttachTools)
+            else LOCAL_INSTRUCTIONS
+        )
 
     async def list_tools(
         ctx: ServerRequestContext, params: types.PaginatedRequestParams | None
@@ -85,17 +113,13 @@ def build_server(tools: LocalTools | None = None) -> Server:
     return Server(
         SERVER_NAME,
         version=apeCAD.__version__,
-        instructions=(
-            "apeCAD draws structural intent in millimetres. Call new_document, read "
-            "list_ops for the op schemas, then apply_op / apply_ops; inspect, query_entities "
-            "and render to look at the result."
-        ),
+        instructions=instructions,
         on_list_tools=list_tools,
         on_call_tool=call_tool,
     )
 
 
-async def serve_stdio(tools: LocalTools) -> None:
+async def serve_stdio(tools: ToolSet) -> None:
     server = build_server(tools)
     async with stdio_server() as (read_stream, write_stream):
         await server.run(read_stream, write_stream, server.create_initialization_options())
@@ -103,18 +127,38 @@ async def serve_stdio(tools: LocalTools) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        prog="python -m apeCAD.mcp", description="apeCAD MCP server (stdio, local mode)"
+        prog="python -m apeCAD.mcp", description="apeCAD MCP server (stdio)"
+    )
+    target = parser.add_mutually_exclusive_group()
+    target.add_argument(
+        "--attach-port",
+        type=int,
+        default=None,
+        metavar="N",
+        help="attach to the scratchpad on 127.0.0.1:N instead of holding local documents",
+    )
+    target.add_argument(
+        "--attach",
+        default=None,
+        metavar="URL",
+        help="attach to the scratchpad at this loopback URL, e.g. http://127.0.0.1:8765",
     )
     parser.add_argument(
         "--root",
         default=None,
         help="folder that relative paths resolve against; save_document and render's "
-        "save_to must stay under it",
+        "save_to must stay under it. When attaching, it must equal the scratchpad's root",
     )
     args = parser.parse_args(argv)
     logging.basicConfig(
         stream=sys.stderr, level=logging.INFO, format="%(asctime)s %(name)s %(message)s"
     )
     root = Path(args.root) if args.root else None
-    log.info("serving %d tools over stdio (root: %s)", len(TOOLS), root or "cwd")
-    anyio.run(serve_stdio, LocalTools(root))
+    tools = attach_or_exit(args.attach, args.attach_port, root)
+    if tools is None:
+        log.info("serving %d tools over stdio (root: %s)", len(TOOLS), root or "cwd")
+        anyio.run(serve_stdio, LocalTools(root))
+    else:
+        log.info("serving %d tools over stdio, attached to %s", len(TOOLS), tools.document_id)
+        anyio.run(serve_stdio, tools)
+
