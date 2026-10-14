@@ -20,6 +20,7 @@ from apeCAD.entities import (
     Point,
     Polyline,
     Solid,
+    WallLeg,
 )
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ
@@ -197,6 +198,8 @@ class DraftState:
         if isinstance(entity, Crosstie):
             bars = (entity.bar_a_id, entity.bar_b_id)
             return tuple(self.require_bar(bar_id).point_id for bar_id in bars)
+        if isinstance(entity, WallLeg):
+            return (entity.start_id, entity.end_id)
         if isinstance(entity, (Circle, Ellipse)):
             return (entity.center_id,)
         if isinstance(entity, Arc):

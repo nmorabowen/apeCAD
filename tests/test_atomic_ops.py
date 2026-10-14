@@ -14,13 +14,15 @@ import pytest
 from apeCAD import Document, DocumentError
 from apeCAD.draft.dispatch import HANDLERS
 from apeCAD.draft.state import DraftState
-from apeCAD.entities import Line
+from apeCAD.entities import LegSteel, Line
 from apeCAD.geometry import XYZ
 from apeCAD.ops import (
     AddCrosstie,
     AddFaceFromLines,
     AddHoop,
     AddLine,
+    AddWallChain,
+    AddWallLeg,
     ArrayLinear,
     ArrayPolar,
     BreakCrossing,
@@ -32,6 +34,8 @@ from apeCAD.ops import (
     Mirror,
     PointAt,
     SetBarSize,
+    SetCover,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
     Sew,
@@ -96,6 +100,19 @@ def _fixture() -> Document:
     hoop = doc.add_hoop(bars, "Ø10", 100.0)
     doc.add_crosstie(bars[1], bars[4], "Ø10", 100.0)
     doc.tag("cage", (hoop.entity_id,))
+    # Stage C2: an L wall chain (a face and 2 legs), a free leg and a cover guide.
+    axis = [PointAt(XYZ(x, y, 0.0)) for x, y in ((1000.0, -800.0), (2500.0, -800.0), (2500.0, 0.0))]
+    steel = LegSteel("Ø10", 200.0, 2)
+    wall = doc.add_wall_chain(axis, 250.0, "H30", horizontal=steel, label="wall")
+    doc.set_cover(wall.entity_id, 40.0, 10.0, 20.0)
+    outline = doc.add_section_outline(
+        [PointAt(XYZ(x, y, 0.0)) for x, y in ((3000.0, -800.0), (3300.0, -800.0), (3300.0, 0.0))],
+        "H30",
+    )
+    doc.add_wall_leg(
+        PointAt(XYZ(3100.0, -700.0, 0.0)), PointAt(XYZ(3100.0, -100.0, 0.0)), 200.0,
+        outline.entity_id,
+    )
     return doc
 
 
@@ -142,6 +159,8 @@ def _value(
     vertex = _mentions(hint, PointAt)
     if name == "ring" and rng.random() < 0.5:
         return None
+    if name == "leg_ids" and rng.random() < 0.7:
+        return ()  # ids the handler allocates, not references
     if name.endswith("_ids") or name == "ring":
         pick = _vertex if vertex else _pick_id
         return tuple(pick(rng, ids, point_ids) for _ in range(rng.randint(0, 5)))
@@ -149,8 +168,14 @@ def _value(
         if optional and rng.random() < 0.7:
             return None  # an id the handler allocates, not a reference
         return _vertex(rng, ids, point_ids) if vertex else _pick_id(rng, ids, point_ids)
-    if name in ("copies", "count"):
+    if name in ("copies", "count", "curtains"):
         return rng.choice(_INTS)
+    if name == "horizontal":  # a wall leg's web steel (ADR 0024 P4), or none
+        if rng.random() < 0.4:
+            return None
+        return LegSteel(rng.choice(_DESIGNATIONS), rng.choice(_FLOATS), rng.choice(_INTS))
+    if get_origin(hint) is tuple:  # a wall chain's thicknesses: one, or one per segment
+        return tuple(rng.choice(_FLOATS) for _ in range(rng.choice((0, 1, 1, 1, 2, 3))))
     return rng.choice(_FLOATS)
 
 
@@ -278,6 +303,10 @@ def _section_targeted_ops(doc: Document) -> list[object]:
     bars = [bar.entity_id for bar in doc.bars()]
     hoop = doc.hoops()[0].entity_id
     tie = doc.crossties()[0].entity_id
+    wall = doc.concrete_faces()[1].entity_id
+    leg = doc.wall_legs()[0]
+    guide = doc.cover_guides()[0].entity_id
+    axis = (PointAt(XYZ(5000.0, 0.0, 0.0)), PointAt(XYZ(5000.0, 2000.0, 0.0)))
     return [
         AddHoop(bar_ids=tuple(bars), designation="Ø12", spacing_mm=80.0),
         AddHoop(bar_ids=tuple(bars[:3:2]), designation="Ø12", spacing_mm=80.0),  # collinear
@@ -298,10 +327,30 @@ def _section_targeted_ops(doc: Document) -> list[object]:
         ArrayPolar(entity_ids=(face, hoop), origin_x_mm=0.0, origin_y_mm=0.0, count=4),
         AddLine(start_id=doc.bars()[0].point_id, end_id=1),
         Sew(entity_ids=(bars[0], face), tolerance_mm=1e6),
+        # Stage C2: wall chains, legs, leg steel and cover.
+        AddWallChain(point_ids=axis, thickness_mm=(300.0,), material="H30"),
+        AddWallChain(
+            point_ids=axis, thickness_mm=(300.0,), material="H30", leg_ids=(leg.entity_id,)
+        ),
+        AddWallChain(point_ids=axis, thickness_mm=(1e6,), material="H30"),  # fine, just wide
+        AddWallChain(point_ids=(*axis, axis[0]), thickness_mm=(300.0,), material="H30"),
+        AddWallLeg(start_id=leg.start_id, end_id=leg.start_id, thickness_mm=200.0, face_id=wall),
+        AddWallLeg(start_id=leg.start_id, end_id=leg.end_id, thickness_mm=200.0, face_id=hoop),
+        SetLegReinforcement(leg_id=leg.entity_id, designation="Ø12", spacing_mm=150.0, curtains=1),
+        SetLegReinforcement(leg_id=wall, designation="Ø12", spacing_mm=150.0, curtains=1),
+        SetCover(face_id=wall, cover_mm=50.0, tie_diameter_mm=12.0, bar_diameter_mm=25.0),
+        SetCover(face_id=wall, cover_mm=50.0, tie_diameter_mm=0.0, bar_diameter_mm=25.0,
+                 entity_id=guide + 1000),
+        SetCover(face_id=face, cover_mm=1e5, tie_diameter_mm=10.0, bar_diameter_mm=20.0),
+        Delete(entity_ids=(wall,)),
+        Delete(entity_ids=(leg.start_id,)),
+        Mirror(entity_ids=(wall,), ax_mm=0.0, ay_mm=0.0, bx_mm=0.0, by_mm=1.0),
+        ArrayLinear(entity_ids=(leg.entity_id, guide), dx_mm=0.0, dy_mm=5000.0, copies=2),
+        Sew(entity_ids=(leg.entity_id,), tolerance_mm=1e6),
     ]
 
 
-@pytest.mark.parametrize("index", range(19))
+@pytest.mark.parametrize("index", range(35))
 def test_section_edge_cases_are_atomic(index: int) -> None:
     doc = _fixture()
     op = _section_targeted_ops(doc)[index]

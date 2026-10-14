@@ -13,6 +13,7 @@ from apeCAD.entities import (
     Box,
     Circle,
     ConcreteFace,
+    CoverGuide,
     Crosstie,
     Ellipse,
     Entity,
@@ -23,6 +24,7 @@ from apeCAD.entities import (
     Point,
     Polyline,
     Solid,
+    WallLeg,
 )
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import collinear_xy
@@ -62,6 +64,10 @@ def referenced_ids(entity: Entity) -> frozenset[EntityId]:
         return frozenset(entity.bar_ids)
     if isinstance(entity, Crosstie):
         return frozenset({entity.bar_a_id, entity.bar_b_id})
+    if isinstance(entity, WallLeg):
+        return frozenset({entity.start_id, entity.end_id, entity.face_id})
+    if isinstance(entity, CoverGuide):
+        return frozenset({entity.face_id})
     return frozenset({entity.start_id, entity.mid_id, entity.end_id})
 
 
@@ -228,16 +234,24 @@ def absorb_point(state: DraftState, old_id: EntityId, new_id: EntityId) -> None:
                 state.entities[entity.entity_id] = replace(
                     entity, start_id=start_id, end_id=end_id
                 )
-        elif isinstance(entity, (Face, Polyline, Bezier)):
+        elif isinstance(entity, WallLeg):
+            start_id = new_id if entity.start_id == old_id else entity.start_id
+            end_id = new_id if entity.end_id == old_id else entity.end_id
+            if start_id == end_id:
+                raise DocumentError("sew would collapse a wall leg")
+            state.entities[entity.entity_id] = replace(
+                entity, start_id=start_id, end_id=end_id
+            )
+        elif isinstance(entity, (Face, Polyline, Bezier, ConcreteFace)):
             ids = tuple(
                 new_id if point_id == old_id else point_id for point_id in entity.point_ids
             )
             compacted = compact_ids(
                 ids,
-                closed=isinstance(entity, Face)
+                closed=isinstance(entity, (Face, ConcreteFace))
                 or (isinstance(entity, Polyline) and entity.closed),
             )
-            if isinstance(entity, Face) and len(compacted) < 3:
+            if isinstance(entity, (Face, ConcreteFace)) and len(compacted) < 3:
                 raise DocumentError("sew would collapse a face")
             if isinstance(entity, Polyline) and len(compacted) < 2:
                 raise DocumentError("sew would collapse a polyline")

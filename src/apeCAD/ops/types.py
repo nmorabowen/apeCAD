@@ -17,7 +17,12 @@ from apeCAD.ops.section import (
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
     SetBarSize,
+    SetCover,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
 )
@@ -484,4 +489,9 @@ Op = (
     | SetBarSize
     | SetMaterial
     | SetTransverse
+    | AddSectionOutline
+    | AddWallChain
+    | AddWallLeg
+    | SetLegReinforcement
+    | SetCover
 )

@@ -15,8 +15,10 @@ from apeCAD.entities import (
     Box,
     Circle,
     ConcreteFace,
+    CoverGuide,
     Crosstie,
     Ellipse,
+    Entity,
     EntityId,
     Face,
     Hoop,
@@ -24,6 +26,7 @@ from apeCAD.entities import (
     Point,
     Polyline,
     Solid,
+    WallLeg,
 )
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ, mirror_xy, rotate_xy
@@ -109,7 +112,7 @@ def _transform_points(
     box_moved = False
     for entity_id in entity_ids:
         entity = state.entity(entity_id)
-        for point_id in state.point_ids_of(entity):
+        for point_id in _carried_point_ids(state, entity):
             if point_id in moved:
                 continue
             point = state.require_point(point_id)
@@ -124,6 +127,24 @@ def _transform_points(
         return set()
     _restore_section_rings(state, moved)
     return moved if moved else {entity_ids[0]}
+
+
+def _carried_point_ids(state: DraftState, entity: Entity) -> tuple[EntityId, ...]:
+    """The points a move takes: the entity's own, and a concrete face's leg axes too."""
+    ids = state.point_ids_of(entity)
+    if not isinstance(entity, ConcreteFace):
+        return ids
+    legs = [leg for leg in _owned_by(state, entity.entity_id) if isinstance(leg, WallLeg)]
+    return (*ids, *(pid for leg in legs for pid in (leg.start_id, leg.end_id)))
+
+
+def _owned_by(state: DraftState, face_id: EntityId) -> list[WallLeg | CoverGuide]:
+    """A face's legs and cover guide, which go wherever it goes (ADR 0024 decision 8)."""
+    return [
+        e
+        for e in state.entities.values()
+        if isinstance(e, (WallLeg, CoverGuide)) and e.face_id == face_id
+    ]
 
 
 def _restore_section_rings(state: DraftState, moved: set[EntityId]) -> None:
@@ -179,7 +200,14 @@ def _clone_graph(
             for bar_id in (entity.bar_a_id, entity.bar_b_id):
                 if bar_id not in entity_ids:
                     extras.append(bar_id)
+        elif isinstance(entity, (WallLeg, CoverGuide)):  # a leg or guide needs its face
+            extras.append(entity.face_id)
     ordered = list(dict.fromkeys([*extras, *entity_ids]))
+    # A cloned face takes all its legs and its cover guide with it.
+    for entity_id in list(ordered):
+        if isinstance(state.entity(entity_id), ConcreteFace):
+            ordered.extend(e.entity_id for e in _owned_by(state, entity_id))
+    ordered = list(dict.fromkeys(ordered))
     # Owners after their parts: bars before the hoops and crossties that use them.
     ordered.sort(key=lambda entity_id: _clone_rank(state.entity(entity_id)))
     point_map: dict[EntityId, EntityId] = {}
@@ -290,6 +318,19 @@ def _clone_graph(
                 bar_b_id=entity_map[entity.bar_b_id],
                 label=None,
             )
+        elif isinstance(entity, WallLeg):
+            state.entities[new_id] = replace(
+                entity,
+                entity_id=new_id,
+                start_id=mapped_point(entity.start_id),
+                end_id=mapped_point(entity.end_id),
+                face_id=entity_map[entity.face_id],
+                label=None,
+            )
+        elif isinstance(entity, CoverGuide):
+            state.entities[new_id] = replace(
+                entity, entity_id=new_id, face_id=entity_map[entity.face_id], label=None
+            )
         else:
             assert isinstance(entity, Solid)
             profile_id = entity_map.get(entity.face_id)
@@ -321,6 +362,6 @@ def _clone_graph(
 def _clone_rank(entity: object) -> int:
     if isinstance(entity, Solid):
         return 2
-    if isinstance(entity, (Hoop, Crosstie)):
+    if isinstance(entity, (Hoop, Crosstie, WallLeg, CoverGuide)):
         return 1
     return 0

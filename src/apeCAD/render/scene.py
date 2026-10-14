@@ -150,7 +150,7 @@ def _drawable(
         return _box(entity)
     if isinstance(entity, Solid):
         return _solid(entities, entity)
-    return None  # section-mode kinds: a bar's point draws as a point
+    return None  # section-mode kinds: a bar's or a leg's point draws as a point
 
 
 def _radii(entity: Circle | Ellipse) -> tuple[float, float]:

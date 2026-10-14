@@ -16,6 +16,7 @@ from apeCAD.entities import (
     Box,
     Circle,
     ConcreteFace,
+    CoverGuide,
     Crosstie,
     Ellipse,
     Entity,
@@ -26,6 +27,7 @@ from apeCAD.entities import (
     Point,
     Polyline,
     Solid,
+    WallLeg,
 )
 from apeCAD.errors import DocumentError
 from apeCAD.frame import FrameGraph, document_to_frame
@@ -42,6 +44,7 @@ from apeCAD.ops import (
     Rotate,
     SetBarSize,
     SetLabel,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
     Sew,
@@ -127,6 +130,12 @@ class Document(SectionTypedOps):
 
     def crossties(self) -> tuple[Crosstie, ...]:
         return tuple(e for e in self._state.ordered() if isinstance(e, Crosstie))
+
+    def wall_legs(self) -> tuple[WallLeg, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, WallLeg))
+
+    def cover_guides(self) -> tuple[CoverGuide, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, CoverGuide))
 
     def brep(self) -> BrepIndex:
         """Evaluated vertex/edge/face/solid graph (ADR 0018)."""
@@ -231,6 +240,7 @@ _NO_PRODUCT = (
     SetBarSize,
     SetMaterial,
     SetTransverse,
+    SetLegReinforcement,
 )
 """Ops that change the draft without producing exactly one entity to return."""
 
