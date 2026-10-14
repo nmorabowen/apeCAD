@@ -106,8 +106,10 @@ src/apeCAD/              document.py (Document facade: ops log, undo, queries, J
                          dispatch.py HANDLERS table), entities.py, geometry.py, brep.py,
                          frame.py (to_frame), errors.py (error codes),
                          catalog/ (op catalog: params schema, docs, example; apply),
-                         section/ (section-mode geometry, bar designations, cover rings, bar layouts
-                         and lint, ADRs 0024 and 0032)
+                         section/ (section-mode geometry, bar designations, cover rings, bar layouts,
+                         lint and draft.py, the section-draft block; ADRs 0024, 0025, 0032),
+                         section_draft.py (section_draft / document_from_draft over a Document;
+                         sits above document.py), _version.py (__version__)
 src/apeCAD/scratchpad/   server.py (stdlib HTTP + CLI), payload.py (scene JSON),
                          static/ (index.html, app.js, js/*.js ES modules; three.js from CDN)
 tests/                   pytest; test_scratchpad.py drives the HTTP API on port 0;

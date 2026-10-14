@@ -51,6 +51,7 @@ class ToolSet(Protocol):
     def query_entities(self, document: object, **filters: object) -> Envelope: ...
     def render(self, document: object, **params: object) -> Envelope: ...
     def get_document(self, document: object) -> Envelope: ...
+    def get_section_draft(self, document: object) -> Envelope: ...
 
 
 class ArgumentProblem(Exception):
@@ -220,6 +221,14 @@ TOOLS: dict[str, McpTool] = {
             "Return the whole document as Document.to_dict(): schema, units and the op log.",
             {"document": _DOCUMENT},
             lambda t, a: t.get_document(a["document"]),
+            ("document",),
+        ),
+        _tool(
+            "get_section_draft",
+            "Return the apeCAD.section-draft v1 of the document (read-only): the ops log, the "
+            "derived section block apeConcrete reads, and the section lint as warnings.",
+            {"document": _DOCUMENT},
+            lambda t, a: t.get_section_draft(a["document"]),
             ("document",),
         ),
     )

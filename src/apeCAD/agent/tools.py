@@ -31,6 +31,7 @@ from apeCAD.catalog import Applied
 from apeCAD.errors import INVALID_ARGUMENT, UNAVAILABLE, DocumentError
 from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import render_svg
+from apeCAD.section_draft import section_draft
 
 RENDER_DEFAULTS: dict[str, object] = {
     "view": None,
@@ -141,6 +142,17 @@ def get_document(session: Session) -> Envelope:
     return guarded(
         lambda: session.revision,
         lambda: _ok(session, {"document": session.document.to_dict()}),
+    )
+
+
+def get_section_draft(session: Session) -> Envelope:
+    """`{ok, revision, draft}`: the `apeCAD.section-draft` v1 of the document (ADR 0025).
+
+    Read-only. `draft.warnings` is the section lint; it is advisory and never an error.
+    """
+    return guarded(
+        lambda: session.revision,
+        lambda: _ok(session, {"draft": section_draft(session.document)}),
     )
 
 

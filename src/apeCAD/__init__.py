@@ -10,6 +10,7 @@ See ``AProjects/`` for ADRs, memory, specs, and guides.
 
 from __future__ import annotations
 
+from apeCAD._version import __version__
 from apeCAD.document import Document
 from apeCAD.entities import (
     Arc,
@@ -33,8 +34,6 @@ from apeCAD.entities import (
 from apeCAD.errors import DocumentError, OpArgumentError
 from apeCAD.frame import FrameGraph, FrameMember, FrameNode, FrameVolume
 from apeCAD.geometry import XYZ
-
-__version__ = "0.0.0"
 
 __all__ = [
     "Arc",

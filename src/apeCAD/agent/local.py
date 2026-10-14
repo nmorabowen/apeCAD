@@ -110,6 +110,9 @@ class LocalTools:
     def get_document(self, document: object) -> Envelope:
         return self._with(document, tools.get_document)
 
+    def get_section_draft(self, document: object) -> Envelope:
+        return self._with(document, tools.get_section_draft)
+
     def _register(self, session: Session) -> str:
         name = f"doc-{self._next}"
         self._next += 1

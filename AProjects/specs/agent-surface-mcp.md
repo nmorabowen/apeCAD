@@ -266,6 +266,16 @@ the same envelope.
 
 Result: `{ok, revision, document: {schema, units, ops}}`, exactly `Document.to_dict()`.
 
+### `get_section_draft`
+
+| Param | Type |
+|---|---|
+| `document` | string |
+
+Result: `{ok, revision, draft}`, where `draft` is `apeCAD.section_draft.section_draft(document)`:
+the `apeCAD.section-draft` v1 of [`section-draft.md`](section-draft.md) (ADR 0025). Read-only;
+`draft.warnings` is the section lint and never an error. Added in section stage C4.
+
 ## 5. Retry rules
 
 | Call | Reply lost: what the agent does |
@@ -287,10 +297,11 @@ attached scratchpad.
 | `GET /api/entities` | query string mirrors `query_entities` (`kind`, `tag`, `label`, `ids=1,2`, `window=x0,y0,z0,x1,y1,z1`, `mode`, `detail`, `limit`, `cursor`) | `query_entities` result |
 | `GET /api/render.svg` | query mirrors `render` (svg only, no `save_to`): `ids=1,2`, `window=x0,y0,z0,x1,y1,z1`, booleans `true`/`false` | `image/svg+xml`; a bad parameter is 400 `{error, code: "INVALID_ARGUMENT"}` |
 | `GET /api/document` | | `get_document` result |
+| `GET /api/section/draft` | | `get_section_draft` result (section stage C4) |
 | `GET /api/revision` | | `{revision}`; the browser polls it about once a second |
 | `POST /api/op` (changed) | adds optional `expect_revision`; also accepts `{op, params}` | as today, plus `revision`; errors gain `code` |
 | `POST /api/ops` | `{ops: [{op, params}], expect_revision?}` | `apply_ops` result |
-| `POST /api/tool` (S5) | `{tool, arguments}`: `list_ops`, `apply_op`, `apply_ops`, `undo`, `redo`, `inspect`, `query_entities`, `get_document`, with the §4 params minus `document` | that tool's envelope, from the scratchpad's session. What attach mode calls. `render` is not hosted: the attached side renders a `get_document` snapshot, so `save_to` resolves under the agent's root and the scratchpad writes no files |
+| `POST /api/tool` (S5) | `{tool, arguments}`: `list_ops`, `apply_op`, `apply_ops`, `undo`, `redo`, `inspect`, `query_entities`, `get_document`, `get_section_draft`, with the §4 params minus `document` | that tool's envelope, from the scratchpad's session. What attach mode calls. `render` is not hosted: the attached side renders a `get_document` snapshot, so `save_to` resolves under the agent's root and the scratchpad writes no files |
 | `POST /api/undo`, `/api/redo`, `/api/reset`, `/api/load` (changed) | | as today, plus `revision` |
 
 `/api/op` keeps status 400 for bad arguments and refusals (ADR 0026 decision 2). `STALE` and

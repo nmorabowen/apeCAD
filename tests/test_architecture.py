@@ -188,6 +188,19 @@ def test_section_imports_only_geometry_entities_and_errors() -> None:
     assert not violations, "\n".join(violations)
 
 
+def test_section_draft_sits_above_the_document() -> None:
+    """`apeCAD.section_draft` wraps `Document` for the section-draft (ADR 0025), so nothing the
+    document is built from may import it: not `document.py`, `draft/`, `section/` or `ops/`."""
+    below = [SRC / "document.py", *(SRC / "draft").glob("*.py"), *(SRC / "section").glob("*.py")]
+    below += [*(SRC / "ops").glob("*.py")]
+    offenders = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in below
+        if any(name.startswith("apeCAD.section_draft") for name in _apecad_imports(path))
+    )
+    assert not offenders, f"these sit below apeCAD.section_draft: {offenders}"
+
+
 def test_core_never_imports_the_scratchpad() -> None:
     offenders = [
         path.relative_to(SRC).as_posix()
