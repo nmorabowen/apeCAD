@@ -12,6 +12,7 @@ import {
   syncViewMenu,
 } from "./camera.js";
 import { setHint } from "./cmdline.js";
+import { t } from "./strings.js";
 import { INK, chromeColors } from "./theme.js";
 import { ISO_DIR, WORLD_UP, viewUp } from "./viewport.js";
 
@@ -184,7 +185,7 @@ export function bindViewCube() {
     viewUp.copy(WORLD_UP);
     bindProjectionCamera();
     lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
-    setHint("ISO (Front–Right).");
+    setHint(t("view.iso"));
   });
   document.getElementById("view-fit").addEventListener("click", () => fitView());
 }

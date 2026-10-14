@@ -1,8 +1,9 @@
 // Document file actions: new, open, save, undo / redo against the server document.
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import { api } from "./api.js";
 import { bindProjectionCamera, lookAtScene } from "./camera.js";
-import { setHint } from "./cmdline.js";
+import { refuse, setHint } from "./cmdline.js";
 import { updateGhost } from "./ghosts.js";
 import { refreshFrom } from "./render.js";
 import { ISO_DIR, WORLD_UP, ghosts, viewUp } from "./viewport.js";
@@ -25,12 +26,12 @@ function downloadJson(filename) {
 
 export function saveDocument(saveAs = false) {
   if (saveAs) {
-    const next = window.prompt("Save as", S.saveName) || "";
+    const next = window.prompt(t("menu.saveAsPrompt"), S.saveName) || "";
     if (!next.trim()) return;
     S.saveName = next.trim().endsWith(".json") ? next.trim() : `${next.trim()}.json`;
   }
   downloadJson(S.saveName);
-  setHint(`Saved ${S.saveName}. Preferences are not in this file.`);
+  setHint(t("done.saved", { name: S.saveName }));
 }
 
 export function openDocument() {
@@ -40,7 +41,7 @@ export function openDocument() {
 function documentFromFile(parsed) {
   if (parsed && parsed.schema && Array.isArray(parsed.ops)) return parsed;
   if (parsed && parsed.document && parsed.document.schema) return parsed.document;
-  throw new Error("not an apeCAD document JSON");
+  throw new Error(t("reason.notDocument"));
 }
 
 async function loadDocumentDict(dict, name) {
@@ -53,7 +54,7 @@ async function loadDocumentDict(dict, name) {
   viewUp.copy(WORLD_UP);
   bindProjectionCamera();
   lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
-  setHint(`Opened ${S.saveName}.`);
+  setHint(t("done.opened", { name: S.saveName }));
 }
 
 export async function newDocument() {
@@ -66,7 +67,7 @@ export async function newDocument() {
   viewUp.copy(WORLD_UP);
   bindProjectionCamera();
   lookAtScene(ISO_DIR, { up: WORLD_UP.clone() });
-  setHint("New document.");
+  setHint(t("done.new"));
 }
 
 export async function undoDocument() {
@@ -75,7 +76,7 @@ export async function undoDocument() {
     S.pending.pts.pop();
     S.pending.a = S.pending.pts[S.pending.pts.length - 1];
     updateGhost(S.lastPointer);
-    setHint("Line: last vertex removed.");
+    setHint(t("hint.line.vertexRemoved"));
     return;
   }
   S.pending = null;
@@ -95,7 +96,7 @@ export function bindFileOpen() {
     try {
       await loadDocumentDict(documentFromFile(JSON.parse(await file.text())), file.name);
     } catch (error) {
-      setHint(error.message);
+      refuse(error);
     }
   });
 }

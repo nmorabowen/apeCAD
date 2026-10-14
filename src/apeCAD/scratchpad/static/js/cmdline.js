@@ -1,6 +1,7 @@
 // The command line and status bar: prompt/hint and log, the typed length buffer, toggle
 // buttons, and the cursor coordinate readout.
 import { S } from "./state.js";
+import { refusalText, t } from "./strings.js";
 import { dist3 } from "./geom.js";
 import { syncGridMenu, syncGridPrefsForm } from "./grid-ui.js";
 import { grid, gridMajorMm, gridMinorMm } from "./grid.js";
@@ -19,17 +20,25 @@ export const gridButton = document.getElementById("grid");
 const coordsEl = document.getElementById("coords");
 const dimsEl = document.getElementById("dims");
 
-export function setHint(text) {
-  const next = text && text.trim() !== "" ? text : "Command:";
+// `kind` "refused" marks a refusal (ADR 0031 §2.6); it stays on the line when it moves to the log.
+export function setHint(text, kind = "hint") {
+  const idle = t("prompt.idle");
+  const next = text && text.trim() !== "" ? text : idle;
   const previous = consolePrompt.textContent;
-  if (previous && previous !== next && previous !== "Command:") {
-    appendLog(previous);
+  if (previous && previous !== next && previous !== idle) {
+    appendLog(previous, consolePrompt.classList.contains("refused") ? "refused" : "hint");
   }
   consolePrompt.textContent = next;
   consolePrompt.title = next;
+  consolePrompt.classList.toggle("refused", kind === "refused" && next !== idle);
 }
 
-export function appendLog(text) {
+// Show a refused op or client check as `Refused: <reason>.`; takes an Error or a message.
+export function refuse(reason) {
+  setHint(refusalText(reason instanceof Error ? reason.message : reason), "refused");
+}
+
+export function appendLog(text, kind = "hint") {
   if (!text) return;
   const last = consoleLog.lastElementChild;
   if (last && last.textContent === text) {
@@ -37,6 +46,7 @@ export function appendLog(text) {
     return;
   }
   const line = document.createElement("div");
+  if (kind === "refused") line.className = "refused";
   line.textContent = text;
   consoleLog.appendChild(line);
   while (consoleLog.childElementCount > 80) consoleLog.removeChild(consoleLog.firstChild);
@@ -69,16 +79,15 @@ export function refreshToggles() {
   gridButton.classList.toggle("active", S.gridOn);
   // Mode chips (ADR 0031 §1.6): every mode shows, steel when on and muted when off.
   const chips = [
-    ["SNAP", S.snapOn],
-    [`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`, S.gridSnapOn],
-    ["ORTHO", S.orthoOn],
-    ["GRID", S.gridOn],
+    [t("chip.snap"), S.snapOn],
+    [t("chip.gridSnap", {
+      minor: formatNumber(gridMinorMm()), major: formatNumber(gridMajorMm()), unit: displayUnit(),
+    }), S.gridSnapOn],
+    [t("chip.ortho"), S.orthoOn],
+    [t("chip.grid"), S.gridOn],
   ];
   if (S.tool === "select") {
-    const names = {
-      point: "POINT", line: "LINE", face: "FACE", solid: "SOLID", element: "ELEMENT", section: "SECTION",
-    };
-    chips.push([names[S.selectFilter] || "ELEMENT", true]);
+    chips.push([t("chip.filter", { filter: t(`filter.${S.selectFilter || "element"}`) }), true]);
   }
   const typed = activeLength();
   if (typed !== null) chips.push([formatLength(typed), true]);

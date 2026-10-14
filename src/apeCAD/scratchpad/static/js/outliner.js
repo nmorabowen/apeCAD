@@ -1,6 +1,7 @@
 // The Model outliner (B-rep tree), its context menu, rename, and the Properties dock.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { entities, t } from "./strings.js";
 import { api } from "./api.js";
 import {
   brepChildren,
@@ -12,7 +13,7 @@ import {
   pointById,
 } from "./brep.js";
 import { camera, fitView, frameDistance, goToView, resetViewZoom } from "./camera.js";
-import { setHint } from "./cmdline.js";
+import { refuse, setHint } from "./cmdline.js";
 import { circumcircle, dist3 } from "./geom.js";
 import { gridMinorMm } from "./grid.js";
 import { commitDelete } from "./modify.js";
@@ -101,16 +102,16 @@ function openTreeMenu(x, y, row) {
     button.innerHTML = shortcut ? `${label} <kbd>${shortcut}</kbd>` : label;
     ctxMenu.append(button);
   };
-  addItem("Select", "select");
-  addItem("Rename", "rename", "F2");
-  addItem("Duplicate", "duplicate");
-  addItem(hidden ? "Show" : "Hide", hidden ? "show" : "hide");
-  addItem("Fit", "fit");
+  addItem(t("menu.ctx.select"), "select");
+  addItem(t("menu.ctx.rename"), "rename", "F2");
+  addItem(t("menu.ctx.duplicate"), "duplicate");
+  addItem(t(hidden ? "menu.ctx.show" : "menu.ctx.hide"), hidden ? "show" : "hide");
+  addItem(t("menu.ctx.fit"), "fit");
   const sep = document.createElement("div");
   sep.className = "menu-sep";
   ctxMenu.append(sep);
-  if (kids.length) addItem(collapsedTree.has(row.id) ? "Expand" : "Collapse", "toggle");
-  addItem("Delete", "delete", "Del");
+  if (kids.length) addItem(t(collapsedTree.has(row.id) ? "menu.ctx.expand" : "menu.ctx.collapse"), "toggle");
+  addItem(t("menu.ctx.delete"), "delete", "Del");
   ctxMenu.hidden = false;
   ctxMenu.classList.add("open");
   const pad = 6;
@@ -162,9 +163,9 @@ export function beginRename(row, rowEl) {
         entity_id: row.id,
         label: next,
       }));
-      setHint(next ? `Renamed to ${next}.` : "Label cleared.");
+      setHint(next ? t("done.renamed", { name: next }) : t("done.labelCleared"));
     } catch (error) {
-      setHint(error.message);
+      refuse(error);
       refreshDocks();
     }
   };
@@ -208,7 +209,7 @@ function fitEntity(row) {
 
 async function duplicateEntities(ids) {
   if (!ids.length) {
-    setHint("Select something to duplicate.");
+    setHint(t("hint.selectFirst", { verb: "Duplicate" }));
     return;
   }
   await refreshFrom(await api("/api/op", "POST", {
@@ -219,7 +220,7 @@ async function duplicateEntities(ids) {
     dz_mm: 0,
     copies: 1,
   }));
-  setHint("Duplicated.");
+  setHint(t("done.duplicated", { entities: entities(ids.length) }));
 }
 
 export function refreshDocks() {
@@ -230,21 +231,21 @@ export function refreshDocks() {
   treeEl.innerHTML = "";
   const roots = brepRoots();
   if (!roots.length) {
-    treeEl.textContent = "No entities.";
+    treeEl.textContent = t("tree.empty");
   } else {
     for (const row of roots) renderTreeNode(row, treeEl);
   }
   if (S.selectedIds.size === 0) {
-    propBody.textContent = "Nothing selected.";
+    propBody.textContent = t("props.none");
     return;
   }
   if (S.selectedIds.size > 1) {
-    propBody.textContent = `${S.selectedIds.size} entities selected.`;
+    propBody.textContent = t("props.many", { n: S.selectedIds.size });
     return;
   }
   const selected = rows.find((row) => S.selectedIds.has(row.id)) || null;
   if (!selected) {
-    propBody.textContent = "Nothing selected.";
+    propBody.textContent = t("props.none");
     return;
   }
   const fields = propertyFields(selected);
@@ -315,12 +316,12 @@ function runTreeCommand(cmd, row) {
   }
   if (cmd === "duplicate") {
     const ids = S.selectedIds.has(row.id) ? [...S.selectedIds] : [row.id];
-    duplicateEntities(ids).catch((error) => setHint(error.message));
+    duplicateEntities(ids).catch((error) => refuse(error));
     return;
   }
   if (cmd === "hide") {
     hideSubtree(row, true);
-    setHint("Hidden in the view. Right-click → Show to restore.");
+    setHint(t("hint.hidden"));
     return;
   }
   if (cmd === "show") {
@@ -339,7 +340,7 @@ function runTreeCommand(cmd, row) {
   }
   if (cmd === "delete") {
     if (!S.selectedIds.has(row.id)) setSelection(row.id);
-    commitDelete().catch((error) => setHint(error.message));
+    commitDelete().catch((error) => refuse(error));
   }
 }
 

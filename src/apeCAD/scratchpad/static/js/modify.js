@@ -1,11 +1,13 @@
 // Modify tools: trim / extend / break solvers and the edit ops they post, plus join, sew,
 // simplify, delete, corner chamfer/fillet and node insertion.
 import { S } from "./state.js";
+import { entities, t } from "./strings.js";
 import { api } from "./api.js";
 import { catalog, findRecord, lineRows, pointById } from "./brep.js";
 import { activeLength, clearTyped, labelValue, setHint } from "./cmdline.js";
 import { lineIntersectMm, projectT } from "./geom.js";
 import { updateGhost } from "./ghosts.js";
+import { displayUnit } from "./prefs.js";
 import { pickEntity } from "./pick.js";
 import { refreshFrom } from "./render.js";
 import { setSelection } from "./selection.js";
@@ -125,8 +127,8 @@ export async function commitTrimPreview(preview) {
     z_mm: 0,
   }));
   setHint(preview.mode === "extend"
-    ? "Extended. Click another end, or Esc."
-    : "Trimmed. Click another part, or Esc.");
+    ? t("done.extended")
+    : t("done.trimmed"));
   if (S.lastPointer) updateGhost(S.lastPointer);
 }
 
@@ -139,7 +141,7 @@ export async function commitBreak(preview) {
   await refreshFrom(after);
   S.pending = null;
   if (after.created_id != null) setSelection(after.created_id);
-  setHint("Broke at the crossing. Click two more lines, or Esc.");
+  setHint(t("done.broken"));
 }
 
 export async function finishInsertNode(targetId, xyz) {
@@ -152,7 +154,7 @@ export async function finishInsertNode(targetId, xyz) {
   });
   await refreshFrom(after);
   if (after.created_id != null) setSelection(after.created_id);
-  setHint("Node inserted.");
+  setHint(t("done.node"));
 }
 
 export async function commitFaceFromLines() {
@@ -161,7 +163,7 @@ export async function commitFaceFromLines() {
     return row && row.kind === "Line";
   });
   if (lineIds.length < 3) {
-    setHint("Select at least three lines that form a closed loop, then Face.");
+    setHint(t("hint.face.select"));
     return;
   }
   const after = await api("/api/op", "POST", {
@@ -171,7 +173,7 @@ export async function commitFaceFromLines() {
   });
   await refreshFrom(after);
   if (after.created_id != null) setSelection(after.created_id);
-  setHint("Face from lines.");
+  setHint(t("done.face", { n: lineIds.length }));
 }
 
 export async function commitJoin() {
@@ -180,7 +182,7 @@ export async function commitJoin() {
     return row && (row.kind === "Line" || row.kind === "Polyline");
   });
   if (ids.length < 2) {
-    setHint("Select two or more connected lines (or polylines), then Join. Sew first if ends only coincide.");
+    setHint(t("hint.join.select"));
     return;
   }
   const after = await api("/api/op", "POST", {
@@ -190,20 +192,21 @@ export async function commitJoin() {
   });
   await refreshFrom(after);
   if (after.created_id != null) setSelection(after.created_id);
-  setHint("Joined into a polyline.");
+  setHint(t("done.join", { n: ids.length }));
 }
 
 export async function commitSew() {
   if (S.selectedIds.size === 0) {
-    setHint("Select entities, then Sew to merge coincident points.");
+    setHint(t("hint.sew.select"));
     return;
   }
+  const sewn = S.selectedIds.size;
   await refreshFrom(await api("/api/op", "POST", {
     op: "Sew",
     entity_ids: [...S.selectedIds],
     tolerance_mm: 1,
   }));
-  setHint("Sewed coincident points.");
+  setHint(t("done.sew", { entities: entities(sewn) }));
 }
 
 export async function commitSimplify() {
@@ -212,23 +215,23 @@ export async function commitSimplify() {
     return row && (row.kind === "Face" || row.kind === "Polyline");
   });
   if (!ids.length) {
-    setHint("Select a face or polyline, then Simplify.");
+    setHint(t("hint.simplify.select"));
     return;
   }
   await refreshFrom(await api("/api/op", "POST", {
     op: "Simplify",
     entity_ids: ids,
   }));
-  setHint("Simplified collinear vertices.");
+  setHint(t("done.simplify", { entities: entities(ids.length) }));
 }
 
 export async function commitDelete() {
   if (S.pending) {
-    setHint("Finish or Esc the current command before deleting.");
+    setHint(t("hint.delete.pending"));
     return;
   }
   if (S.selectedIds.size === 0) {
-    setHint("Select entities, then Delete.");
+    setHint(t("hint.selectFirst", { verb: "Delete" }));
     return;
   }
   const count = S.selectedIds.size;
@@ -236,7 +239,7 @@ export async function commitDelete() {
     op: "Delete",
     entity_ids: [...S.selectedIds],
   }));
-  setHint(count === 1 ? "Deleted 1 entity." : `Deleted ${count} entities.`);
+  setHint(t("done.delete", { entities: entities(count) }));
 }
 
 function nearestVertexId(row, xyz) {
@@ -278,14 +281,14 @@ function cornerTarget(event) {
 export async function finishCorner(kind, event) {
   const dist = activeLength();
   if (dist == null) {
-    setHint(kind === "chamfer"
-      ? "Chamfer: type a distance (mm), then click a corner."
-      : "Fillet: type a radius (mm), then click a corner.");
+    setHint(t(kind === "chamfer" ? "hint.chamfer.distance" : "hint.fillet.radius", {
+      unit: displayUnit(),
+    }));
     return;
   }
   const corner = cornerTarget(event);
   if (!corner) {
-    setHint("Click a face or polyline corner.");
+    setHint(t(kind === "chamfer" ? "hint.chamfer.corner" : "hint.fillet.corner"));
     return;
   }
   const body = kind === "chamfer"
@@ -304,5 +307,5 @@ export async function finishCorner(kind, event) {
   const after = await api("/api/op", "POST", body);
   await refreshFrom(after);
   clearTyped();
-  setHint(kind === "chamfer" ? "Corner chamfered." : "Corner filleted.");
+  setHint(t(kind === "chamfer" ? "done.chamfer" : "done.fillet"));
 }

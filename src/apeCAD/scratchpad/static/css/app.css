@@ -390,6 +390,8 @@ body.console-collapsed #console-log { display: none; }
 }
 #console-log div { white-space: pre-wrap; }
 #console-log div:last-child { color: var(--text); }
+/* refusals (ADR 0031 §2.6): `Refused: <reason>.` in the attention colour */
+#console-prompt.refused, #console-log div.refused { color: var(--signal-text); }
 #console-row {
   display: flex; align-items: center; gap: var(--space-4);
   padding: 3px 10px var(--space-3); border-top: 1px solid var(--line);

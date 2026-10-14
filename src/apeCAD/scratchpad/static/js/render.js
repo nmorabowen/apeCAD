@@ -1,6 +1,7 @@
 // Rebuilding the draft group from the scene payload after every op.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import { indexBrep } from "./brep.js";
 import { setHint } from "./cmdline.js";
 import {
@@ -187,6 +188,6 @@ export async function refreshFrom(payload) {
       indexBrep();
       refreshDocks();
     } catch (_ignored) { /* docks need a valid catalog */ }
-    setHint(`draw error: ${error.message}`);
+    setHint(t("refuse.draw", { reason: error.message }), "refused");
   }
 }

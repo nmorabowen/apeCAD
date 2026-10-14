@@ -2,6 +2,7 @@
 // framing the model, and keeping both cameras and the renderer in sync (ADR 0013).
 import * as THREE from "three";
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import { setHint } from "./cmdline.js";
 import { gridMajorMm, gridMinorMm, syncGridLineResolution } from "./grid.js";
 import {
@@ -154,8 +155,8 @@ export function bindProjectionCamera(opts = {}) {
   const named = S.namedView && VIEW_PRESETS[S.namedView];
   projButton.classList.toggle("active", S.useOrtho);
   projButton.title = named
-    ? `${named.label} (O perspective / parallel)`
-    : S.useOrtho ? "Parallel (O)" : "Perspective (O)";
+    ? t("title.proj.named", { view: named.label })
+    : t(S.useOrtho ? "title.proj.parallel" : "title.proj.perspective");
   setOrbitPoleLimit(Boolean(S.namedView));
   syncCameras();
   if (!opts.deferUpdate) controls.update();
@@ -171,7 +172,7 @@ export function setProjectionMode(mode, extras = {}) {
   S.namedView = null;
   S.projection = mode;
   S.useOrtho = mode !== "perspective";
-  const hint = mode === "perspective" ? "Perspective." : "Parallel.";
+  const hint = t(mode === "perspective" ? "view.perspective" : "view.parallel");
   if (leavingNamed) {
     viewUp.copy(WORLD_UP);
     const dir = camera().position.clone().sub(controls.target);
@@ -223,7 +224,7 @@ export function goNamedView(name) {
   viewUp.copy(preset.up);
   bindProjectionCamera({ deferUpdate: true });
   goToView(preset.dir.clone(), { up: preset.up.clone(), axis: true });
-  setHint(`${preset.label} view.`);
+  setHint(t("view.named", { view: preset.label }));
 }
 
 export function namedViewFromDir(dir) {

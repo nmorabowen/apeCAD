@@ -1,6 +1,7 @@
 // The selection set, the selection filter, and window / crossing marquee selection.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import {
   FILTER_KINDS,
   SELECT_FILTERS,
@@ -225,15 +226,7 @@ export function setSelectFilter(next) {
     button.classList.toggle("active", button.dataset.filter === S.selectFilter);
   }
   refreshToggles();
-  const labels = {
-    point: "points",
-    line: "lines",
-    face: "faces",
-    solid: "solids",
-    element: "whole elements",
-    section: "section entities",
-  };
-  setHint(`Select ${labels[S.selectFilter]} (1–6). Click, window, or crossing.`);
+  setHint(t("hint.select.filter", { filter: t(`filters.${S.selectFilter}`) }));
   rebuild();
 }
 
@@ -245,8 +238,8 @@ export function applyWindowSelect(origin, event) {
   for (const id of hits) S.selectedIds.add(id);
   rebuild();
   setHint(hits.length
-    ? `${crossing ? "Crossing" : "Window"}: ${S.selectedIds.size} selected.`
-    : "Nothing in the window.");
+    ? t("done.windowSelected", { mode: t(crossing ? "mode.crossing" : "mode.window"), n: S.selectedIds.size })
+    : t("done.nothingInWindow"));
 }
 
 export function selectAll() {
@@ -256,5 +249,5 @@ export function selectAll() {
     : catalog().filter((row) => FILTER_KINDS[S.selectFilter].has(row.kind)).map((row) => row.id);
   S.selectedIds = new Set(ids);
   rebuild();
-  setHint(S.selectedIds.size ? `${S.selectedIds.size} selected.` : "Nothing to select.");
+  setHint(S.selectedIds.size ? t("done.selected", { n: S.selectedIds.size }) : t("done.nothingToSelect"));
 }
