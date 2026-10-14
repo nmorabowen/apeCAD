@@ -73,7 +73,20 @@ test("mergePrefs migrates the v1 gridSpacing and keeps major >= minor", () => {
   assert.equal(migrated.gridMinor, 250);
   assert.equal(migrated.gridMajor, 2500);
   assert.equal(mergePrefs({ gridMinor: 500, gridMajor: 100 }).gridMajor, 500);
-  assert.equal(mergePrefs(null).background, "g5");
+  assert.equal(mergePrefs(null).theme, "system");
+  assert.equal(mergePrefs(null).canvas, "theme");
+});
+
+test("mergePrefs maps the v2 background presets onto ADR 0031 canvases", () => {
+  assert.equal(mergePrefs({ background: "g2" }).canvas, "carbon");
+  assert.equal(mergePrefs({ background: "g5" }).canvas, "theme");
+  assert.equal(mergePrefs({ background: "g6" }).canvas, "mist");
+  assert.equal(mergePrefs({ background: "g6", canvas: "paper" }).canvas, "paper");
+  assert.equal("background" in mergePrefs({ background: "g2" }), false);
+  assert.equal(mergePrefs({ theme: "sepia", canvas: "neon" }).theme, "system");
+  assert.equal(mergePrefs({ theme: "sepia", canvas: "neon" }).canvas, "theme");
+  assert.equal(mergePrefs({ curve: "#111111" }).curve, "");
+  assert.equal(mergePrefs({ curve: "#336699" }).curve, "#336699");
 });
 
 test("display-unit wrappers follow S.prefs", () => {

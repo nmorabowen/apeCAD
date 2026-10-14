@@ -11,9 +11,10 @@ import {
   pointById,
   profileWorldPoints,
 } from "./brep.js";
-import { CURVE_HOVER, addCurve, addCylinder, addPlanarFace, xyzMm } from "./draw.js";
+import { addCurve, addCylinder, addPlanarFace, xyzMm } from "./draw.js";
 import { pickByFilter } from "./pick.js";
 import { sectionShape } from "./section.js";
+import { INK } from "./theme.js";
 import { windowHits } from "./selection.js";
 import { canvas, preselects } from "./viewport.js";
 
@@ -24,7 +25,7 @@ function addHoverDot(point) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute([p.x_mm, p.y_mm, p.z_mm], 3));
   const dot = new THREE.Points(geometry, new THREE.PointsMaterial({
-    color: CURVE_HOVER,
+    color: INK.hover,
     size: 12,
     sizeAttenuation: false,
     depthTest: false,
@@ -56,7 +57,7 @@ function drawPreselectEntity(id, shown) {
           const originZ = row.item.distance_mm >= 0 ? center.z_mm : center.z_mm - height;
           addCylinder(
             preselects, center.x_mm, center.y_mm, profile.item.radius_mm,
-            originZ, height, CURVE_HOVER, 0.28, row.id,
+            originZ, height, INK.hover, 0.28, row.id,
           );
         }
       }
@@ -69,12 +70,12 @@ function drawPreselectEntity(id, shown) {
   }
   if (FILTER_KINDS.section.has(row.kind)) {
     const shape = sectionShape(row.kind, row.item);
-    if (shape) addCurve(preselects, shape.closed ? shape.pts.concat([shape.pts[0]]) : shape.pts, CURVE_HOVER, row.id);
+    if (shape) addCurve(preselects, shape.closed ? shape.pts.concat([shape.pts[0]]) : shape.pts, INK.hover, row.id);
     return;
   }
   if (FILTER_KINDS.line.has(row.kind)) {
     const shape = curveWorldPoints(row);
-    if (shape) addCurve(preselects, shape.closed ? shape.pts.concat([shape.pts[0]]) : shape.pts, CURVE_HOVER, row.id);
+    if (shape) addCurve(preselects, shape.closed ? shape.pts.concat([shape.pts[0]]) : shape.pts, INK.hover, row.id);
     return;
   }
   if (FILTER_KINDS.face.has(row.kind)) {

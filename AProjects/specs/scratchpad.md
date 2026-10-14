@@ -1,7 +1,7 @@
 # Spec — scratchpad client
 
 **Status:** Implemented (2026-08-14)  
-**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0023, 0030
+**ADRs:** 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0023, 0030, 0031
 
 ## Goal
 
@@ -23,6 +23,15 @@ No Node build, no Qt, no TypeScript. Vanilla JS: a bootstrap `app.js` plus nativ
 modules in `static/js/`, with shared client state on one object in `js/state.js`
 ([ADR 0023](../adrs/0023-module-boundaries.md)).
 
+Chrome follows the APE design system ([ADR 0031](../adrs/0031-ape-design-system.md),
+values in [`ape-design.md`](ape-design.md) §1). Every colour is a role in `static/css/app.css`:
+chrome roles per theme (light paper, dark carbon) and canvas roles on `#stage` per canvas
+preset (paper, mist, carbon). `js/theme.js` sets `data-theme` / `data-canvas` and reads the
+canvas roles into `INK` for three.js; no other module writes a colour, except the section
+drawing table in `js/section.js` until stage D3. The UI face is Archivo Narrow, served from
+`static/fonts/` with its OFL licence. The server serves `/css/<name>.css` and
+`/fonts/<name>.woff2` beside `/js/<name>.js`.
+
 ## Tools
 
 Line (chains until Esc or Enter, posted as one `AddLineChain`), polyline (Enter to finish, click start to close), rectangle (face), circle, arc, ellipse, polygon, Bézier, box
@@ -35,8 +44,9 @@ Layout R4 ([ADR 0014](../adrs/0014-menubar-side-rail-prefs.md)):
 thin File / Edit / View / Grid / Help menubar; left dock is a nested B-rep
 outliner with properties below it, then a vertical icon rail;
 viewport; bottom command line. Docks collapse and drag-resize.
-File New/Open/Save talks to the JSON document. Visualization (clay,
-lights, AO) lives in Preferences as client state, not in the
+File New/Open/Save talks to the JSON document. Visualization (theme: system, light or
+dark; canvas: theme, paper, mist or carbon; clay, curve colour, lights, AO) lives in
+Preferences as client state, not in the
 ops log. Grid spacing, units, minor style, and hidden-line scale live in Grid → Preferences (also client state). Count/`n` is not a chrome field. Right-click the outliner to
 select, rename, duplicate, hide, fit, or delete.
 View cube (upper right): Z-up named faces; click face / edge / corner.

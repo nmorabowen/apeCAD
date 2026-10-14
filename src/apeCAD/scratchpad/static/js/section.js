@@ -4,10 +4,11 @@
 import * as THREE from "three";
 import { S } from "./state.js";
 import { pointById } from "./brep.js";
-import { CURVE_PICK, mark, selectionTints } from "./draw.js";
+import { mark, selectionTints } from "./draw.js";
 import { sampleCircle } from "./geom.js";
 import { formatMm } from "./prefs.js";
 import { dashSegments, roundedRing } from "./section-geom.js";
+import { INK } from "./theme.js";
 
 // Neutral ink until ADR 0031 is approved. Dash patterns are in mm on the section plane.
 export const SECTION_STYLE = {
@@ -105,7 +106,7 @@ const vec = (p, lift = 0) => new THREE.Vector3(p.x_mm, p.y_mm, (p.z_mm || 0) + l
 
 function lineMaterial(color, entityId) {
   return new THREE.LineBasicMaterial({
-    color: selectionTints(entityId) ? CURVE_PICK : color,
+    color: selectionTints(entityId) ? INK.pick : color,
     depthTest: false,
   });
 }
@@ -140,7 +141,7 @@ function addConcrete(group, face) {
   if (S.prefs.showFaces) {
     const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x_mm, p.y_mm)));
     const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
-      color: tinted ? CURVE_PICK : style.fill,
+      color: tinted ? INK.pick : style.fill,
       transparent: true,
       opacity: tinted ? 0.35 : style.opacity,
       side: THREE.DoubleSide,
@@ -160,7 +161,7 @@ function addBar(group, bar) {
   const disc = new THREE.Mesh(
     new THREE.CircleGeometry(bar.diameter_mm / 2, 24),
     new THREE.MeshBasicMaterial({
-      color: selectionTints(bar.entity_id) ? CURVE_PICK : SECTION_STYLE.bar.color,
+      color: selectionTints(bar.entity_id) ? INK.pick : SECTION_STYLE.bar.color,
       side: THREE.DoubleSide,
       depthTest: false,
     }),

@@ -6,7 +6,6 @@ import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { S } from "./state.js";
 import {
-  BACKGROUNDS,
   GRID_DEFAULT_MAJOR_MM,
   GRID_EXTENT_MM,
   GRID_MAX_DIVISIONS,
@@ -20,6 +19,7 @@ import {
   prefMajorMm,
   prefMinorMm,
 } from "./prefs.js";
+import { INK } from "./theme.js";
 import { canvas, scene } from "./viewport.js";
 
 export let grid = null;
@@ -164,17 +164,16 @@ function makeGridHelper(spacing, color, hidden, skipStep) {
 }
 
 function makeGrid() {
-  const pal = BACKGROUNDS[S.prefs.background] || BACKGROUNDS.g5;
   const group = new THREE.Group();
   const minor = gridMinorMm();
   const major = gridMajorMm();
   if (S.gridMinorOn && major > minor + 1e-6) {
     const minorGrid = gridMinorStyle() === "dots"
-      ? makeMinorDots(minor, pal.minor, major)
-      : makeGridHelper(minor, pal.minor, true, major);
+      ? makeMinorDots(minor, INK.gridMinor, major)
+      : makeGridHelper(minor, INK.gridMinor, true, major);
     if (minorGrid) group.add(minorGrid);
   }
-  const majorGrid = makeGridHelper(major, pal.major, false);
+  const majorGrid = makeGridHelper(major, INK.gridMajor, false);
   if (majorGrid) group.add(majorGrid);
   group.visible = S.gridOn;
   return group;

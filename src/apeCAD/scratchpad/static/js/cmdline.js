@@ -67,20 +67,27 @@ export function refreshToggles() {
   gridSnapButton.classList.toggle("active", S.gridSnapOn);
   orthoButton.classList.toggle("active", S.orthoOn);
   gridButton.classList.toggle("active", S.gridOn);
-  const parts = [];
-  if (S.snapOn) parts.push("SNAP");
-  if (S.gridSnapOn) parts.push(`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`);
-  if (S.orthoOn) parts.push("ORTHO");
-  if (S.gridOn) parts.push("GRID");
+  // Mode chips (ADR 0031 §1.6): every mode shows, steel when on and muted when off.
+  const chips = [
+    ["SNAP", S.snapOn],
+    [`GRIDSNAP ${formatNumber(gridMinorMm())}/${formatNumber(gridMajorMm())}`, S.gridSnapOn],
+    ["ORTHO", S.orthoOn],
+    ["GRID", S.gridOn],
+  ];
   if (S.tool === "select") {
     const names = {
       point: "POINT", line: "LINE", face: "FACE", solid: "SOLID", element: "ELEMENT", section: "SECTION",
     };
-    parts.push(names[S.selectFilter] || "ELEMENT");
+    chips.push([names[S.selectFilter] || "ELEMENT", true]);
   }
   const typed = activeLength();
-  if (typed !== null) parts.push(formatLength(typed));
-  status.textContent = parts.join(" · ") || "free";
+  if (typed !== null) chips.push([formatLength(typed), true]);
+  status.replaceChildren(...chips.map(([text, on]) => {
+    const chip = document.createElement("span");
+    chip.className = on ? "chip on" : "chip";
+    chip.textContent = text;
+    return chip;
+  }));
   grid.visible = S.gridOn;
   syncGridMenu();
   syncGridPrefsForm();

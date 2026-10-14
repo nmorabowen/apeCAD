@@ -437,7 +437,7 @@ grammar (`references/planillas-and-marks.md`). The mapping is one function in
 Each stage is one PR, docs-free except for its own spec row. Order and dependencies are in
 ADR 0031 "Implementation stages".
 
-### D1 — UI tokens and themes
+### D1 — UI tokens and themes (implemented)
 
 - Move `index.html` `<style>` to `static/css/app.css`; write both themes as custom
   properties under `:root[data-theme=light|dark]` and `@media (prefers-color-scheme)`.
