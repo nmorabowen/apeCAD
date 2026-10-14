@@ -1,6 +1,6 @@
 # Spec — APE design system for apeCAD
 
-**Status:** Proposed. **ADR:** [0031](../adrs/0031-ape-design-system.md).
+**Status:** Accepted (2026-10-14). **ADR:** [0031](../adrs/0031-ape-design-system.md).
 **Mockup:** [`design/ape-design-mockup.html`](../design/ape-design-mockup.html), published at
 <https://claude.ai/artifact/8o96Ef5efK79HYXGuWBDbj> (private to the owner until shared).
 
@@ -396,7 +396,7 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 | `Box`, `Solid` edges | `solid-edge` | `0.20mm S-Black` | — | `SOLID-EDGE` | Projection; no hidden-line removal |
 | `ConcreteFace` | `concrete-cut` | `0.40mm S-Black` | `Solid - Grey210 - Transparent` | `CONCRETE-CUT`, fill on `CONCRETE-FILL` | Section is a cut (ADR-005 D2) |
 | `WallLeg` axis | `wall-axis` | `0.10mm H-Dark Grey` | — | `WALL-AXIS` | Intent line; thickness is shown by the face |
-| `WallLeg.horizontal` | `tag` | — | — | `TAG` | `Φd @s cm, {curtains} cortinas` beside the leg |
+| `WallLeg.horizontal` | `tag` | — | — | `TAG` | `Φd @ s mm, {curtains} curtains` beside the leg |
 | `Bar` | `bar` | edge `0.10mm S-Blue` | disc at `diameter_mm`, Blue | `BAR` | True scale; never below 0.6 mm on paper |
 | `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (D4) |
 | `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick per `hooks` (D4) |
@@ -404,27 +404,27 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 | entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue |
 | `#id` (show_ids) | `label` | — | — | not exported | Debug only |
 | Bar group tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `n Φd`, one per designation (D4) |
-| Hoop / crosstie tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `Est Φd @s cm`, `Vincha Φd @s cm` |
-| Cover note | `tag` | — | — | `TAG` | `Recubrimiento c mm` |
+| Hoop / crosstie tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `Tie Φd @ s mm`, `Crosstie Φd @ s mm` |
+| Cover note | `tag` | — | — | `TAG` | `Cover c mm` |
 | Overall dimensions | `dimension` | `0.10mm S-Blue`, filled 30° arrows | — | `DIMENSION` | Arial Narrow 2.5 mm, Transparent (ADR-006 default linear) |
-| View title | `view-title` | underline `0.30mm S-Blue` | — | `VIEW-TITLE` | Display font 3.5 mm: `SECCIÓN {label}`, `PLANTA`, `ELEVACIÓN FRONTAL` … |
-| Scale line | `view-title` | — | — | `VIEW-TITLE` | Working font 2.0 mm: `ESC 1:{n}` when a plot scale is set |
+| View title | `view-title` | underline `0.30mm S-Blue` | — | `VIEW-TITLE` | Display font 3.5 mm: `SECTION {label}`, `PLAN`, `FRONT ELEVATION` … |
+| Scale line | `view-title` | — | — | `VIEW-TITLE` | Working font 2.0 mm: `SCALE 1:{n}` when a plot scale is set |
 | Scale bar | `scale-bar` | `0.10mm S-Blue` | — | `SCALE-BAR` | Text `{n} mm` |
-| Empty draft | `label` | — | — | — | `Dibujo vacío`, centred, 50 % |
+| Empty draft | `label` | — | — | — | `Empty drawing`, centred, 50 % |
 | Highlight | `highlight` | `#c64a1a`, 2.5 px | 35 % | never | Agent review aid |
 
-### 3.3 View-name vocabulary (sheet-facing, Spanish)
+### 3.3 View-title vocabulary
 
 | `view.name` (identifier, unchanged) | Title on the drawing |
 |---|---|
-| `top` | PLANTA |
-| `bottom` | VISTA INFERIOR |
-| `front` | ELEVACIÓN FRONTAL |
-| `back` | ELEVACIÓN POSTERIOR |
-| `right` | ELEVACIÓN DERECHA |
-| `left` | ELEVACIÓN IZQUIERDA |
-| `iso` | ISOMÉTRICO |
-| section (z = 0 with section entities) | SECCIÓN {face label, or none} |
+| `top` | PLAN |
+| `bottom` | BOTTOM VIEW |
+| `front` | FRONT ELEVATION |
+| `back` | BACK ELEVATION |
+| `right` | RIGHT ELEVATION |
+| `left` | LEFT ELEVATION |
+| `iso` | ISOMETRIC |
+| section (z = 0 with section entities) | SECTION {face label, or none} |
 
 ### 3.4 Designation glyph
 
@@ -472,7 +472,7 @@ ADR 0031 "Implementation stages".
 - `scene.py`: `Drawable.layer` widens to the roles in §3.2 (section roles arrive with C1).
 - `svg.py`: one `<g class="{role}">` per role in a fixed paint order (fills, cut, projection,
   sketch, rebar, annotation, highlight); widths from `style.screen_px`; texts with the
-  working font; Spanish titles from §3.3; `data-*` attributes unchanged.
+  working font; titles from §3.3; `data-*` attributes unchanged.
 - Tests: golden SVG per view in `tests/fixtures/render/`; a test that every `Role` has a
   `Style` and every style name is an ADR-005 name.
 

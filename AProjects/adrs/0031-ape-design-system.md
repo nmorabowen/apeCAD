@@ -1,6 +1,7 @@
 # ADR 0031 — The APE design system: UI tokens, UI voice and drawing output style
 
-**Status:** Proposed (2026-10-10)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-10; the owner approved it on 2026-10-14
+with one change, English for all output (decision 2.1).
 
 Derives the scratchpad's look, its text and its rendered drawings from APE Ingeniería's
 existing standards instead of inventing a fourth style. Values and tables live in
@@ -43,7 +44,7 @@ APE already has a standard for each axis:
 | Fills | ADR-010 (filled regions) | Greys 210 / 192 / 128 only; concrete cut = `Solid - Grey210` |
 | Rebar | `apeRevit/library/graphics-tokens.json` (`rebar_data`), skill `ape-drawing-standards` (`references/planillas-and-marks.md`) | Bar and stirrup graphics in (0, 0, 119); tag grammar `n Φd`, `@s cm - [n u] Φd` |
 | Voice | skill `ape-tono`, `references/tone-standard.md` (v1, 2026-09-11) | Impersonal, declarative; *notas de plano* register is "imperative, telegraphic"; no dash pauses, ellipses, exclamations or questions; verdicts from a closed list |
-| Language | drawing-standards ADR-007 D5, `token-card.md` | Internal names in English; Spanish only on sheet-facing content |
+| Language | drawing-standards ADR-007 D5, `token-card.md` | The office keeps internal names in English and sheet content in Spanish (not adopted here, see decision 2.1) |
 
 ## Decision
 
@@ -92,14 +93,15 @@ APE already has a standard for each axis:
 
 ### 2. UI voice: the *notas de plano* register, in English
 
-1. **Language policy: the office's own split.** Internal names in English, sheet-facing
-   content in Spanish (drawing-standards ADR-007 D5, `token-card.md`). The scratchpad
-   chrome, hints, menus, command line and `DocumentError` messages are internal: **English**.
-   Text that lands on a drawing (view titles, tags, notes, the "empty" placeholder) is
-   sheet-facing: **Spanish**. Layer names, op names, error `code`s and JSON keys are
-   identifiers: English, never translated.
-2. **All UI strings live in one table** (`static/js/strings.js`), keyed by id, so a Spanish
-   pack is a file, not a rewrite. This ADR does not ship that pack.
+1. **Language policy: English for all output.** Decided by the owner on 2026-10-14. UI
+   text, hints, menus, command-line messages, `DocumentError` messages, and everything
+   apeCAD writes on a drawing (view titles, tags, notes, annotations, the empty
+   placeholder) are **English**. Layer names, op names, error `code`s and JSON keys are
+   identifiers and are English too. This departs from the office split in drawing-standards
+   ADR-007 D5 (Spanish sheet content) by the owner's choice; the Revit set keeps its
+   own Spanish sheets.
+2. **All UI strings live in one table** (`static/js/strings.js`), keyed by id, so the text
+   has one home and the lint in decision 2.3 has one file to check.
 3. **Register.** The tone standard's *notas de plano* register: imperative and
    telegraphic. Its English rules apply: no *we* or *you*, no *please*, no *actually*, no
    *fine*, *OK* or *tight* as a status, no dash used as a pause, no ellipsis in a message,
@@ -143,10 +145,12 @@ APE already has a standard for each axis:
    1.75 mm dense; the view title in Bahnschrift SemiBold Condensed 3.5 mm with the scale
    line under it in Arial Narrow 2.0 mm (ADR-009). Text is Transparent (no mask) unless it
    sits on a hatch.
-5. **Spanish on the sheet, office tag grammar.** View titles are `PLANTA`,
-   `ELEVACIÓN FRONTAL`, `SECCIÓN <label>`; the empty placeholder is `Dibujo vacío`. Bars
-   tag as `n Φd` ("8 Φ16"), hoops as `Est Φd @s cm`, crossties as `Vincha Φd @s cm`, cover
-   as `Recubrimiento c mm`. The document keeps its `Ø16` designations
+5. **English on the sheet, office tag structure.** View titles are `PLAN`,
+   `FRONT ELEVATION`, `SECTION <label>`; the empty placeholder is `Empty drawing`. Bars
+   tag as `n Φd` ("10 Φ20"), hoops as `Tie Φd @ s mm`, crossties as `Crosstie Φd @ s mm`,
+   cover as `Cover c mm`. Spacings are in millimetres, like every other length apeCAD
+   writes; the office's centimetre spacings (`@10 cm`) belong to the Revit planilla grammar,
+   which apeCAD does not produce. The document keeps its `Ø16` designations
    (ADR 0024 P12, apeConcrete's spelling); `Ø → Φ` is a render-only mapping. apeCAD tags
    carry no `Mc` mark and no length: marks and planillas belong to the Revit set.
 6. **Agent highlight is not ink.** The render's `highlight` set draws in vest orange over
@@ -164,9 +168,9 @@ APE already has a standard for each axis:
 | Keep the slate palette and only rename tokens | It matches nothing APE owns, has no light theme and keeps the red/green trim preview. |
 | Make the chrome apeCAD's black/paper/vest brand (the logo and `docs/` site) | One loud orange on black is a poster, not a work surface. Vest survives as the attention colour and the mark. |
 | Use annotation blue (0, 0, 119) as the UI accent | It is the drawings' ink; on screen it would make every selected sketch line look like annotation. On carbon it is unreadable (1.07 : 1). |
-| Spanish UI now | apeCAD's code, docs, ADRs and agent surface are English, `DocumentError` text is an agent contract, and the office already keeps internal names in English. A string table keeps the door open. |
-| A bilingual UI toggle in v1 | Two packs to keep in step for one office of Spanish-reading engineers who already work in English Revit and ETABS. Deferred until someone asks. |
-| English text on rendered drawings | Rendered drawings are the part that can leave the office. ADR-007 D5 puts sheet content in Spanish. |
+| Spanish UI | apeCAD's code, docs, ADRs and agent surface are English, and `DocumentError` text is an agent contract. |
+| English UI with Spanish sheet output (the office split of ADR-007 D5; this ADR's proposal of 2026-10-10) | The owner chose one language for all output (2026-10-14). |
+| A bilingual toggle | Two packs to keep in step, for no reader who needs them. |
 | Value-in-name DXF layers (`0.40mm S-Black`) | Hiding concrete would hide every 0.40 black line. Roles name layers; the style name rides in the description, so both conventions survive. |
 | Rewrite all 163 `DocumentError` messages now | The ops modules are changing in parallel waves; a mass rewrite collides with every one. Reword on touch. |
 | Load fonts from Google Fonts | The scratchpad is a localhost tool; a font CDN adds a network dependency the chrome does not need. three.js stays on its CDN ([ADR 0003](0003-python-document-web-client.md)). |

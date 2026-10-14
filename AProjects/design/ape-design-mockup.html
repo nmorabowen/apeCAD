@@ -163,7 +163,7 @@ footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line);
     <div class="sec-head">
       <span class="sec-num">02</span>
       <h2 class="sec-title" id="s2">Section C1, rendered to APE standards</h2>
-      <p class="sec-sub">ADR-005 pens and ink, ADR-007 Arial Narrow notes in (0, 0, 119), ADR-009 Bahnschrift title, ADR-010 Grey210 cut. Spanish on the sheet, office tag grammar.</p>
+      <p class="sec-sub">ADR-005 pens and ink, ADR-007 Arial Narrow notes in (0, 0, 119), ADR-009 Bahnschrift title, ADR-010 Grey210 cut. English on the sheet, office tag structure, millimetres throughout.</p>
     </div>
     <div class="two">
       <figure>
@@ -202,7 +202,7 @@ footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line);
           <tr><td class="mono">modify.js:206</td><td class="old">Sewed coincident points.</td><td>Merged 4 coincident points.</td><td>Count and noun</td></tr>
           <tr><td class="mono">create.js:140</td><td class="old">Rect placed.</td><td>Rectangle placed.</td><td>One noun per concept</td></tr>
           <tr><td class="mono">index.html</td><td class="old">SNAP · GRIDSNAP 100/1000 · GRID</td><td>chips <span class="mono">SNAP</span> <span class="mono">GRID 100 / 1000 mm</span> <span class="mono">ORTHO</span>, on in steel, off muted</td><td>State is visible</td></tr>
-          <tr><td class="mono">svg.py</td><td class="old">empty draft · top</td><td>Dibujo vacío · PLANTA</td><td>Spanish on the sheet</td></tr>
+          <tr><td class="mono">svg.py</td><td class="old">empty draft · top</td><td>Empty drawing · PLAN</td><td>Drawing title vocabulary</td></tr>
         </tbody>
       </table>
     </div>
@@ -323,7 +323,7 @@ footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line);
   const WF = 'font-family="Arial Narrow, Archivo Narrow, sans-serif"';
   const DF = 'font-family="Bahnschrift SemiBold Condensed, Saira Semi Condensed, Bahnschrift, sans-serif" font-weight="600"';
   function sheet() {
-    let s = '<svg viewBox="0 0 120 104" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sección C1 en estilo APE">';
+    let s = '<svg viewBox="0 0 120 104" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Section C1 in APE drawing style">';
     s += '<rect width="120" height="104" fill="#ffffff"/>';
     const a = Q(0, 600);
     // CONCRETE-FILL + CONCRETE-CUT
@@ -363,13 +363,13 @@ footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line);
         + '<text x="' + tx + '" y="' + (ty + 0.7) + '" ' + WF + ' font-size="2" fill="' + BLUE + '">' + text + '</text>';
     };
     s += tag([340, 540], Y0 + 4, '10 Φ20');
-    s += tag([355, 470], Y0 + 15, 'Est Φ10 @10 cm');
-    s += tag([270, 380], Y0 + 26, 'Vincha Φ10 @10 cm');
-    s += tag([360, 120], Y0 + 50, 'Recubrimiento 40 mm');
+    s += tag([355, 470], Y0 + 15, 'Tie Φ10 @ 100 mm');
+    s += tag([270, 380], Y0 + 26, 'Crosstie Φ10 @ 100 mm');
+    s += tag([360, 120], Y0 + 50, 'Cover 40 mm');
     // VIEW-TITLE: Bahnschrift SemiBold Condensed 3.5, underline 0.30 S-Blue, scale line Arial Narrow 2.0
-    s += '<text x="' + X0 + '" y="92" ' + DF + ' font-size="3.5" fill="' + BLUE + '">SECCIÓN C1</text>';
+    s += '<text x="' + X0 + '" y="92" ' + DF + ' font-size="3.5" fill="' + BLUE + '">SECTION C1</text>';
     s += '<line x1="' + X0 + '" y1="93.4" x2="' + (X0 + 40) + '" y2="93.4" stroke="' + BLUE + '" stroke-width="0.30"/>';
-    s += '<text x="' + X0 + '" y="97.2" ' + WF + ' font-size="2" fill="' + BLUE + '">ESC 1:10</text>';
+    s += '<text x="' + X0 + '" y="97.2" ' + WF + ' font-size="2" fill="' + BLUE + '">SCALE 1:10</text>';
     return s + '</svg>';
   }
   document.getElementById('sheet').innerHTML = sheet();
