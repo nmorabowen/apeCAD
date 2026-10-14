@@ -12,6 +12,7 @@ Published user docs, when they exist, live under `docs/`. Code lives under
 | [`adrs/`](adrs/README.md) | Architecture Decision Records (append-only) |
 | [`specs/`](specs/README.md) | Specifications for slices (v0 document, bridges, scratchpad) |
 | [`guides/`](guides/README.md) | How to work in this repo (agents and humans) |
+| `design/` | Self-contained HTML mockups for proposed UI and drawing styles; not shipped, not the Pages site |
 
 ## Rules
 
