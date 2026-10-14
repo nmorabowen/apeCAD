@@ -5,7 +5,7 @@ import { S } from "./state.js";
 import { ghosts, preselects } from "./viewport.js";
 
 const EDGE_COLOR = 0x111111;
-const CURVE_PICK = 0x4a90d9;
+export const CURVE_PICK = 0x4a90d9;
 export const CURVE_HOVER = 0x6aa8e8;
 export const SNAP_COLOR = 0xd55e00;
 
@@ -35,7 +35,7 @@ function isPicked(entityId) {
   return entityId != null && S.selectedIds.has(entityId);
 }
 
-function selectionTints(entityId) {
+export function selectionTints(entityId) {
   if (entityId == null) return false;
   if (isPicked(entityId)) return true;
   const seen = new Set();

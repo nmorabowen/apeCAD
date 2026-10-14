@@ -18,6 +18,7 @@ import { camera } from "./camera.js";
 import { refreshToggles, setHint } from "./cmdline.js";
 import { sampleCircle } from "./geom.js";
 import { rebuild } from "./render.js";
+import { sectionShape } from "./section.js";
 import { shapeQualifies } from "./screen.js";
 import { canvas } from "./viewport.js";
 
@@ -151,6 +152,10 @@ function entityScreenShape(row) {
     }
     return { pts: corners, closed: false };
   }
+  if (FILTER_KINDS.section.has(row.kind)) {
+    const shape = sectionShape(row.kind, row.item);
+    return shape ? { pts: shape.pts.map(toScreen), closed: shape.closed } : null;
+  }
   if (row.kind === "Solid") {
     const pts = gatherPoints(row).map((point) => clientOf(point.x_mm, point.y_mm, point.z_mm || 0));
     return pts.length ? { pts, closed: false } : null;
@@ -226,8 +231,9 @@ export function setSelectFilter(next) {
     face: "faces",
     solid: "solids",
     element: "whole elements",
+    section: "section entities",
   };
-  setHint(`Select ${labels[S.selectFilter]} (1–5). Click, window, or crossing.`);
+  setHint(`Select ${labels[S.selectFilter]} (1–6). Click, window, or crossing.`);
   rebuild();
 }
 

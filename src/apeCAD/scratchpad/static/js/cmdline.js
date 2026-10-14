@@ -74,7 +74,7 @@ export function refreshToggles() {
   if (S.gridOn) parts.push("GRID");
   if (S.tool === "select") {
     const names = {
-      point: "POINT", line: "LINE", face: "FACE", solid: "SOLID", element: "ELEMENT",
+      point: "POINT", line: "LINE", face: "FACE", solid: "SOLID", element: "ELEMENT", section: "SECTION",
     };
     parts.push(names[S.selectFilter] || "ELEMENT");
   }

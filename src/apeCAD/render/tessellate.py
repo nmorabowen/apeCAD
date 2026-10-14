@@ -104,3 +104,19 @@ def _de_casteljau(controls: list[Vec3], t: float) -> Vec3:
             for a, b in zip(work, work[1:], strict=False)
         ]
     return work[0]
+
+
+def fan_points(
+    center: Vec3, radius_mm: float, start_rad: float, sweep_rad: float, tol_mm: float | None
+) -> list[Vec3]:
+    """Arc on the XY plane at the centre's z, from `start_rad` turning by `sweep_rad`."""
+    count = _arc_segments(radius_mm, sweep_rad, tol_mm)
+    cx, cy, cz = center
+    return [
+        (
+            cx + radius_mm * math.cos(start_rad + sweep_rad * k / count),
+            cy + radius_mm * math.sin(start_rad + sweep_rad * k / count),
+            cz,
+        )
+        for k in range(count + 1)
+    ]

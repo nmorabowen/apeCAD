@@ -246,6 +246,15 @@ Rendering rules:
   scale, and one `<g data-id="N">` per entity. Labels go in `<text>` with XML escaping, since
   labels are user input. The output is deterministic: the same draft and params give the same
   bytes.
+- Section-mode entities (ADR 0024) draw between the faces and the lines, back to front:
+  the concrete face filled with its outline, the cover guide's `cover_ring_mm` as a thin
+  dashed ring, the wall leg as a dash-dot axis, hoops as a closed ring around their bars
+  (offset by each bar's radius plus half the tie diameter, round corners), crossties as a
+  line between their two bars, and bars as discs at their true diameter (at least 1.5 px).
+  A bar's own point draws no dot. Their colours and lineweights are one table,
+  `render/style.py` `SECTION_STYLE`, for the APE drawing style (ADR 0031) to replace.
+  Fit-to-extents counts a bar's whole disc. A label that would leave the frame on the right
+  is set right-aligned on the other side of its anchor.
 - A scale bar and the view name go in the lower left corner.
 - `ids` and `highlight` take in what each entity is built from (a solid brings its faces,
   their edges and vertices). An unknown id is `INVALID_ARGUMENT`.

@@ -26,7 +26,7 @@ modules in `static/js/`, with shared client state on one object in `js/state.js`
 ## Tools
 
 Line (chains until Esc or Enter, posted as one `AddLineChain`), polyline (Enter to finish, click start to close), rectangle (face), circle, arc, ellipse, polygon, Bézier, box
-(one `Extrude` with a ring). Each draw gesture posts one op whose vertices are snapped point ids or coordinates, so one undo removes the whole shape ([ADR 0030](../adrs/0030-one-gesture-one-op.md)). Select (click, window, crossing; filter Point / Line / Face / Solid / Element; hover preselects the B-rep hit). Move, rotate,
+(one `Extrude` with a ring). Each draw gesture posts one op whose vertices are snapped point ids or coordinates, so one undo removes the whole shape ([ADR 0030](../adrs/0030-one-gesture-one-op.md)). Select (click, window, crossing; filter Point / Line / Face / Solid / Element / Section; hover preselects the B-rep hit). Section-mode entities draw flat on their own z (`js/section.js`, one `SECTION_STYLE` table): the concrete face filled, bars as discs at their diameter, hoops as a ring offset by bar radius plus half the tie, crossties, the dash-dot leg axis and the dashed cover ring; the Section filter (6) picks each as itself, and the outliner nests a bar's point under the bar. Move, rotate,
 mirror, array, polar, trim (T), extend (E), break, insert-node,
 face-from-lines, join (J), chamfer, fillet, sew, simplify, delete (Del).
 Undo / redo / clear. Save JSON.

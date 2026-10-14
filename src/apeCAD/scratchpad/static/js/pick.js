@@ -16,6 +16,7 @@ import {
 } from "./brep.js";
 import { camera } from "./camera.js";
 import { xyzMm } from "./draw.js";
+import { rayInsidePlan, sectionShape } from "./section.js";
 import { canvas, draft } from "./viewport.js";
 
 const PICK_POINT_PX = 12;
@@ -208,9 +209,37 @@ function pickClosestSolid(event) {
   return best ? best.id : null;
 }
 
+// Section entities pick as themselves (ADR 0024): a bar under the cursor first, then the
+// nearest line (tie, leg axis, cover ring or concrete outline), then the concrete inside.
+function pickClosestSection(event) {
+  const ray = eventRay(event);
+  let best = null;
+  const consider = (id, tier, dist) => {
+    if (!best || tier < best.tier || (tier === best.tier && dist < best.dist)) {
+      best = { id, tier, dist };
+    }
+  };
+  for (const row of catalog()) {
+    if (!FILTER_KINDS.section.has(row.kind) || S.hiddenIds.has(row.id)) continue;
+    const shape = sectionShape(row.kind, row.item);
+    if (!shape) continue;
+    const dist = pixelDistLoop(event, shape.pts, shape.closed);
+    const inside = shape.closed && rayInsidePlan(ray, shape.pts) != null;
+    if (row.kind === "Bar") {
+      if (inside || dist <= PICK_POINT_PX) consider(row.id, 0, inside ? 0 : dist);
+      continue;
+    }
+    if (dist <= PICK_LINE_PX) consider(row.id, 1, dist);
+    else if (row.kind === "ConcreteFace" && inside) consider(row.id, 2, 0);
+  }
+  return best ? best.id : null;
+}
+
 function pickClosestElement(event) {
   const line = pickClosestLine(event);
   if (line != null) return rootId(line);
+  const section = pickClosestSection(event);
+  if (section != null) return rootId(section);
   const point = pickClosestPoint(event);
   if (point != null) return rootId(point);
   const face = pickClosestFace(event);
@@ -226,6 +255,7 @@ export function pickByFilter(event, filter) {
   if (filter === "line") return pickClosestLine(event);
   if (filter === "face") return pickClosestFace(event);
   if (filter === "solid") return pickClosestSolid(event);
+  if (filter === "section") return pickClosestSection(event);
   return pickClosestElement(event);
 }
 

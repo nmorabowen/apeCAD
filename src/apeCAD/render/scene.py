@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
-from typing import Literal
 
 from apeCAD.document import Document
 from apeCAD.entities import (
@@ -21,37 +19,17 @@ from apeCAD.entities import (
     Polyline,
     Solid,
 )
+from apeCAD.render.drawable import Drawable, Layer, Path3
+from apeCAD.render.section import bar_point_ids, section_drawable
 from apeCAD.render.tessellate import arc_points, bezier_points, ellipse_points
 from apeCAD.render.views import Vec3
 
-Layer = Literal["face", "edge", "point"]
-Path3 = tuple[tuple[Vec3, ...], bool]  # points, closed
-
-
-@dataclass(frozen=True, slots=True)
-class Drawable:
-    entity_id: EntityId
-    layer: Layer
-    paths: tuple[Path3, ...]
-    anchor: Vec3 | None
-    label: str | None
+__all__ = ["Drawable", "Layer", "Path3", "closure", "drawables", "entity_map"]
 
 
 def entity_map(document: Document) -> dict[EntityId, Entity]:
-    groups: tuple[Iterable[Entity], ...] = (
-        document.points(),
-        document.lines(),
-        document.polylines(),
-        document.boxes(),
-        document.faces(),
-        document.solids(),
-        document.circles(),
-        document.arcs(),
-        document.ellipses(),
-        document.beziers(),
-    )
-    found = {entity.entity_id: entity for group in groups for entity in group}
-    return {entity_id: found[entity_id] for entity_id in sorted(found)}
+    """Every entity, section-mode kinds included, by ascending id."""
+    return {entity_id: document.entity(entity_id) for entity_id in sorted(document.entity_ids())}
 
 
 def closure(
@@ -75,8 +53,9 @@ def drawables(
     tol_mm: float | None,
 ) -> list[Drawable]:
     out: list[Drawable] = []
+    bar_points = bar_point_ids(entities)
     for entity_id, entity in entities.items():
-        if entity_id not in draw_ids:
+        if entity_id not in draw_ids or entity_id in bar_points:
             continue
         drawable = _drawable(entities, entity, tol_mm)
         if drawable is not None:
@@ -150,7 +129,7 @@ def _drawable(
         return _box(entity)
     if isinstance(entity, Solid):
         return _solid(entities, entity)
-    return None  # section-mode kinds: a bar's or a leg's point draws as a point
+    return section_drawable(entities, entity, tol_mm)  # the section-mode kinds (ADR 0024)
 
 
 def _radii(entity: Circle | Ellipse) -> tuple[float, float]:
