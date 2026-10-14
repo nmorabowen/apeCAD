@@ -261,7 +261,7 @@ export function bindKeys() {
     if (isTypingField(event)) return;
     if (!event.ctrlKey && !event.metaKey && !event.altKey) {
       if (S.tool === "select") {
-        const filters = { 1: "point", 2: "line", 3: "face", 4: "solid", 5: "element" };
+        const filters = { 1: "point", 2: "line", 3: "face", 4: "solid", 5: "element", 6: "section" };
         if (filters[event.key]) {
           event.preventDefault();
           setSelectFilter(filters[event.key]);

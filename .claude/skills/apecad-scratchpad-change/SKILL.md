@@ -61,7 +61,7 @@ posts. Five of the first eight PRs (#2–#6) were this kind of work. Each item n
       that `app.js` calls.
 - [ ] Pure modules (no DOM, no THREE, no shared mutable state; `state.js` is allowed) get
       `node --test` unit tests in `tests/js/*.test.mjs`. `tests/test_client_modules.py` runs
-      them when Node exists. Today: `geom`, `screen`, `units`, `prefs`, `brep`.
+      them when Node exists. Today: `geom`, `screen`, `units`, `prefs`, `brep`, `section-geom`.
 - [ ] Bump `N` in `<script type="module" src="/app.js?v=N">` in `index.html` for every client
       change (10 → 12 → 15 → 49 → 53 → 54 → … 63). The server sends `no-store`, so modules
       under `js/` need no version of their own.

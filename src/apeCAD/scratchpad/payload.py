@@ -104,7 +104,7 @@ def scene_payload(document: Document) -> dict[str, object]:
             }
             for bezier in document.beziers()
         ],
-        # Section mode (ADR 0024): intent lists; the 3-D client draws bars as dots.
+        # Section mode (ADR 0024): intent lists; the 3-D client draws them (js/section.js).
         "concrete_faces": [
             {
                 "entity_id": face.entity_id,

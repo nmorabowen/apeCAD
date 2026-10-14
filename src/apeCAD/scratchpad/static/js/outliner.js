@@ -18,6 +18,7 @@ import { gridMinorMm } from "./grid.js";
 import { commitDelete } from "./modify.js";
 import { formatMm } from "./prefs.js";
 import { rebuild, refreshFrom } from "./render.js";
+import { sectionFields } from "./section.js";
 import { setSelection } from "./selection.js";
 import { ISO_DIR, VIEW_PRESETS, controls, viewUp } from "./viewport.js";
 
@@ -56,7 +57,7 @@ function renderTreeNode(row, parent) {
   kindEl.textContent = brepKind(row.kind);
   const nameEl = document.createElement("span");
   nameEl.className = "tree-name";
-  nameEl.textContent = row.item.label || brepKind(row.kind);
+  nameEl.textContent = row.name;
   rowEl.append(toggle, kindEl, nameEl);
   rowEl.addEventListener("click", (event) => setSelection(row.id, { shift: event.shiftKey }));
   rowEl.addEventListener("dblclick", (event) => {
@@ -298,6 +299,7 @@ function propertyFields(row) {
   if (row.kind === "Box" && item.size_xyz_mm) {
     fields.push(["Size", item.size_xyz_mm.map((value) => formatMm(value)).join(" × ")]);
   }
+  fields.push(...sectionFields(row.kind, item));
   return fields;
 }
 

@@ -21,6 +21,7 @@ import { sampleArc, sampleBezier, sampleCircle, sampleEllipse } from "./geom.js"
 import { rebuildGrid } from "./grid.js";
 import { refreshDocks } from "./outliner.js";
 import { clearPreselect, updatePreselect } from "./preselect.js";
+import { barPointIds, drawSection } from "./section.js";
 import { draft } from "./viewport.js";
 
 export function rebuild() {
@@ -161,8 +162,12 @@ export function rebuild() {
     }
     addSolidPrism(draft, solid, byId) || addSolidVolumeFallback(draft, solid, byId);
   }
+  drawSection(draft);
+  // A bar's disc stands for its point; the dot shows only under the point filter.
+  const barPoints = S.selectFilter === "point" ? new Set() : barPointIds();
   for (const point of S.sceneState.points || []) {
     if (!S.prefs.showCurves || S.hiddenIds.has(point.entity_id)) continue;
+    if (barPoints.has(point.entity_id)) continue;
     addVertexDot(draft, point);
   }
   indexBrep();

@@ -136,11 +136,17 @@ Bounds = tuple[Vec2, Vec2] | None
 
 
 def _bounds(view: View, items: list[Drawable]) -> Bounds:
-    projected = [view.project(p) for d in items for path, _closed in d.paths for p in path]
-    if not projected:
+    """Extents of everything drawn, a bar's whole disc included (not just its centre)."""
+    us: list[float] = []
+    vs: list[float] = []
+    for d in items:
+        for path, _closed in d.paths:
+            for p in path:
+                u, v = view.project(p)
+                us += (u - d.radius_mm, u + d.radius_mm)
+                vs += (v - d.radius_mm, v + d.radius_mm)
+    if not us:
         return None
-    us = [uv[0] for uv in projected]
-    vs = [uv[1] for uv in projected]
     return (min(us), min(vs)), (max(us), max(vs))
 
 

@@ -13,6 +13,7 @@ import {
 } from "./brep.js";
 import { CURVE_HOVER, addCurve, addCylinder, addPlanarFace, xyzMm } from "./draw.js";
 import { pickByFilter } from "./pick.js";
+import { sectionShape } from "./section.js";
 import { windowHits } from "./selection.js";
 import { canvas, preselects } from "./viewport.js";
 
@@ -64,6 +65,11 @@ function drawPreselectEntity(id, shown) {
   }
   if (row.kind === "Point") {
     addHoverDot(row.item);
+    return;
+  }
+  if (FILTER_KINDS.section.has(row.kind)) {
+    const shape = sectionShape(row.kind, row.item);
+    if (shape) addCurve(preselects, shape.closed ? shape.pts.concat([shape.pts[0]]) : shape.pts, CURVE_HOVER, row.id);
     return;
   }
   if (FILTER_KINDS.line.has(row.kind)) {

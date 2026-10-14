@@ -3,14 +3,25 @@
 import { S } from "./state.js";
 import { sampleArc, sampleBezier, sampleCircle, sampleEllipse } from "./geom.js";
 
-export const SELECT_FILTERS = ["point", "line", "face", "solid", "element"];
+export const SELECT_FILTERS = ["point", "line", "face", "solid", "element", "section"];
 
 export const FILTER_KINDS = {
   point: new Set(["Point"]),
   line: new Set(["Line", "Polyline", "Arc", "Bezier"]),
   face: new Set(["Face", "Circle", "Ellipse"]),
   solid: new Set(["Solid", "Box"]),
+  // Section mode (ADR 0024): each picks as itself, not as its points.
+  section: new Set(["ConcreteFace", "Bar", "Hoop", "Crosstie", "WallLeg", "CoverGuide"]),
 };
+
+const SECTION_SOURCES = [
+  ["ConcreteFace", "concrete_faces"],
+  ["Bar", "bars"],
+  ["Hoop", "hoops"],
+  ["Crosstie", "crossties"],
+  ["WallLeg", "wall_legs"],
+  ["CoverGuide", "cover_guides"],
+];
 
 export function catalog() {
   const rows = [];
@@ -18,7 +29,7 @@ export function catalog() {
     rows.push({
       id: item.entity_id,
       kind,
-      name: item.label || brepKind(kind),
+      name: item.label || item.designation || brepKind(kind),
       item,
     });
   };
@@ -32,14 +43,19 @@ export function catalog() {
   for (const item of S.sceneState.beziers || []) push("Bezier", item);
   for (const item of S.sceneState.boxes || []) push("Box", item);
   for (const item of S.sceneState.solids || []) push("Solid", item);
+  for (const [kind, key] of SECTION_SOURCES) {
+    for (const item of S.sceneState[key] || []) push(kind, item);
+  }
   rows.sort((a, b) => a.id - b.id);
   return rows;
 }
 
+const SECTION_NAMES = { ConcreteFace: "Concrete", WallLeg: "Leg", CoverGuide: "Cover" };
+
 export function brepKind(kind) {
   if (kind === "Point") return "Vertex";
   if (kind === "Line") return "Edge";
-  return kind;
+  return SECTION_NAMES[kind] || kind;
 }
 
 function lineConnecting(a, b) {
@@ -110,8 +126,8 @@ export function brepRoots() {
   const nested = new Set();
   for (const row of rows) collectNested(row, nested);
   const rank = {
-    Solid: 0, Box: 1, Face: 2, Circle: 2, Ellipse: 2,
-    Polyline: 3, Bezier: 3, Arc: 3, Line: 4, Point: 5,
+    Solid: 0, Box: 1, Face: 2, Circle: 2, Ellipse: 2, ConcreteFace: 2,
+    Polyline: 3, Bezier: 3, Arc: 3, Hoop: 3, Crosstie: 3, Bar: 4, Line: 4, Point: 5,
   };
   return rows
     .filter((row) => !nested.has(row.id))

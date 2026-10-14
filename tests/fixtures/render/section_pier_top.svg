@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="top">
+<rect width="800" height="600" fill="#ffffff"/>
+<g class="faces" fill="#3b6ea5" fill-opacity="0.15" stroke="none">
+</g>
+<g class="concrete" fill="#c8ccd1" fill-opacity="0.6" stroke="#1f2933" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="5"><path d="M36.36 336.36 L763.64 336.36 L763.64 263.64 L36.36 263.64 Z"/></g>
+</g>
+<g class="cover" fill="none" stroke="#7b8794" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4">
+<g data-id="9"><path d="M42.42 330.3 L757.58 330.3 L757.58 269.7 L42.42 269.7 Z"/></g>
+</g>
+<g class="leg" fill="none" stroke="#7b8794" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="14 4 2 4">
+<g data-id="8"><path d="M36.36 300 L763.64 300"/></g>
+</g>
+<g class="hoop" fill="none" stroke="#1f2933" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="74"><path d="M43.64 325.94 L43.7 326.55 L43.88 327.15 L44.17 327.69 L44.56 328.17 L45.04 328.56 L45.58 328.85 L46.17 329.03 L46.79 329.09 L140.98 329.09 L141.59 329.03 L142.18 328.85 L142.73 328.56 L143.21 328.17 L143.6 327.69 L143.89 327.15 L144.07 326.55 L144.13 325.94 L144.13 274.06 L144.07 273.45 L143.89 272.85 L143.6 272.31 L143.21 271.83 L142.73 271.44 L142.18 271.15 L141.59 270.97 L140.98 270.91 L46.79 270.91 L46.17 270.97 L45.58 271.15 L45.04 271.44 L44.56 271.83 L44.17 272.31 L43.88 272.85 L43.7 273.45 L43.64 274.06 Z"/></g>
+<g data-id="75"><path d="M655.87 325.94 L655.93 326.55 L656.11 327.15 L656.4 327.69 L656.79 328.17 L657.27 328.56 L657.82 328.85 L658.41 329.03 L659.02 329.09 L753.21 329.09 L753.83 329.03 L754.42 328.85 L754.96 328.56 L755.44 328.17 L755.83 327.69 L756.12 327.15 L756.3 326.55 L756.36 325.94 L756.36 274.06 L756.3 273.45 L756.12 272.85 L755.83 272.31 L755.44 271.83 L754.96 271.44 L754.42 271.15 L753.83 270.97 L753.21 270.91 L659.02 270.91 L658.41 270.97 L657.82 271.15 L657.27 271.44 L656.79 271.83 L656.4 272.31 L656.11 272.85 L655.93 273.45 L655.87 274.06 Z"/></g>
+</g>
+<g class="bar" fill="#1f2933" stroke="none">
+<g data-id="11"><circle cx="46.79" cy="325.94" r="1.94"/></g>
+<g data-id="13"><circle cx="93.88" cy="325.94" r="1.94"/></g>
+<g data-id="15"><circle cx="140.98" cy="325.94" r="1.94"/></g>
+<g data-id="17"><circle cx="188.07" cy="325.94" r="1.94"/></g>
+<g data-id="19"><circle cx="235.17" cy="325.94" r="1.94"/></g>
+<g data-id="21"><circle cx="282.26" cy="325.94" r="1.94"/></g>
+<g data-id="23"><circle cx="329.36" cy="325.94" r="1.94"/></g>
+<g data-id="25"><circle cx="376.45" cy="325.94" r="1.94"/></g>
+<g data-id="27"><circle cx="423.55" cy="325.94" r="1.94"/></g>
+<g data-id="29"><circle cx="470.64" cy="325.94" r="1.94"/></g>
+<g data-id="31"><circle cx="517.74" cy="325.94" r="1.94"/></g>
+<g data-id="33"><circle cx="564.83" cy="325.94" r="1.94"/></g>
+<g data-id="35"><circle cx="611.93" cy="325.94" r="1.94"/></g>
+<g data-id="37"><circle cx="659.02" cy="325.94" r="1.94"/></g>
+<g data-id="39"><circle cx="706.12" cy="325.94" r="1.94"/></g>
+<g data-id="41"><circle cx="753.21" cy="325.94" r="1.94"/></g>
+<g data-id="43"><circle cx="753.21" cy="274.06" r="1.94"/></g>
+<g data-id="45"><circle cx="706.12" cy="274.06" r="1.94"/></g>
+<g data-id="47"><circle cx="659.02" cy="274.06" r="1.94"/></g>
+<g data-id="49"><circle cx="611.93" cy="274.06" r="1.94"/></g>
+<g data-id="51"><circle cx="564.83" cy="274.06" r="1.94"/></g>
+<g data-id="53"><circle cx="517.74" cy="274.06" r="1.94"/></g>
+<g data-id="55"><circle cx="470.64" cy="274.06" r="1.94"/></g>
+<g data-id="57"><circle cx="423.55" cy="274.06" r="1.94"/></g>
+<g data-id="59"><circle cx="376.45" cy="274.06" r="1.94"/></g>
+<g data-id="61"><circle cx="329.36" cy="274.06" r="1.94"/></g>
+<g data-id="63"><circle cx="282.26" cy="274.06" r="1.94"/></g>
+<g data-id="65"><circle cx="235.17" cy="274.06" r="1.94"/></g>
+<g data-id="67"><circle cx="188.07" cy="274.06" r="1.94"/></g>
+<g data-id="69"><circle cx="140.98" cy="274.06" r="1.94"/></g>
+<g data-id="71"><circle cx="93.88" cy="274.06" r="1.94"/></g>
+<g data-id="73"><circle cx="46.79" cy="274.06" r="1.94"/></g>
+</g>
+<g class="edges" fill="none" stroke="#1f2933" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="points" fill="#1f2933">
+<g data-id="1"><circle cx="36.36" cy="336.36" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="2"><circle cx="763.64" cy="336.36" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="3"><circle cx="763.64" cy="263.64" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="4"><circle cx="36.36" cy="263.64" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="6"><circle cx="36.36" cy="300" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g data-id="7"><circle cx="763.64" cy="300" r="1.5" fill="#1f2933" stroke="none"/></g>
+</g>
+<g class="text" font-family="sans-serif" font-size="11" fill="#1f2933">
+<text x="405" y="295" data-for="5">pier</text>
+<text x="98.88" y="295" data-for="74">BE-left</text>
+<text x="711.12" y="295" data-for="75">BE-right</text>
+</g>
+<g class="legend" font-family="sans-serif" font-size="11" fill="#1f2933" stroke="#1f2933" stroke-width="1">
+<path d="M12 584 L12 588 L133.21 588 L133.21 584" fill="none"/>
+<text x="139.21" y="588" stroke="none">500 mm</text>
+<text x="12" y="578" stroke="none">top</text>
+</g>
+</svg>

@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
 from apeCAD.entities import EntityId
-from apeCAD.render.scene import Drawable, Path3
+from apeCAD.render.drawable import SECTION_LAYERS, Drawable, Path3
+from apeCAD.render.style import MIN_BAR_RADIUS_PX, SECTION_STYLE
 from apeCAD.render.views import Vec2, View
 
 BACKGROUND = "#ffffff"
@@ -16,6 +17,9 @@ INK = "#1f2933"
 FACE_FILL = "#3b6ea5"
 ACCENT = "#e8590c"
 FONT = 'font-family="sans-serif" font-size="11"'
+FONT_PX = 11.0
+CHAR_PX = 6.6  # a generous sans-serif average at 11 px, to keep labels inside the frame
+TEXT_GAP_PX = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +91,7 @@ def write_svg(
     )
     out.extend(_group(d, view, viewport, "data-id", _plain_body) for d in faces)
     out.append("</g>")
+    out.extend(_section_layers(items, view, viewport))
     out.append(
         f'<g class="edges" fill="none" stroke="{INK}" stroke-width="1.5" '
         'stroke-linecap="round" stroke-linejoin="round">'
@@ -103,9 +108,7 @@ def write_svg(
             'stroke-linecap="round" stroke-linejoin="round">'
         )
         for d in marked:
-            body = {"face": _accent_fill_body, "edge": _accent_stroke_body}.get(
-                d.layer, _dot_body(2.5, ACCENT)
-            )
+            body = _HIGHLIGHT_BODIES.get(d.layer, _dot_body(2.5, ACCENT))
             out.append(_group(d, view, viewport, "data-highlight", body))
         out.append("</g>")
     out.append(f'<g class="text" {FONT} fill="{INK}">')
@@ -119,6 +122,20 @@ def write_svg(
     out.extend(_legend(view, viewport))
     out.append("</svg>")
     return "\n".join(out) + "\n"
+
+
+def _section_layers(items: list[Drawable], view: View, viewport: Viewport) -> list[str]:
+    """One group per section layer that has anything in it, back to front."""
+    out: list[str] = []
+    for layer in SECTION_LAYERS:
+        members = [d for d in items if d.layer == layer]
+        if not members:
+            continue
+        body = _disc_body(None) if layer == "bar" else _plain_body
+        out.append(f'<g class="{layer}" {SECTION_STYLE[layer].attrs()}>')
+        out.extend(_group(d, view, viewport, "data-id", body) for d in members)
+        out.append("</g>")
+    return out
 
 
 def _group(d: Drawable, view: View, viewport: Viewport, attr: str, body: _BodyFn) -> str:
@@ -151,6 +168,22 @@ def _accent_stroke_body(d: Drawable, view: View, viewport: Viewport) -> str:
     return "".join(f'<path d="{data}" fill="none"/>' for data in _paths(d, view, viewport))
 
 
+def _disc_body(color: str | None) -> _BodyFn:
+    """A bar at its true diameter, never smaller than MIN_BAR_RADIUS_PX."""
+
+    def body(d: Drawable, view: View, viewport: Viewport) -> str:
+        radius = max(d.radius_mm * viewport.scale, MIN_BAR_RADIUS_PX)
+        paint = "" if color is None else f' fill="{color}" stroke="none"'
+        dots: list[str] = []
+        for points, _closed in d.paths:
+            for p in points:
+                x, y = viewport.to_px(view.project(p))
+                dots.append(f'<circle cx="{num(x)}" cy="{num(y)}" r="{num(radius)}"{paint}/>')
+        return "".join(dots)
+
+    return body
+
+
 def _dot_body(radius: float, color: str) -> _BodyFn:
     def body(d: Drawable, view: View, viewport: Viewport) -> str:
         dots: list[str] = []
@@ -166,6 +199,18 @@ def _dot_body(radius: float, color: str) -> _BodyFn:
     return body
 
 
+_HIGHLIGHT_BODIES: dict[str, _BodyFn] = {
+    "face": _accent_fill_body,
+    "concrete": _accent_fill_body,
+    "edge": _accent_stroke_body,
+    "cover": _accent_stroke_body,
+    "leg": _accent_stroke_body,
+    "hoop": _accent_stroke_body,
+    "crosstie": _accent_stroke_body,
+    "bar": _disc_body(ACCENT),
+}
+
+
 def _texts(items: list[Drawable], view: View, viewport: Viewport, text: TextOptions) -> list[str]:
     out: list[str] = []
     for d in items:
@@ -179,11 +224,20 @@ def _texts(items: list[Drawable], view: View, viewport: Viewport, text: TextOpti
         if not parts:
             continue
         x, y = viewport.to_px(view.project(d.anchor))
+        words = " ".join(parts)
         out.append(
-            f'<text x="{num(x + 5.0)}" y="{num(y - 5.0)}" data-for="{d.entity_id}">'
-            f"{clean_text(' '.join(parts))}</text>"
+            f'<text {_text_place(x, y, len(words), viewport)} data-for="{d.entity_id}">'
+            f"{clean_text(words)}</text>"
         )
     return out
+
+
+def _text_place(x: float, y: float, chars: int, viewport: Viewport) -> str:
+    """Up and right of the anchor, flipped left or down where it would leave the frame."""
+    ty = y - TEXT_GAP_PX if y - TEXT_GAP_PX >= FONT_PX else y + TEXT_GAP_PX + FONT_PX
+    if x + TEXT_GAP_PX + chars * CHAR_PX <= viewport.width - TEXT_GAP_PX:
+        return f'x="{num(x + TEXT_GAP_PX)}" y="{num(ty)}"'
+    return f'x="{num(x - TEXT_GAP_PX)}" y="{num(ty)}" text-anchor="end"'
 
 
 def scale_bar_mm(viewport: Viewport) -> float:

@@ -382,7 +382,7 @@ export async function onClick(event) {
 }
 
 const toolHints = {
-  select: "Select: click, or drag L→R window / R→L crossing. Filter 1–5. Shift adds. Delete removes.",
+  select: "Select: click, or drag L→R window / R→L crossing. Filter 1–6. Shift adds. Delete removes.",
   line: "Line: click to chain segments, or type a length and Enter. Enter or Esc places the chain.",
   polyline: "Polyline: click vertices. Enter finishes. Click start or type C to close.",
   rect: "Rect: two clicks for a rectangle on XY.",
