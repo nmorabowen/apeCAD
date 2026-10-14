@@ -27,8 +27,9 @@ Chrome follows the APE design system ([ADR 0031](../adrs/0031-ape-design-system.
 values in [`ape-design.md`](ape-design.md) §1). Every colour is a role in `static/css/app.css`:
 chrome roles per theme (light paper, dark carbon) and canvas roles on `#stage` per canvas
 preset (paper, mist, carbon). `js/theme.js` sets `data-theme` / `data-canvas` and reads the
-canvas roles into `INK` for three.js; no other module writes a colour, except the section
-drawing table in `js/section.js` until stage D3. The UI face is Archivo Narrow, served from
+canvas roles into `INK` for three.js; no other module writes a colour. The section table in
+`js/section.js` reads `--fill-concrete`, `--ink-concrete`, `--ink-section-guide` and
+`--ink-rebar`, so a section stays legible on carbon; stage D3 sets their APE drawing values. The UI face is Archivo Narrow, served from
 `static/fonts/` with its OFL licence. The server serves `/css/<name>.css` and
 `/fonts/<name>.woff2` beside `/js/<name>.js`.
 

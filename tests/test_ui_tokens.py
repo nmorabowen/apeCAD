@@ -22,8 +22,8 @@ _RETIRED = {
     "0xd55e00", "#d55e00", "0x6cb3ff", "0x7dce7d", "0xff6b6b", "0x111111", "#2c333c",
     "#e8edf2", "0xe4e9ee", "0x1c1c1c", "0xa3a6aa",
 }
-# Section drawing inks stay in section.js until stage D3; lights are physics, not palette.
-_ALLOWED_HEX = {"section.js", "viewport.js", "prefs.js"}
+# Key light and contact shadow are physics, not palette; prefs.js migrates a legacy value.
+_ALLOWED_HEX = {"viewport.js", "prefs.js"}
 
 
 @pytest.fixture
@@ -97,6 +97,11 @@ def test_canvas_presets_define_the_canvas_roles() -> None:
         assert f'#stage[data-canvas="{preset}"]' in css
     carbon = _block(css, '#stage[data-canvas="carbon"] {')
     assert {"--canvas", "--grid-major", "--grid-minor", "--ink-edge", "--ghost"} <= set(carbon)
+    section_roles = {"--fill-concrete", "--ink-concrete", "--ink-section-guide", "--ink-rebar"}
+    assert section_roles <= set(carbon)
+    assert carbon["--ink-rebar"].strip() == "#8c9cf0"  # ADR 0031 §1.4: legible on carbon
+    paper = _block(css, '#stage[data-canvas="paper"], #stage[data-canvas="mist"] {')
+    assert section_roles <= set(paper)
 
 
 def test_client_keeps_no_retired_colour() -> None:

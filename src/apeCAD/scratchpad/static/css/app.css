@@ -68,6 +68,10 @@
   --hover: #3d8fce;
   --snap: #c64a1a;
   --ghost: #2f74ad;
+  --fill-concrete: #c8ccd1;
+  --ink-concrete: #1f2933;
+  --ink-section-guide: #7b8794;
+  --ink-rebar: #1f2933;
   --light-sky: #f4f7fb;
   --light-ground: #6e757c;
   --light-ground-flat: #c5cad0;
@@ -101,6 +105,10 @@
     --hover: #6aa8e8;
     --snap: #e2703a;
     --ghost: #6cb3ff;
+    --fill-concrete: #3a4048;
+    --ink-concrete: #c9d1da;
+    --ink-section-guide: #97a1ad;
+    --ink-rebar: #8c9cf0;
     --light-sky: #c8cdd3;
     --light-ground: #0a0a0a;
     --light-ground-flat: #2a2a2a;
@@ -132,6 +140,10 @@
   --hover: #6aa8e8;
   --snap: #e2703a;
   --ghost: #6cb3ff;
+  --fill-concrete: #3a4048;
+  --ink-concrete: #c9d1da;
+  --ink-section-guide: #97a1ad;
+  --ink-rebar: #8c9cf0;
   --light-sky: #c8cdd3;
   --light-ground: #0a0a0a;
   --light-ground-flat: #2a2a2a;
@@ -146,6 +158,10 @@
   --hover: #3d8fce;
   --snap: #c64a1a;
   --ghost: #2f74ad;
+  --fill-concrete: #c8ccd1;
+  --ink-concrete: #1f2933;
+  --ink-section-guide: #7b8794;
+  --ink-rebar: #1f2933;
   --light-sky: #f4f7fb;
   --light-ground: #6e757c;
   --light-ground-flat: #c5cad0;
@@ -162,6 +178,10 @@
   --hover: #6aa8e8;
   --snap: #e2703a;
   --ghost: #6cb3ff;
+  --fill-concrete: #3a4048;
+  --ink-concrete: #c9d1da;
+  --ink-section-guide: #97a1ad;
+  --ink-rebar: #8c9cf0;
   --light-sky: #c8cdd3;
   --light-ground: #0a0a0a;
   --light-ground-flat: #2a2a2a;
