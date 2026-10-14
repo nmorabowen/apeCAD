@@ -152,6 +152,7 @@ These break a sibling repo if you change them:
 | `apeCAD.scratchpad.server.main(argv)`: flags `--host`, `--port`, `--no-browser`, `--root` (ADR 0021); instance root from `--root`, else env `APE_HABITAT_ROOT`, else `APECAD_SESSION_SKETCHES` | apeWorkbench `src/apeWorkbench/services/tools.py` (`CadAdapter`); apeGmsh `src/apeGmsh/studio/template/tools/apeCAD/open_interface.py` |
 | `GET /api/identity` → `{name, pid, host, port, root}` (ADR 0019) | apeWorkbench `_probe_identity` |
 | Document JSON `schema: "apeCAD.document.v1"` (`ops/types.py` `SCHEMA_ID`); reads v0 and v1 (`SUPPORTED_SCHEMA_IDS`). v1 adds the section-mode ops and is a superset of v0 (ADR 0024 decision 9) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`): it must route `apeCAD.document.v1` too |
+| `apeCAD.scratchpad.transport.handle(request)`, `TRANSPORT_VERSION = 1`, `MAX_OPS`; refusals are `{ok: false, status: 422, error}` (ADR 0026). Importing it must not load `scratchpad.server` (`tests/test_transport.py`) | ape-web-tools HA-04 `POST /api/cad/transport` (its ADR-0006 D3) |
 | `Document.to_frame()` (mm internally) | apeSteel, per coupling-map; `to_gmsh` is not implemented |
 
 apeWorkbench's `CadAdapter` passes `--root <folder>`; the CLI accepts it

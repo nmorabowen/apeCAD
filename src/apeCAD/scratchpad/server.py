@@ -26,6 +26,8 @@ from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import RenderArgumentError
 from apeCAD.render.query import render_from_query
 from apeCAD.scratchpad.payload import scene_payload
+from apeCAD.scratchpad.transport import handle as transport_handle
+from apeCAD.scratchpad.transport import refusal as transport_refusal
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_HOST = "127.0.0.1"
@@ -161,6 +163,9 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/section/transport":
+            self._transport()  # stateless: no instance check, no lock, no revision
+            return
         if self._detached():
             return
         with self.server.lock:
@@ -203,6 +208,16 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             return False
         self._send_json(200, self._scene())
         return True
+
+    def _transport(self) -> None:
+        """ADR 0026: the HTTP status is the body's `status` (P8), 200 or 422."""
+        try:
+            request: object = self._read_json_object()
+        except OpArgumentError as exc:
+            response = transport_refusal(exc.code, str(exc))
+        else:
+            response = transport_handle(request)
+        self._send_json(cast(int, response["status"]), response)
 
     def _scene(self) -> dict[str, object]:
         scene = scene_payload(self.server.session.document)

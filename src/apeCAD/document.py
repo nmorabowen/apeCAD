@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from typing import cast
 
 from apeCAD.brep import BrepIndex, build_brep
@@ -158,6 +159,11 @@ class Document(SectionTypedOps):
     def ops(self) -> tuple[Op, ...]:
         return tuple(self._ops)
 
+    def redo_ops(self) -> tuple[Op, ...]:
+        """The redo stack, next redo first: `redo()` applies `redo_ops()[0]`. Pass it back as
+        `from_dict(..., redo=...)` so a stateless host round-trips undo (ADR 0026)."""
+        return tuple(reversed(self._redo))
+
     def to_frame(self) -> FrameGraph:
         """Project points/lines/polylines into a millimetre frame graph."""
         return document_to_frame(self)
@@ -177,7 +183,12 @@ class Document(SectionTypedOps):
         return json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n"
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object]) -> Document:
+    def from_dict(
+        cls, payload: dict[str, object], *, redo: Sequence[object] | None = None
+    ) -> Document:
+        """Replay a document's ops log. `redo` is a redo stack as op dicts, next redo first
+        (the order of `redo_ops()`); its ops are decoded here and replayed only by `redo()`.
+        """
         schema = payload.get("schema")
         if schema not in SUPPORTED_SCHEMA_IDS:
             raise DocumentError(
@@ -192,6 +203,9 @@ class Document(SectionTypedOps):
         document = cls()
         ops = [op_from_dict(_as_string_dict(raw)) for raw in cast(list[object], raw_ops)]
         document._replay(ops)
+        if redo is not None:
+            stack = [op_from_dict(_as_string_dict(raw)) for raw in redo]
+            document._redo = list(reversed(stack))
         return document
 
     @classmethod
