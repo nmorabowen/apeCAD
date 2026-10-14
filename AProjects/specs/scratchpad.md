@@ -33,6 +33,13 @@ canvas roles into `INK` for three.js; no other module writes a colour. The secti
 `static/fonts/` with its OFL licence. The server serves `/css/<name>.css` and
 `/fonts/<name>.woff2` beside `/js/<name>.js`.
 
+Every string the client writes at run time lives in `js/strings.js` (`t(id, params)`), in
+the ADR 0031 §2 register: imperative hints, results with counts and units, and refusals as
+`Refused: <reason>.` in the attention colour (`refuse()` in `js/cmdline.js`, which wraps a
+`DocumentError` message or a client check). Static labels and tooltips stay in
+`index.html` under the same rules; `tests/test_ui_strings.py` and
+`tests/js/strings.test.mjs` lint both.
+
 ## Tools
 
 Line (chains until Esc or Enter, posted as one `AddLineChain`), polyline (Enter to finish, click start to close), rectangle (face), circle, arc, ellipse, polygon, Bézier, box

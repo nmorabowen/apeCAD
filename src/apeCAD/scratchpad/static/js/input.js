@@ -1,6 +1,7 @@
 // Canvas pointer and window keyboard handling, and the rail / toggle button wiring.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import { findRecord } from "./brep.js";
 import { projButton, releaseNamedViewForOrbit, setProjectionMode } from "./camera.js";
 import {
@@ -11,6 +12,7 @@ import {
   isTypingField,
   orthoButton,
   refreshToggles,
+  refuse,
   setHint,
   setTyped,
   snapButton,
@@ -148,7 +150,7 @@ export function bindKeys() {
       if (isTypingField(event) || event.target === consoleInput) return;
       event.preventDefault();
       if (S.selectedIds.size !== 1) {
-        setHint("Select one entity to rename.");
+        setHint(t("hint.rename.one"));
         return;
       }
       const id = [...S.selectedIds][0];
@@ -161,7 +163,7 @@ export function bindKeys() {
       const key = event.key.toLowerCase();
       if (key === "n") {
         event.preventDefault();
-        newDocument().catch((error) => setHint(error.message));
+        newDocument().catch((error) => refuse(error));
         return;
       }
       if (key === "o") {
@@ -176,12 +178,12 @@ export function bindKeys() {
       }
       if (key === "z") {
         event.preventDefault();
-        undoDocument().catch((error) => setHint(error.message));
+        undoDocument().catch((error) => refuse(error));
         return;
       }
       if (key === "y") {
         event.preventDefault();
-        redoDocument().catch((error) => setHint(error.message));
+        redoDocument().catch((error) => refuse(error));
         return;
       }
       if (key === "a") {
@@ -201,8 +203,8 @@ export function bindKeys() {
       if (document.querySelector("dialog[open]")) return;
       if (pendingChain()) {
         finishLineChain()
-          .then(() => setHint("Line chain placed. Click to start another, or Esc for Select."))
-          .catch((error) => setHint(error.message));
+          .then(() => setHint(t("done.lineChainNext")))
+          .catch((error) => refuse(error));
         return;
       }
       if (S.pending) {
@@ -212,7 +214,7 @@ export function bindKeys() {
         S.ghostDims = [];
         hideMarquee();
         refreshToggles();
-        setHint("Cancelled.");
+        setHint(t("done.cancelled"));
         return;
       }
       if (S.tool !== "select") {
@@ -220,7 +222,7 @@ export function bindKeys() {
         return;
       }
       setSelection(null);
-      setHint("Selection cleared.");
+      setHint(t("done.selectionCleared"));
       return;
     }
     if (event.target === consoleInput) {
@@ -231,7 +233,7 @@ export function bindKeys() {
       }
       if (event.key === "Delete" && consoleInput.value === "") {
         event.preventDefault();
-        commitDelete().catch((error) => setHint(error.message));
+        commitDelete().catch((error) => refuse(error));
         return;
       }
       if (consoleInput.value === "" && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -291,7 +293,7 @@ export function bindKeys() {
     }
     if (event.key === "Delete") {
       event.preventDefault();
-      commitDelete().catch((error) => setHint(error.message));
+      commitDelete().catch((error) => refuse(error));
       return;
     }
     if (event.key === "o" || event.key === "O") {

@@ -1,5 +1,6 @@
 // Typed commands (Enter in the command line) and menu commands.
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import { goNamedView, setProjectionMode, syncCameras } from "./camera.js";
 import {
   activeLength,
@@ -7,6 +8,7 @@ import {
   clearTyped,
   consolePrompt,
   refreshToggles,
+  refuse,
   setHint,
   typedText,
 } from "./cmdline.js";
@@ -173,7 +175,7 @@ export async function commitWithEnter() {
     }
     if (pendingChain() && activeLength() == null) {
       await finishLineChain();
-      setHint("Line chain placed.");
+      setHint(t("done.lineChain"));
       return;
     }
     if (!S.lastPointer) return;
@@ -214,14 +216,14 @@ export async function commitWithEnter() {
       const end = currentEnd(S.lastPointer);
       if (!end) return;
       S.pending = { kind: "height", a: S.pending.a, b: end };
-      setHint("Box: move for height, type a length, then click or Enter.");
+      setHint(t("hint.box.height"));
       updateGhost(S.lastPointer);
       return;
     }
     if (S.pending.kind === "height") await finishBox(S.lastPointer);
     if (S.pending.kind === "extrude") await finishExtrude(S.lastPointer);
   } catch (error) {
-    setHint(error.message);
+    refuse(error);
     S.pending = null;
     ghosts.clear();
   }
@@ -234,7 +236,7 @@ export function closeMenus() {
 
 function runCommand(cmd) {
   closeMenus();
-  if (cmd === "new") return newDocument().catch((error) => setHint(error.message));
+  if (cmd === "new") return newDocument().catch((error) => refuse(error));
   if (cmd === "open" || cmd === "import") return openDocument();
   if (cmd === "save") return saveDocument(false);
   if (cmd === "save-as" || cmd === "export") return saveDocument(true);
@@ -250,13 +252,13 @@ function runCommand(cmd) {
   }
   if (cmd === "quit") {
     window.close();
-    setHint("Close the browser tab to quit.");
+    setHint(t("hint.quit"));
     return;
   }
-  if (cmd === "undo") return undoDocument().catch((error) => setHint(error.message));
-  if (cmd === "redo") return redoDocument().catch((error) => setHint(error.message));
+  if (cmd === "undo") return undoDocument().catch((error) => refuse(error));
+  if (cmd === "redo") return redoDocument().catch((error) => refuse(error));
   if (cmd === "select-all") return selectAll();
-  if (cmd === "delete") return commitDelete().catch((error) => setHint(error.message));
+  if (cmd === "delete") return commitDelete().catch((error) => refuse(error));
   if (cmd === "perspective") return setProjectionMode("perspective");
   if (cmd === "parallel") return setProjectionMode("parallel");
   if (cmd === "view-top") return goNamedView("top");

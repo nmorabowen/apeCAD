@@ -2,9 +2,10 @@
 // polygons, arcs, Beziers, boxes and extrusions. One gesture posts one op, its vertices as
 // point ids or coordinates, so one undo removes the whole shape (ADR 0030).
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import { api } from "./api.js";
 import { findRecord } from "./brep.js";
-import { clearTyped, labelValue, refreshToggles, setHint, sidesValue } from "./cmdline.js";
+import { clearTyped, labelValue, refreshToggles, refuse, setHint, sidesValue } from "./cmdline.js";
 import { dist3, rectCorners, regularPolygon, vertexRef } from "./geom.js";
 import { polylineCloses, updateGhost } from "./ghosts.js";
 import { refreshFrom } from "./render.js";
@@ -45,7 +46,7 @@ export function profileExtents(id) {
 
 function rectRing(a, b) {
   const corners = rectCorners(a, b);
-  if (!corners) throw new Error("face needs a non-zero width and height");
+  if (!corners) throw new Error(t("reason.rectangle"));
   return corners.map(vertexRef);
 }
 
@@ -53,7 +54,7 @@ function rectRing(a, b) {
 // chain as one AddLineChain (finishLineChain).
 export async function finishLine(end) {
   if (dist3(S.pending.a, end) < 1) {
-    setHint("Line: click a different point, or Esc to end the chain.");
+    setHint(t("hint.line.different"));
     return;
   }
   const pts = (S.pending.pts || [S.pending.a]).concat([end]);
@@ -62,7 +63,7 @@ export async function finishLine(end) {
   S.ghostDims = [];
   S.pending = { kind: "line", a: end, pts, chain: true };
   refreshToggles();
-  setHint("Line: click the next point. Esc ends the chain.");
+  setHint(t("hint.line.next"));
   if (S.lastPointer) updateGhost(S.lastPointer);
 }
 
@@ -84,12 +85,12 @@ export async function finishLineChain() {
 
 function polylineHint() {
   if (!S.pending || S.pending.pts.length < 2) {
-    return "Polyline: click the next point.";
+    return t("hint.polyline.next");
   }
   if (S.pending.pts.length < 3) {
-    return "Polyline: click the next point, or Enter to finish.";
+    return t("hint.polyline.nextOrFinish");
   }
-  return "Polyline: click the next point, Enter to finish, click start or type C to close.";
+  return t("hint.polyline.nextFinishClose");
 }
 
 export async function appendPolylineVertex(end) {
@@ -99,7 +100,7 @@ export async function appendPolylineVertex(end) {
   }
   const last = S.pending.pts[S.pending.pts.length - 1];
   if (dist3(last, end) < 1) {
-    setHint("Polyline: click a different point, Enter to finish, or Esc to cancel.");
+    setHint(t("hint.polyline.different"));
     return;
   }
   S.pending.pts.push(end);
@@ -111,7 +112,8 @@ export async function appendPolylineVertex(end) {
 export async function finishPolyline(closed) {
   const pts = S.pending.pts;
   if (pts.length < 2 || (closed && pts.length < 3)) {
-    setHint(closed ? "Polyline: need three points to close." : "Polyline: click at least two points, then Enter.");
+    if (closed) refuse(t("reason.closedPolyline"));
+    else setHint(t("hint.polyline.twoPoints"));
     return;
   }
   await refreshFrom(await api("/api/op", "POST", {
@@ -125,7 +127,7 @@ export async function finishPolyline(closed) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint(closed ? "Closed polyline placed." : "Polyline placed. LMB starts another.");
+  setHint(t(closed ? "done.polylineClosed" : "done.polyline"));
 }
 
 export async function finishFace(end) {
@@ -137,7 +139,7 @@ export async function finishFace(end) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Rect placed.");
+  setHint(t("done.rect"));
 }
 
 export async function finishBox(event) {
@@ -155,7 +157,7 @@ export async function finishBox(event) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Box placed.");
+  setHint(t("done.box"));
 }
 
 export async function finishExtrude(event) {
@@ -172,12 +174,12 @@ export async function finishExtrude(event) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Solid placed.");
+  setHint(t("done.solid"));
 }
 
 export async function finishCircle(rim) {
   const radius = dist3(S.pending.a, rim);
-  if (radius < 1) throw new Error("circle radius must be positive");
+  if (radius < 1) throw new Error(t("reason.radius"));
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddCircle", center_id: vertexRef(S.pending.a), radius_mm: radius, label: labelValue(),
   }));
@@ -186,13 +188,13 @@ export async function finishCircle(rim) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Circle placed. Select it, then Extrude.");
+  setHint(t("done.circle"));
 }
 
 export async function finishEllipse(rim) {
   const rx = Math.abs(rim.x_mm - S.pending.a.x_mm);
   const ry = Math.abs(rim.y_mm - S.pending.a.y_mm);
-  if (rx < 1 || ry < 1) throw new Error("ellipse needs two positive radii");
+  if (rx < 1 || ry < 1) throw new Error(t("reason.ellipse"));
   await refreshFrom(await api("/api/op", "POST", {
     op: "AddEllipse",
     center_id: vertexRef(S.pending.a),
@@ -205,7 +207,7 @@ export async function finishEllipse(rim) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Ellipse placed.");
+  setHint(t("done.ellipse"));
 }
 
 export async function finishPolygon(rim) {
@@ -218,7 +220,7 @@ export async function finishPolygon(rim) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Polygon placed.");
+  setHint(t("done.polygon"));
 }
 
 export async function finishArc(end) {
@@ -235,7 +237,7 @@ export async function finishArc(end) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Arc placed.");
+  setHint(t("done.arc"));
 }
 
 export async function finishBezier(end) {
@@ -247,5 +249,5 @@ export async function finishBezier(end) {
   ghosts.clear();
   S.ghostDims = [];
   refreshToggles();
-  setHint("Bézier placed.");
+  setHint(t("done.bezier"));
 }

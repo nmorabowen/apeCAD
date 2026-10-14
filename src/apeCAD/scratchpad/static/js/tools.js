@@ -1,7 +1,8 @@
 // Tool switching and the canvas click state machine that drives every tool.
 import { S } from "./state.js";
+import { count, t } from "./strings.js";
 import { findRecord } from "./brep.js";
-import { activeLength, clearTyped, refreshToggles, setHint } from "./cmdline.js";
+import { activeLength, clearTyped, refreshToggles, refuse, setHint } from "./cmdline.js";
 import {
   appendPolylineVertex,
   finishArc,
@@ -41,27 +42,27 @@ import { ghosts } from "./viewport.js";
 
 export function setTool(next) {
   if (next === "face-lines") {
-    commitFaceFromLines().catch((error) => setHint(error.message));
+    commitFaceFromLines().catch((error) => refuse(error));
     return;
   }
   if (next === "join") {
-    commitJoin().catch((error) => setHint(error.message));
+    commitJoin().catch((error) => refuse(error));
     return;
   }
   if (next === "sew") {
-    commitSew().catch((error) => setHint(error.message));
+    commitSew().catch((error) => refuse(error));
     return;
   }
   if (next === "simplify") {
-    commitSimplify().catch((error) => setHint(error.message));
+    commitSimplify().catch((error) => refuse(error));
     return;
   }
   if (next === "delete") {
-    commitDelete().catch((error) => setHint(error.message));
+    commitDelete().catch((error) => refuse(error));
     return;
   }
   const previous = S.tool;
-  if (pendingChain()) finishLineChain().catch((error) => setHint(error.message));
+  if (pendingChain()) finishLineChain().catch((error) => refuse(error));
   S.tool = next;
   S.pending = null;
   clearTyped();
@@ -78,14 +79,14 @@ export function setTool(next) {
   refreshToggles();
   if (next === "trim") {
     setHint(S.cutterIds.size
-      ? `Trim (T): click the part to remove. ${S.cutterIds.size} cutter(s) pinned. Shift pins more.`
-      : "Trim (T): click the part to remove. Shift pins a cutter. All lines cut if none pinned.");
+      ? t("hint.trim.pinned", { n: S.cutterIds.size, cutters: cutterNoun(S.cutterIds.size) })
+      : t("hint.trim.none"));
   } else if (next === "extend") {
     setHint(S.cutterIds.size
-      ? `Extend (E): click the end to grow. ${S.cutterIds.size} boundary line(s) pinned.`
-      : "Extend (E): click the end to grow. Shift pins a boundary. All lines if none pinned.");
+      ? t("hint.extend.pinned", { n: S.cutterIds.size, boundaries: boundaryNoun(S.cutterIds.size) })
+      : t("hint.extend.none"));
   } else {
-    setHint(toolHints[S.tool] || "");
+    setHint(TOOL_HINTS.has(S.tool) ? t(`tool.${S.tool}`) : "");
   }
   if (next === "trim" || next === "extend" || previous === "trim" || previous === "extend") rebuild();
 }
@@ -95,19 +96,19 @@ export async function onClick(event) {
     if (S.tool === "select") {
       const picked = pickEntity(event);
       setSelection(picked, { shift: event.shiftKey });
-      if (picked == null && !event.shiftKey) setHint("Selection cleared.");
+      if (picked == null && !event.shiftKey) setHint(t("done.selectionCleared"));
       return;
     }
     if (S.tool === "move") {
       if (S.selectedIds.size === 0) {
-        setHint("Select entities first, then Move.");
+        setHint(t("hint.selectFirst", { verb: "Move" }));
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "move", a: xyz };
-        setHint("Move: click the destination, or type a length and Enter.");
+        setHint(t("hint.move.dest"));
         return;
       }
       const end = currentEnd(event);
@@ -117,14 +118,14 @@ export async function onClick(event) {
     }
     if (S.tool === "rotate") {
       if (S.selectedIds.size === 0) {
-        setHint("Select entities first, then Rotate.");
+        setHint(t("hint.selectFirst", { verb: "Rotate" }));
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "rotate", a: xyz };
-        setHint("Rotate: type degrees and Enter, or click a second point for the angle.");
+        setHint(t("hint.rotate.angle"));
         return;
       }
       const typed = activeLength();
@@ -138,14 +139,14 @@ export async function onClick(event) {
     }
     if (S.tool === "mirror") {
       if (S.selectedIds.size === 0) {
-        setHint("Select entities first, then Mirror.");
+        setHint(t("hint.selectFirst", { verb: "Mirror" }));
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "mirror", a: xyz };
-        setHint("Mirror: click the second point of the axis.");
+        setHint(t("hint.mirror.second"));
         return;
       }
       const end = currentEnd(event);
@@ -155,14 +156,14 @@ export async function onClick(event) {
     }
     if (S.tool === "array") {
       if (S.selectedIds.size === 0) {
-        setHint("Select entities first, then Array. n is the count.");
+        setHint(t("hint.selectFirstCount", { verb: "Array" }));
         return;
       }
       const xyz = hitWorkplane(event);
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "array", a: xyz };
-        setHint("Array: click the spacing to the next copy. n is the total count.");
+        setHint(t("hint.array.spacing"));
         return;
       }
       const end = currentEnd(event);
@@ -172,7 +173,7 @@ export async function onClick(event) {
     }
     if (S.tool === "polar") {
       if (S.selectedIds.size === 0) {
-        setHint("Select entities first, then Polar. n is the count.");
+        setHint(t("hint.selectFirstCount", { verb: "Polar" }));
         return;
       }
       const xyz = hitWorkplane(event);
@@ -195,24 +196,22 @@ export async function onClick(event) {
         if (S.cutterIds.has(picked)) S.cutterIds.delete(picked);
         else S.cutterIds.add(picked);
         rebuild();
-        const noun = S.tool === "extend" ? "boundary" : "cutter";
-        setHint(S.cutterIds.size
-          ? `${S.tool === "extend" ? "Extend" : "Trim"}: ${S.cutterIds.size} ${noun}(s). Click a part.`
-          : `${S.tool === "extend" ? "Extend" : "Trim"}: all lines. Click a part.`);
+        const n = S.cutterIds.size;
+        if (S.tool === "extend") {
+          setHint(n ? t("hint.extend.pins", { n, boundaries: boundaryNoun(n) }) : t("hint.extend.allLines"));
+        } else {
+          setHint(n ? t("hint.trim.pins", { n, cutters: cutterNoun(n) }) : t("hint.trim.allLines"));
+        }
         return;
       }
       if (!row || row.kind !== "Line") {
-        setHint(S.tool === "extend"
-          ? "Extend: click the end to grow, or Shift-click a boundary."
-          : "Trim: click the part to remove, or Shift-click a cutter.");
+        setHint(t(S.tool === "extend" ? "hint.extend.pick" : "hint.trim.pick"));
         return;
       }
       const click = hitWorkplane(event);
       const preview = solveTrimOrExtend(picked, click, S.tool);
       if (!preview) {
-        setHint(S.tool === "extend"
-          ? "Extend: click the short end toward a boundary (implied intersection is OK)."
-          : "Trim: click a free end — the stub past the nearest cutter.");
+        setHint(t(S.tool === "extend" ? "hint.extend.shortEnd" : "hint.trim.freeEnd"));
         return;
       }
       await commitTrimPreview(preview);
@@ -222,17 +221,17 @@ export async function onClick(event) {
       const picked = pickEntity(event);
       const row = findRecord(picked);
       if (!row || row.kind !== "Line") {
-        setHint("Break: click the first line.");
+        setHint(t("hint.break.first"));
         return;
       }
       if (!S.pending) {
         S.pending = { kind: "break", lineId: picked };
-        setHint("Break: click the crossing line.");
+        setHint(t("hint.break.second"));
         return;
       }
       const preview = solveBreak(S.pending.lineId, picked);
       if (!preview) {
-        setHint("Break: those lines do not cross. Click another line.");
+        refuse(t("reason.noCross"));
         return;
       }
       await commitBreak(preview);
@@ -242,7 +241,7 @@ export async function onClick(event) {
       const picked = pickEntity(event);
       const row = findRecord(picked);
       if (!row || (row.kind !== "Line" && row.kind !== "Face" && row.kind !== "Polyline")) {
-        setHint("Node: click a line, face, or polyline.");
+        setHint(t("hint.node.pick"));
         return;
       }
       const xyz = hitWorkplane(event);
@@ -253,14 +252,14 @@ export async function onClick(event) {
     if (S.tool === "extrude") {
       const profileId = selectedProfileId();
       if (profileId == null) {
-        setHint("Select a face, circle, or ellipse first.");
+        setHint(t("hint.extrude.select"));
         return;
       }
       if (!S.pending) {
         const extents = profileExtents(profileId);
         if (!extents) return;
         S.pending = { kind: "extrude", a: extents.a, b: extents.b, profileId };
-        setHint("Extrude: move for height, then click or Enter.");
+        setHint(t("hint.extrude.height"));
         return;
       }
       await finishExtrude(event);
@@ -271,7 +270,7 @@ export async function onClick(event) {
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "line", a: xyz };
-        setHint("Line: click the next point, or type a length and Enter.");
+        setHint(t("hint.line.nextOrType"));
         return;
       }
       const end = currentEnd(event);
@@ -284,7 +283,7 @@ export async function onClick(event) {
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "polyline", pts: [xyz] };
-        setHint("Polyline: click the next point.");
+        setHint(t("hint.polyline.next"));
         return;
       }
       const end = currentEnd(event);
@@ -297,7 +296,7 @@ export async function onClick(event) {
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "rect", a: xyz };
-        setHint("Rect: click the opposite corner.");
+        setHint(t("hint.rect.corner"));
         return;
       }
       const end = currentEnd(event);
@@ -310,11 +309,9 @@ export async function onClick(event) {
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "radial", a: xyz };
-        setHint(S.tool === "circle"
-          ? "Circle: click the radius, or type it and Enter."
-          : S.tool === "polygon"
-            ? "Polygon: click the radius."
-            : "Ellipse: click a corner of the bounding box.");
+        setHint(t(S.tool === "circle"
+          ? "hint.circle.radius"
+          : S.tool === "polygon" ? "hint.polygon.radius" : "hint.ellipse.corner"));
         return;
       }
       const rim = currentEnd(event);
@@ -329,12 +326,12 @@ export async function onClick(event) {
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "arc", pts: [xyz] };
-        setHint("Arc: click a second point on the arc.");
+        setHint(t("hint.arc.second"));
         return;
       }
       if (S.pending.pts.length === 1) {
         S.pending.pts.push(xyz);
-        setHint("Arc: click the end point.");
+        setHint(t("hint.arc.end"));
         return;
       }
       await finishArc(xyz);
@@ -345,12 +342,12 @@ export async function onClick(event) {
       if (!xyz) return;
       if (!S.pending) {
         S.pending = { kind: "bezier", pts: [xyz] };
-        setHint("Bézier: click control point 2.");
+        setHint(t("hint.bezier.point", { n: 2 }));
         return;
       }
       if (S.pending.pts.length < 3) {
         S.pending.pts.push(xyz);
-        setHint(`Bézier: click control point ${S.pending.pts.length + 1}.`);
+        setHint(t("hint.bezier.point", { n: S.pending.pts.length + 1 }));
         return;
       }
       await finishBezier(xyz);
@@ -361,47 +358,37 @@ export async function onClick(event) {
         const xyz = hitWorkplane(event);
         if (!xyz) return;
         S.pending = { kind: "rect", a: xyz };
-        setHint("Box: click the opposite corner of the face.");
+        setHint(t("hint.box.corner"));
         return;
       }
       if (S.pending.kind === "rect") {
         const end = currentEnd(event);
         if (!end) return;
         S.pending = { kind: "height", a: S.pending.a, b: end };
-        setHint("Box: move for height, type a length, then click or Enter.");
+        setHint(t("hint.box.height"));
         return;
       }
       await finishBox(event);
     }
   } catch (error) {
-    setHint(error.message);
+    refuse(error);
     S.pending = null;
     ghosts.clear();
     S.ghostDims = [];
   }
 }
 
-const toolHints = {
-  select: "Select: click, or drag L→R window / R→L crossing. Filter 1–6. Shift adds. Delete removes.",
-  line: "Line: click to chain segments, or type a length and Enter. Enter or Esc places the chain.",
-  polyline: "Polyline: click vertices. Enter finishes. Click start or type C to close.",
-  rect: "Rect: two clicks for a rectangle on XY.",
-  circle: "Circle: centre, then radius. Then Select + Extrude.",
-  arc: "Arc: three clicks (start, on-arc, end).",
-  ellipse: "Ellipse: centre, then a corner of the bounding box.",
-  polygon: "Polygon: centre, then radius. The library places a hexagon.",
-  bezier: "Bézier: four control points.",
-  box: "Box: rectangle, then pull height. Type height and Enter.",
-  extrude: "Extrude: select a face/circle/ellipse, then pull height.",
-  move: "Move (M): select entities, click a base point, then the destination.",
-  rotate: "Rotate: select, click the pivot, type degrees or click an angle.",
-  mirror: "Mirror: select, then two clicks for the mirror axis.",
-  array: "Array: select, click spacing to the next copy.",
-  polar: "Polar: select, click the centre. Length = sweep ° (default 360).",
-  trim: "Trim (T): click the part to remove. Shift pins a cutter. Implied intersection is OK.",
-  extend: "Extend (E): click the short end to grow to a boundary. Shift pins a boundary.",
-  break: "Break: click two crossing lines to insert a shared node.",
-  node: "Node: click a line, face, or polyline to insert a shared point.",
-  chamfer: "Chamfer: type a distance, then click a face or polyline corner.",
-  fillet: "Fillet: type a radius, then click a face or polyline corner.",
-};
+// Tools whose start hint lives in strings.js as `tool.<name>`.
+const TOOL_HINTS = new Set([
+  "select", "line", "polyline", "rect", "circle", "arc", "ellipse", "polygon", "bezier", "box",
+  "extrude", "move", "rotate", "mirror", "array", "polar", "trim", "extend", "break", "node",
+  "chamfer", "fillet",
+]);
+
+function cutterNoun(n) {
+  return count(n, "cutter", "cutters").replace(/^\d+ /, "");
+}
+
+function boundaryNoun(n) {
+  return count(n, "boundary", "boundaries").replace(/^\d+ /, "");
+}

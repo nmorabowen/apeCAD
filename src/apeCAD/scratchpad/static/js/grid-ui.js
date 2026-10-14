@@ -1,5 +1,6 @@
 // Grid menu and Grid -> Preferences dialog: the setters behind them and their form sync.
 import { S } from "./state.js";
+import { t } from "./strings.js";
 import { refreshToggles, setHint } from "./cmdline.js";
 import { updateGhost } from "./ghosts.js";
 import { grid, gridMajorMm, gridMinorMm, rebuildGrid } from "./grid.js";
@@ -32,8 +33,8 @@ export function setGridAuto(next) {
   rebuildGrid();
   refreshToggles();
   setHint(S.prefs.gridAuto
-    ? `Grid auto ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`
-    : "Grid spacing is manual.");
+    ? t("grid.auto", { minor: formatLength(gridMinorMm()), major: formatLength(gridMajorMm()) })
+    : t("grid.manual"));
 }
 
 function setGridMinorOn(next) {
@@ -42,7 +43,7 @@ function setGridMinorOn(next) {
   savePrefs();
   rebuildGrid();
   refreshToggles();
-  setHint(S.gridMinorOn ? "Minor grid on." : "Minor grid off.");
+  setHint(t(S.gridMinorOn ? "grid.minorOn" : "grid.minorOff"));
 }
 
 export function setGridHiddenScale(next, opts = {}) {
@@ -50,7 +51,7 @@ export function setGridHiddenScale(next, opts = {}) {
   savePrefs();
   rebuildGrid();
   syncGridPrefsForm();
-  if (!opts.silent) setHint(`Hidden line scale ${hiddenLineScale()}.`);
+  if (!opts.silent) setHint(t("grid.dashScale", { s: hiddenLineScale() }));
 }
 
 export function setGridMinorStyle(next) {
@@ -58,7 +59,7 @@ export function setGridMinorStyle(next) {
   savePrefs();
   rebuildGrid();
   syncGridPrefsForm();
-  setHint(S.prefs.gridMinorStyle === "dots" ? "Minor grid: dots." : "Minor grid: lines.");
+  setHint(t(S.prefs.gridMinorStyle === "dots" ? "grid.dots" : "grid.lines"));
 }
 
 export function setGridDotSize(next, opts = {}) {
@@ -76,7 +77,7 @@ export function setGridDotSize(next, opts = {}) {
   }
   if (!updated && gridMinorStyle() === "dots") rebuildGrid();
   syncGridPrefsForm();
-  if (!opts.silent) setHint(`Dot size ${size} px.`);
+  if (!opts.silent) setHint(t("grid.dotSize", { n: size }));
 }
 
 export function setGridLineWidth(next, opts = {}) {
@@ -94,7 +95,7 @@ export function setGridLineWidth(next, opts = {}) {
   }
   if (!updated) rebuildGrid();
   syncGridPrefsForm();
-  if (!opts.silent) setHint(`Line thickness ${width} px.`);
+  if (!opts.silent) setHint(t("grid.lineWidth", { n: width }));
 }
 
 export function syncGridMenu() {
@@ -152,7 +153,7 @@ export function syncGridPrefsForm() {
     button.textContent = `${formatGridInput(Number(button.dataset.gridMinor))} / ${formatGridInput(Number(button.dataset.gridMajor))}`;
   }
   const placeholder = document.getElementById("console-input");
-  if (placeholder) placeholder.placeholder = `length ${unit} · angle ° · Enter`;
+  if (placeholder) placeholder.placeholder = t("grid.placeholder", { unit });
 }
 
 export function setGridOn(next) {
@@ -179,7 +180,7 @@ export function setGridSpacing(minor, major) {
   rebuildGrid();
   refreshToggles();
   if (S.lastPointer) updateGhost(S.lastPointer);
-  setHint(`Grid ${formatLength(gridMinorMm())} / ${formatLength(gridMajorMm())}.`);
+  setHint(t("grid.spacing", { minor: formatLength(gridMinorMm()), major: formatLength(gridMajorMm()) }));
 }
 
 export function setDisplayUnit(next) {
@@ -187,7 +188,7 @@ export function setDisplayUnit(next) {
   savePrefs();
   refreshToggles();
   if (S.lastPointer) updateGhost(S.lastPointer);
-  setHint(`Units ${displayUnit()}.`);
+  setHint(t("grid.units", { unit: displayUnit() }));
 }
 
 function readGridSpacingForm() {

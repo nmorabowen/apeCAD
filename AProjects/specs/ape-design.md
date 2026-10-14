@@ -107,7 +107,7 @@ Fonts shipped: `static/fonts/ArchivoNarrow-Regular.woff2`, `ArchivoNarrow-SemiBo
 
 - Menubar: `surface-1`, 1 px `line` underneath, wordmark (`logo/wordmark-transparent.svg`,
   inline, `stroke=currentColor`, 14 px tall) at the left, mode chips at the right.
-- Mode chips: `SNAP`, `GRID 100 / 1000 mm`, `ORTHO`, `FILTER Element`. On: `accent-text`
+- Mode chips: `SNAP`, `GRID SNAP 100 / 1000 mm`, `ORTHO`, `GRID`, `FILTER Element`. On: `accent-text`
   with a 1 px accent underline. Off: `muted`. Always shown, so a mode that is off is
   visible.
 - Panel heads: kicker style in `muted`; the active panel's head is `text`.
@@ -130,7 +130,7 @@ Fonts shipped: `static/fonts/ArchivoNarrow-Regular.woff2`, `ArchivoNarrow-SemiBo
 | S2 | No shortcut inside a hint; shortcuts live in tooltips and menus | "Trim (T): …" → "Trim: …" |
 | S3 | No dash as a pause, no ellipsis in a message, no `!`, no `?` | "View cube — click…" → "View cube. Click…" |
 | S4 | Result = past participle, count, noun, unit | "Moved 3 entities." |
-| S5 | Refusal = `Refused: <reason>.` | "Refused: lines do not cross." |
+| S5 | Refusal = `Refused: <reason>.`, reason capitalised unless it opens with an identifier (`keep_id`, `Ø21`) | "Refused: Lines do not cross." |
 | S6 | No verdict words (*OK*, *pass*, *fail*, *fine*) | "implied intersection is OK" → "implied intersections count" |
 | S7 | Sentence case; ALL CAPS only for CAD mode names (SNAP, GRID, ORTHO, ISO) | "Save As…" → "Save as…" |
 | S8 | One noun per concept: entity, element (filter only), Rectangle, Bézier, centre, colour | "Rect placed." → "Rectangle placed." |
@@ -155,7 +155,7 @@ inventory. Op kind literals (`"AddFace"`, `"Extrude"`, …), entity kind literal
 | View | Model · Tool rail · Command line | keep |
 | Grid | Show grid · Show minor · Snap to grid · Preferences… | Show grid · Show minor grid · Snap to grid · Preferences… |
 | Help | Shortcuts… | keep |
-| `#status` | SNAP · GRIDSNAP 100/1000 · GRID | chips: `SNAP` `GRID 100 / 1000 mm` `ORTHO` `FILTER Element` (on/off states, §1.5) |
+| `#status` | SNAP · GRIDSNAP 100/1000 · GRID | chips: `SNAP` `GRID SNAP 100 / 1000 mm` `ORTHO` `GRID` `FILTER Element` (on/off states, §1.5) |
 | Dock head | Model | keep |
 | Dock button title | Collapse outliner | Collapse the model panel |
 | `#tree` empty | No entities. | keep |
@@ -208,7 +208,7 @@ inventory. Op kind literals (`"AddFace"`, `"Extrude"`, …), entity kind literal
 | Grid presets | 50 / 500 … 500 / 5000 | keep |
 | Help dialog | Shortcuts · Close | keep |
 | Help line 1–2 | Ctrl+N new · Ctrl+O open · Ctrl+S save / Ctrl+Z undo · Ctrl+Y redo · Ctrl+A select all · Del delete | keep (render as a two-column `kbd` table) |
-| Help line 3 | Esc cancel / select · 1 point · 2 line · 3 face · 4 solid · 5 element | Esc cancels, then selects · 1 points · 2 lines · 3 faces · 4 solids · 5 whole elements |
+| Help line 3 | Esc cancel / select · 1 point · 2 line · 3 face · 4 solid · 5 element | Esc cancels, then selects · 1 points · 2 lines · 3 faces · 4 solids · 5 whole elements · 6 section entities |
 | Help line 4 | M move · T trim · E extend · J join · O perspective/parallel | M move · T trim · E extend · J join · O perspective or parallel |
 | Help line 5 | Line chains until Esc · Polyline: Enter finishes, C or click start closes | Line chains until Esc · Polyline: Enter finishes; C or a click on the start closes |
 | Help line 6 | F3 node snap · F7 grid snap · F8 ORTHO · F9 show grid · MMB orbit · RMB pan | F3 node snap · F7 grid snap · F8 ORTHO · F9 grid · middle drag orbits · right drag pans |
@@ -223,33 +223,33 @@ inventory. Op kind literals (`"AddFace"`, `"Extrude"`, …), entity kind literal
 | `camera.js:158` | Parallel (O) · Perspective (O) | keep |
 | `camera.js:174` | Perspective. · Parallel. | Perspective view. · Parallel view. |
 | `cmdline.js:23,25` | Command: | keep |
-| `cmdline.js:72` | GRIDSNAP {minor}/{major} | `GRID {minor} / {major} {unit}` chip |
+| `cmdline.js:72` | GRIDSNAP {minor}/{major} | `GRID SNAP {minor} / {major} {unit}` chip; `GRID` stays its own chip (visibility) |
 | `cmdline.js:120,126` | X {x}   Y {y}   Z {z}   {unit} | keep |
 | `commands.js:176` | Line chain placed. | keep |
 | `commands.js:217`, `tools.js:371` | Box: move for height, type a length, then click or Enter. | Box: move for the height, or type it. Click or Enter places the box. |
 | `commands.js:224,237,256,257,259`, `docfile.js:98` | {error.message} | Refused: {error.message} |
 | `commands.js:253` | Close the browser tab to quit. | keep |
-| `create.js:48` | face needs a non-zero width and height | Refused: the rectangle needs a width and a height. |
+| `create.js:48` | face needs a non-zero width and height | Refused: The rectangle needs a width and a height. |
 | `create.js:56` | Line: click a different point, or Esc to end the chain. | Line: click a different point. Esc ends the chain. |
 | `create.js:65` | Line: click the next point. Esc ends the chain. | keep |
 | `create.js:87` | Polyline: click the next point. | keep |
 | `create.js:90` | Polyline: click the next point, or Enter to finish. | Polyline: click the next point. Enter finishes. |
 | `create.js:92` | Polyline: click the next point, Enter to finish, click start or type C to close. | Polyline: click the next point. Enter finishes; C or a click on the start closes. |
 | `create.js:102` | Polyline: click a different point, Enter to finish, or Esc to cancel. | Polyline: click a different point. Enter finishes; Esc cancels. |
-| `create.js:114` | Polyline: need three points to close. | Refused: a closed polyline needs three points. |
+| `create.js:114` | Polyline: need three points to close. | Refused: A closed polyline needs three points. |
 | `create.js:114` | Polyline: click at least two points, then Enter. | Polyline: click two points or more, then Enter. |
 | `create.js:128` | Closed polyline placed. | keep |
 | `create.js:128` | Polyline placed. LMB starts another. | Polyline placed. Click to start another. |
 | `create.js:140` | Rect placed. | Rectangle placed. |
 | `create.js:158,175` | Box placed. · Solid placed. | keep |
-| `create.js:180` | circle radius must be positive | Refused: the radius must be positive. |
+| `create.js:180` | circle radius must be positive | Refused: The radius must be positive. |
 | `create.js:189` | Circle placed. Select it, then Extrude. | Circle placed. Select it and extrude for a solid. |
-| `create.js:195` | ellipse needs two positive radii | Refused: an ellipse needs two positive radii. |
+| `create.js:195` | ellipse needs two positive radii | Refused: An ellipse needs two positive radii. |
 | `create.js:208,221,238` | Ellipse placed. · Polygon placed. · Arc placed. | keep |
 | `create.js:250` | Bézier placed. | keep |
 | `docfile.js:28` | Save as | File name |
 | `docfile.js:33` | Saved {name}. Preferences are not in this file. | Saved {name}. Preferences stay in the browser. |
-| `docfile.js:43` | not an apeCAD document JSON | Refused: not an apeCAD document. |
+| `docfile.js:43` | not an apeCAD document JSON | Refused: Not an apeCAD document. |
 | `docfile.js:56,69` | Opened {name}. · New document. | keep |
 | `docfile.js:78` | Line: last vertex removed. | keep |
 | `grid-ui.js:35` | Grid auto {minor} / {major}. | Grid auto, {minor} / {major}. |
@@ -272,9 +272,9 @@ inventory. Op kind literals (`"AddFace"`, `"Extrude"`, …), entity kind literal
 | `modify.js:183` | Select two or more connected lines (or polylines), then Join. Sew first if ends only coincide. | Join: select two connected lines or polylines. Sew first where ends only coincide. |
 | `modify.js:193` | Joined into a polyline. | Joined {n} lines into a polyline. |
 | `modify.js:198` | Select entities, then Sew to merge coincident points. | Sew: select the entities whose coincident points to merge. |
-| `modify.js:206` | Sewed coincident points. | Merged {n} coincident points. |
+| `modify.js:206` | Sewed coincident points. | Merged coincident points in {n} entities. (the op returns no merge count) |
 | `modify.js:215` | Select a face or polyline, then Simplify. | Simplify: select a face or polyline. |
-| `modify.js:222` | Simplified collinear vertices. | Dropped {n} collinear vertices. |
+| `modify.js:222` | Simplified collinear vertices. | Dropped collinear vertices from {n} entities. (the op returns no vertex count) |
 | `modify.js:227` | Finish or Esc the current command before deleting. | Finish or cancel the current command before deleting. |
 | `modify.js:231` | Select entities, then Delete. | Delete: select the entities first. |
 | `modify.js:239` | Deleted 1 entity. · Deleted {n} entities. | keep |
@@ -310,7 +310,7 @@ inventory. Op kind literals (`"AddFace"`, `"Extrude"`, …), entity kind literal
 | `tools.js:214` | Extend: click the short end toward a boundary (implied intersection is OK). | Extend: click the short end toward a boundary. Implied intersections count. |
 | `tools.js:215` | Trim: click a free end — the stub past the nearest cutter. | Trim: click a free end. The stub past the nearest cutter goes. |
 | `tools.js:225,230` | Break: click the first line. · Break: click the crossing line. | keep |
-| `tools.js:235` | Break: those lines do not cross. Click another line. | Refused: those lines do not cross. Click another line. |
+| `tools.js:235` | Break: those lines do not cross. Click another line. | Refused: Those lines do not cross. Click another line. |
 | `tools.js:245` | Node: click a line, face, or polyline. | Node: click a line, face or polyline. |
 | `tools.js:256` | Select a face, circle, or ellipse first. | Extrude: select a face, circle or ellipse first. |
 | `tools.js:263` | Extrude: move for height, then click or Enter. | Extrude: move for the height. Click or Enter places it. |
@@ -322,7 +322,7 @@ inventory. Op kind literals (`"AddFace"`, `"Extrude"`, …), entity kind literal
 | `tools.js:332,337` | Arc: click a second point on the arc. · Arc: click the end point. | keep |
 | `tools.js:348,353` | Bézier: click control point {n}. | keep |
 | `tools.js:364` | Box: click the opposite corner of the face. | keep |
-| `tools.js:385` | Select: click, or drag L→R window / R→L crossing. Filter 1–5. Shift adds. Delete removes. | Select: click, or drag right for a window and left for a crossing. 1 to 5 filter; Shift adds; Del deletes. |
+| `tools.js:385` | Select: click, or drag L→R window / R→L crossing. Filter 1–5. Shift adds. Delete removes. | Select: click, or drag right for a window and left for a crossing. 1 to 6 filter; Shift adds; Del deletes. |
 | `tools.js:386` | Line: click to chain segments, or type a length and Enter. Enter or Esc places the chain. | keep |
 | `tools.js:387` | Polyline: click vertices. Enter finishes. Click start or type C to close. | Polyline: click the vertices. Enter finishes; C or a click on the start closes. |
 | `tools.js:388` | Rect: two clicks for a rectangle on XY. | Rectangle: click two corners on XY. |
@@ -345,7 +345,7 @@ inventory. Op kind literals (`"AddFace"`, `"Extrude"`, …), entity kind literal
 | `tools.js:405,406` | Chamfer: type a distance, then click a face or polyline corner. (Fillet: radius) | keep |
 | `transform.js:15` | Move cancelled (zero displacement). | Move cancelled: zero displacement. |
 | `transform.js:29,44,60` | Moved {n} entities. · Rotated {n} entities. · Mirrored {n} entities. | keep |
-| `transform.js:65` | n must be at least 2 for an array | Refused: an array needs n of 2 or more. |
+| `transform.js:65` | n must be at least 2 for an array | Refused: An array needs n of 2 or more. |
 | `transform.js:78,95` | Linear array: {n} items. · Polar array: {n} items. | Linear array of {n} copies. · Polar array of {n} copies. |
 | `viewcube.js:169` | ISO (Front–Right). | ISO view, front right. |
 
@@ -359,7 +359,7 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 | `server.py` 404 | unknown path {path} · missing static file {name} | keep (agent-facing, English) |
 | `server.py` CLI | port {n} already in use | keep |
 | `DocumentError` (163 raises) | lower-case clause, no values: "fillet radius is too large for the edges" | Reword on touch: capitalised by the client, values stated: "fillet radius 120 mm exceeds the shorter edge, 80 mm". `code` unchanged |
-| `DocumentError` internal | internal error: second line vanished | keep; the client shows `Refused: internal error …` and the log keeps it |
+| `DocumentError` internal | internal error: second line vanished | keep; the client shows `Refused: Internal error: …` and the log keeps it |
 
 ## 3. Drawing output style
 
@@ -454,7 +454,7 @@ ADR 0031 "Implementation stages".
   `tests/test_scratchpad.py` (css and font routes 200, unknown font 404).
 - Bump `app.js?v=N`. Update `logo/README.md` (light variant) and `specs/scratchpad.md`.
 
-### D2 — UI strings
+### D2 — UI strings (implemented)
 
 - `static/js/strings.js`: `export const T = { "hint.line.next": "Line: click the next point. Esc ends the chain.", … }`
   plus `t(id, params)`. Every row of §2.2 and §2.3 becomes an entry; modules import `t`.

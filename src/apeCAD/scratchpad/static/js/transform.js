@@ -1,5 +1,6 @@
 // Transform tools: move, rotate, mirror, and linear / polar arrays of the selection.
 import { S } from "./state.js";
+import { entities, t } from "./strings.js";
 import { api } from "./api.js";
 import { activeLength, arrayCount, clearTyped, setHint } from "./cmdline.js";
 import { refreshFrom } from "./render.js";
@@ -12,7 +13,7 @@ export async function finishMove(end) {
   if (Math.hypot(dx, dy, dz) < 1) {
     S.pending = null;
     ghosts.clear();
-    setHint("Move cancelled (zero displacement).");
+    setHint(t("done.moveCancelled"));
     return;
   }
   await refreshFrom(await api("/api/op", "POST", {
@@ -26,7 +27,7 @@ export async function finishMove(end) {
   clearTyped();
   ghosts.clear();
   S.ghostDims = [];
-  setHint(`Moved ${S.selectedIds.size} entities.`);
+  setHint(t("done.moved", { entities: entities(S.selectedIds.size) }));
 }
 
 export async function finishRotate(pivot, angleDeg) {
@@ -41,7 +42,7 @@ export async function finishRotate(pivot, angleDeg) {
   clearTyped();
   ghosts.clear();
   S.ghostDims = [];
-  setHint(`Rotated ${S.selectedIds.size} entities.`);
+  setHint(t("done.rotated", { entities: entities(S.selectedIds.size) }));
 }
 
 export async function finishMirror(axisA, axisB) {
@@ -57,12 +58,12 @@ export async function finishMirror(axisA, axisB) {
   clearTyped();
   ghosts.clear();
   S.ghostDims = [];
-  setHint(`Mirrored ${S.selectedIds.size} entities.`);
+  setHint(t("done.mirrored", { entities: entities(S.selectedIds.size) }));
 }
 
 export async function finishArray(end) {
   const copies = arrayCount() - 1;
-  if (copies < 1) throw new Error("n must be at least 2 for an array");
+  if (copies < 1) throw new Error(t("reason.arrayCount"));
   await refreshFrom(await api("/api/op", "POST", {
     op: "ArrayLinear",
     entity_ids: [...S.selectedIds],
@@ -75,7 +76,7 @@ export async function finishArray(end) {
   clearTyped();
   ghosts.clear();
   S.ghostDims = [];
-  setHint(`Linear array: ${arrayCount()} items.`);
+  setHint(t("done.arrayLinear", { n: arrayCount() }));
 }
 
 export async function finishPolar(center) {
@@ -92,5 +93,5 @@ export async function finishPolar(center) {
   clearTyped();
   ghosts.clear();
   S.ghostDims = [];
-  setHint(`Polar array: ${arrayCount()} items.`);
+  setHint(t("done.arrayPolar", { n: arrayCount() }));
 }

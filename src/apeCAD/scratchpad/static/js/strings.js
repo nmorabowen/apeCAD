@@ -1,0 +1,227 @@
+// Every UI string the client writes at run time (ADR 0031 §2; rewrite table in
+// AProjects/specs/ape-design.md §2). Register: notes on drawings, in English: imperative,
+// telegraphic, no dash pauses, no ellipsis in a message, no "OK", no "you". Static markup
+// lives in index.html. Pure module: no DOM, so tests/js/strings.test.mjs lints it.
+
+export const T = {
+  // command line
+  "prompt.idle": "Command:",
+  "chip.snap": "SNAP",
+  "chip.gridSnap": "GRID SNAP {minor} / {major} {unit}",
+  "chip.ortho": "ORTHO",
+  "chip.grid": "GRID",
+  "chip.filter": "FILTER {filter}",
+  "filter.point": "Point",
+  "filter.line": "Line",
+  "filter.face": "Face",
+  "filter.solid": "Solid",
+  "filter.element": "Element",
+  "filter.section": "Section",
+  "refuse.prefix": "Refused: {reason}.",
+  "refuse.draw": "Refused to draw: {reason}.",
+
+  // views
+  "view.perspective": "Perspective view.",
+  "view.parallel": "Parallel view.",
+  "view.named": "{view} view.",
+  "view.iso": "ISO view, front right.",
+  "title.proj.named": "{view} (O perspective / parallel)",
+  "title.proj.parallel": "Parallel (O)",
+  "title.proj.perspective": "Perspective (O)",
+
+  // tool hints, shown when a tool starts
+  "tool.select": "Select: click, or drag right for a window and left for a crossing. 1 to 6 filter; Shift adds; Del deletes.",
+  "tool.line": "Line: click to chain segments, or type a length and Enter. Enter or Esc places the chain.",
+  "tool.polyline": "Polyline: click the vertices. Enter finishes; C or a click on the start closes.",
+  "tool.rect": "Rectangle: click two corners on XY.",
+  "tool.circle": "Circle: click the centre, then the radius.",
+  "tool.arc": "Arc: click the start, a point on the arc, then the end.",
+  "tool.ellipse": "Ellipse: click the centre, then a corner of the bounding box.",
+  "tool.polygon": "Polygon: click the centre, then the radius. Six sides.",
+  "tool.bezier": "Bézier: click four control points.",
+  "tool.box": "Box: click two corners, then pull or type the height.",
+  "tool.extrude": "Extrude: select a face, circle or ellipse, then pull the height.",
+  "tool.move": "Move: click a base point, then the destination.",
+  "tool.rotate": "Rotate: click the pivot. Type degrees or click an angle.",
+  "tool.mirror": "Mirror: click two points on the axis.",
+  "tool.array": "Array: click the spacing to the next copy.",
+  "tool.polar": "Polar: click the centre. A typed length is the sweep in degrees, 360 by default.",
+  "tool.trim": "Trim: click the part to remove. Shift pins a cutter. Implied intersections count.",
+  "tool.extend": "Extend: click the short end to grow to a boundary. Shift pins a boundary.",
+  "tool.break": "Break: click two crossing lines to insert a shared node.",
+  "tool.node": "Node: click a line, face or polyline to insert a shared point.",
+  "tool.chamfer": "Chamfer: type a distance, then click a face or polyline corner.",
+  "tool.fillet": "Fillet: type a radius, then click a face or polyline corner.",
+
+  // hints during a gesture
+  "hint.line.different": "Line: click a different point. Esc ends the chain.",
+  "hint.line.next": "Line: click the next point. Esc ends the chain.",
+  "hint.line.nextOrType": "Line: click the next point, or type a length and Enter.",
+  "hint.line.vertexRemoved": "Line: last vertex removed.",
+  "hint.polyline.next": "Polyline: click the next point.",
+  "hint.polyline.nextOrFinish": "Polyline: click the next point. Enter finishes.",
+  "hint.polyline.nextFinishClose": "Polyline: click the next point. Enter finishes; C or a click on the start closes.",
+  "hint.polyline.different": "Polyline: click a different point. Enter finishes; Esc cancels.",
+  "hint.polyline.twoPoints": "Polyline: click two points or more, then Enter.",
+  "hint.rect.corner": "Rectangle: click the opposite corner.",
+  "hint.circle.radius": "Circle: click the radius, or type it and Enter.",
+  "hint.polygon.radius": "Polygon: click the radius.",
+  "hint.ellipse.corner": "Ellipse: click a corner of the bounding box.",
+  "hint.arc.second": "Arc: click a second point on the arc.",
+  "hint.arc.end": "Arc: click the end point.",
+  "hint.bezier.point": "Bézier: click control point {n}.",
+  "hint.box.corner": "Box: click the opposite corner of the face.",
+  "hint.box.height": "Box: move for the height, or type it. Click or Enter places the box.",
+  "hint.extrude.height": "Extrude: move for the height. Click or Enter places it.",
+  "hint.extrude.select": "Extrude: select a face, circle or ellipse first.",
+  "hint.move.dest": "Move: click the destination, or type a length and Enter.",
+  "hint.rotate.angle": "Rotate: type degrees and Enter, or click a second point for the angle.",
+  "hint.mirror.second": "Mirror: click the second point of the axis.",
+  "hint.array.spacing": "Array: click the spacing to the next copy. n is the total count.",
+  "hint.selectFirst": "{verb}: select the entities first.",
+  "hint.selectFirstCount": "{verb}: select the entities first. n is the total count.",
+  "hint.trim.pinned": "Trim: click the part to remove. {n} {cutters} pinned; Shift pins more.",
+  "hint.trim.none": "Trim: click the part to remove. Shift pins a cutter; with none pinned, every line cuts.",
+  "hint.extend.pinned": "Extend: click the end to grow. {n} {boundaries} pinned.",
+  "hint.extend.none": "Extend: click the end to grow. Shift pins a boundary; with none pinned, every line bounds.",
+  "hint.trim.pins": "Trim: {n} {cutters} pinned. Click a part.",
+  "hint.trim.allLines": "Trim: every line cuts. Click a part.",
+  "hint.extend.pins": "Extend: {n} {boundaries} pinned. Click a part.",
+  "hint.extend.allLines": "Extend: every line bounds. Click a part.",
+  "hint.trim.pick": "Trim: click the part to remove, or Shift-click a cutter.",
+  "hint.extend.pick": "Extend: click the end to grow, or Shift-click a boundary.",
+  "hint.trim.freeEnd": "Trim: click a free end. The stub past the nearest cutter goes.",
+  "hint.extend.shortEnd": "Extend: click the short end toward a boundary. Implied intersections count.",
+  "hint.break.first": "Break: click the first line.",
+  "hint.break.second": "Break: click the crossing line.",
+  "hint.node.pick": "Node: click a line, face or polyline.",
+  "hint.chamfer.distance": "Chamfer: type the distance in {unit}, then click a corner.",
+  "hint.fillet.radius": "Fillet: type the radius in {unit}, then click a corner.",
+  "hint.chamfer.corner": "Chamfer: click a corner of a face or polyline.",
+  "hint.fillet.corner": "Fillet: click a corner of a face or polyline.",
+  "hint.face.select": "Face: select three lines or more that close a loop.",
+  "hint.join.select": "Join: select two connected lines or polylines. Sew first where ends only coincide.",
+  "hint.sew.select": "Sew: select the entities whose coincident points to merge.",
+  "hint.simplify.select": "Simplify: select a face or polyline.",
+  "hint.delete.pending": "Finish or cancel the current command before deleting.",
+  "hint.rename.one": "Select one entity to rename.",
+  "hint.select.filter": "Select {filter}: click, or drag a window or a crossing.",
+  "hint.hidden": "Hidden in the view. Right-click and Show restores it.",
+  "hint.quit": "Close the browser tab to quit.",
+
+  // selection filter nouns (plural)
+  "filters.point": "points",
+  "filters.line": "lines",
+  "filters.face": "faces",
+  "filters.solid": "solids",
+  "filters.element": "whole elements",
+  "filters.section": "section entities",
+
+  // refusals the client decides itself; refusalText() adds "Refused: " and the full stop
+  "reason.rectangle": "the rectangle needs a width and a height",
+  "reason.radius": "the radius must be positive",
+  "reason.ellipse": "an ellipse needs two positive radii",
+  "reason.closedPolyline": "a closed polyline needs three points",
+  "reason.notDocument": "not an apeCAD document",
+  "reason.arrayCount": "an array needs n of 2 or more",
+  "reason.noCross": "those lines do not cross. Click another line",
+
+  // results
+  "done.lineChain": "Line chain placed.",
+  "done.lineChainNext": "Line chain placed. Click to start another; Esc returns to Select.",
+  "done.polylineClosed": "Closed polyline placed.",
+  "done.polyline": "Polyline placed. Click to start another.",
+  "done.rect": "Rectangle placed.",
+  "done.box": "Box placed.",
+  "done.solid": "Solid placed.",
+  "done.circle": "Circle placed. Select it and extrude for a solid.",
+  "done.ellipse": "Ellipse placed.",
+  "done.polygon": "Polygon placed.",
+  "done.arc": "Arc placed.",
+  "done.bezier": "Bézier placed.",
+  "done.extended": "Extended. Click another end; Esc ends.",
+  "done.trimmed": "Trimmed. Click another part; Esc ends.",
+  "done.broken": "Broken at the crossing. Click two more lines; Esc ends.",
+  "done.node": "Node inserted.",
+  "done.face": "Face placed from {n} lines.",
+  "done.join": "Joined {n} lines into a polyline.",
+  "done.sew": "Merged coincident points in {entities}.",
+  "done.simplify": "Dropped collinear vertices from {entities}.",
+  "done.delete": "Deleted {entities}.",
+  "done.chamfer": "Corner chamfered.",
+  "done.fillet": "Corner filleted.",
+  "done.moved": "Moved {entities}.",
+  "done.rotated": "Rotated {entities}.",
+  "done.mirrored": "Mirrored {entities}.",
+  "done.arrayLinear": "Linear array of {n} copies.",
+  "done.arrayPolar": "Polar array of {n} copies.",
+  "done.moveCancelled": "Move cancelled: zero displacement.",
+  "done.renamed": "Renamed to {name}.",
+  "done.labelCleared": "Label cleared.",
+  "done.duplicated": "Duplicated {entities}.",
+  "done.cancelled": "Cancelled.",
+  "done.selectionCleared": "Selection cleared.",
+  "done.windowSelected": "{mode}: {n} selected.",
+  "done.selected": "{n} selected.",
+  "done.nothingInWindow": "Nothing in the window.",
+  "done.nothingToSelect": "Nothing to select.",
+  "done.saved": "Saved {name}. Preferences stay in the browser.",
+  "done.opened": "Opened {name}.",
+  "done.new": "New document.",
+  "mode.crossing": "Crossing",
+  "mode.window": "Window",
+
+  // grid and units
+  "grid.auto": "Grid auto, {minor} / {major}.",
+  "grid.manual": "Grid spacing manual.",
+  "grid.minorOn": "Minor grid on.",
+  "grid.minorOff": "Minor grid off.",
+  "grid.dashScale": "Dash scale {s}.",
+  "grid.dots": "Minor grid as dots.",
+  "grid.lines": "Minor grid as lines.",
+  "grid.dotSize": "Dot size {n} px.",
+  "grid.lineWidth": "Line width {n} px.",
+  "grid.spacing": "Grid {minor} / {major}.",
+  "grid.units": "Units {unit}.",
+  "grid.placeholder": "length {unit} · angle ° · Enter",
+
+  // model panel
+  "tree.empty": "No entities.",
+  "props.none": "Nothing selected.",
+  "props.many": "{n} entities selected.",
+  "menu.ctx.select": "Select",
+  "menu.ctx.rename": "Rename",
+  "menu.ctx.duplicate": "Duplicate",
+  "menu.ctx.show": "Show",
+  "menu.ctx.hide": "Hide",
+  "menu.ctx.fit": "Fit",
+  "menu.ctx.expand": "Expand",
+  "menu.ctx.collapse": "Collapse",
+  "menu.ctx.delete": "Delete",
+  "menu.saveAsPrompt": "File name",
+};
+
+// Fill {name} placeholders. An unknown id returns the id, so a typo shows on screen.
+export function t(id, params = {}) {
+  const text = Object.prototype.hasOwnProperty.call(T, id) ? T[id] : id;
+  return text.replace(/\{(\w+)\}/g, (whole, key) => (key in params ? String(params[key]) : whole));
+}
+
+// "1 entity", "3 entities"; one noun pair per use.
+export function count(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+export function entities(n) {
+  return count(n, "entity", "entities");
+}
+
+// `Refused: <reason>.` (ADR 0031 §2.6). The reason is a DocumentError or client message;
+// its first letter is capitalised unless the first word is an identifier (keep_id, Ø12).
+export function refusalText(message) {
+  const raw = String(message || "").trim().replace(/\.+$/, "");
+  if (/^Refused( to draw)?:/.test(raw)) return `${raw}.`;
+  const first = raw.split(/\s/, 1)[0] || "";
+  const reason = /^[a-z]+$/.test(first) ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw;
+  return t("refuse.prefix", { reason: reason || "unknown reason" });
+}
