@@ -9,7 +9,7 @@ export const canvas = document.getElementById("view");
 export const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio);
 export const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xe4e9ee);
+scene.background = new THREE.Color(); // set from the canvas role by applyViz()
 
 export const WORLD_UP = new THREE.Vector3(0, 0, 1);
 export const ISO_DIR = new THREE.Vector3(1, -1, 1);
@@ -42,7 +42,7 @@ controls.minDistance = 10;
 controls.maxDistance = 2_000_000;
 controls.update();
 
-export const hemi = new THREE.HemisphereLight(0xf4f7fb, 0x6e757c, 0.55);
+export const hemi = new THREE.HemisphereLight(undefined, undefined, 0.55); // colours: applyViz()
 scene.add(hemi);
 export const keyLight = new THREE.DirectionalLight(0xffffff, 0.45);
 keyLight.position.set(-1.1, 0.85, 1.35);

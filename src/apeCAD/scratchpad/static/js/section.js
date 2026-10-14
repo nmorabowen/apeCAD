@@ -1,22 +1,26 @@
 // Section-mode entities in the 3-D view (ADR 0024): the concrete face, cover ring, leg axis,
 // hoops, crossties and bars, flat on their own z. All their colours live in SECTION_STYLE,
-// the one table the APE drawing-style slice (ADR 0031) swaps later.
+// the one table the APE drawing-style slice (ADR 0031, stage D3) swaps later.
 import * as THREE from "three";
 import { S } from "./state.js";
 import { pointById } from "./brep.js";
-import { CURVE_PICK, mark, selectionTints } from "./draw.js";
+import { mark, selectionTints } from "./draw.js";
 import { sampleCircle } from "./geom.js";
 import { formatMm } from "./prefs.js";
 import { dashSegments, roundedRing } from "./section-geom.js";
+import { INK } from "./theme.js";
 
-// Neutral ink until ADR 0031 is approved. Dash patterns are in mm on the section plane.
+// Colours come from the active canvas (css/app.css --fill-concrete, --ink-concrete,
+// --ink-section-guide, --ink-rebar via INK), so the section reads on paper and on carbon.
+// The light values are #32's neutral ink; D3 sets the APE drawing ink. Dash patterns are in
+// mm on the section plane.
 export const SECTION_STYLE = {
-  concrete: { fill: 0xc8ccd1, opacity: 0.6, edge: 0x1f2933 },
-  cover: { color: 0x7b8794, dash: [60, 40] },
-  leg: { color: 0x7b8794, dash: [160, 40, 20, 40] },
-  hoop: { color: 0x1f2933 },
-  crosstie: { color: 0x1f2933 },
-  bar: { color: 0x1f2933 },
+  concrete: { get fill() { return INK.concreteFill; }, opacity: 0.6, get edge() { return INK.concreteEdge; } },
+  cover: { get color() { return INK.sectionGuide; }, dash: [60, 40] },
+  leg: { get color() { return INK.sectionGuide; }, dash: [160, 40, 20, 40] },
+  hoop: { get color() { return INK.rebar; } },
+  crosstie: { get color() { return INK.rebar; } },
+  bar: { get color() { return INK.rebar; } },
 };
 
 export const SECTION_KINDS = ["ConcreteFace", "Bar", "Hoop", "Crosstie", "WallLeg", "CoverGuide"];
@@ -105,7 +109,7 @@ const vec = (p, lift = 0) => new THREE.Vector3(p.x_mm, p.y_mm, (p.z_mm || 0) + l
 
 function lineMaterial(color, entityId) {
   return new THREE.LineBasicMaterial({
-    color: selectionTints(entityId) ? CURVE_PICK : color,
+    color: selectionTints(entityId) ? INK.pick : color,
     depthTest: false,
   });
 }
@@ -140,7 +144,7 @@ function addConcrete(group, face) {
   if (S.prefs.showFaces) {
     const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x_mm, p.y_mm)));
     const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
-      color: tinted ? CURVE_PICK : style.fill,
+      color: tinted ? INK.pick : style.fill,
       transparent: true,
       opacity: tinted ? 0.35 : style.opacity,
       side: THREE.DoubleSide,
@@ -160,7 +164,7 @@ function addBar(group, bar) {
   const disc = new THREE.Mesh(
     new THREE.CircleGeometry(bar.diameter_mm / 2, 24),
     new THREE.MeshBasicMaterial({
-      color: selectionTints(bar.entity_id) ? CURVE_PICK : SECTION_STYLE.bar.color,
+      color: selectionTints(bar.entity_id) ? INK.pick : SECTION_STYLE.bar.color,
       side: THREE.DoubleSide,
       depthTest: false,
     }),

@@ -22,10 +22,12 @@ const GRID_LINE_WIDTH_MAX = 8;
 const PREFS_KEY = "apeCAD.prefs.v2";
 export const LAYOUT_KEY = "apeCAD.layout.v2";
 
+// `curve` "" means "the canvas edge ink" (--ink-edge in css/app.css).
 const PREF_DEFAULTS = {
-  background: "g5",
+  theme: "system",
+  canvas: "theme",
   clay: 176,
-  curve: "#111111",
+  curve: "",
   keyLight: true,
   ao: true,
   showEdges: true,
@@ -44,11 +46,12 @@ const PREF_DEFAULTS = {
   displayUnit: "mm",
 };
 
-export const BACKGROUNDS = {
-  g2: { bg: 0x1c1c1c, major: 0x3c3c3c, minor: 0x2a2a2a },
-  g5: { bg: 0xe4e9ee, major: 0xc0c0c0, minor: 0xd2d2d2 },
-  g6: { bg: 0xa3a6aa, major: 0x8a8e92, minor: 0x96999d },
-};
+// Canvas presets of prefs v2 (`background`) → ADR 0031 presets (`canvas`). g5 was the
+// default, so it maps to the theme's own canvas.
+const LEGACY_BACKGROUNDS = { g2: "carbon", g5: "theme", g6: "mist" };
+const THEME_NAMES = ["system", "light", "dark"];
+const CANVAS_NAMES = ["theme", "paper", "mist", "carbon"];
+const LEGACY_CURVE = "#111111";
 
 export function clampGridSpacing(value, fallback = GRID_DEFAULT_MINOR_MM) {
   const raw = Number(value);
@@ -67,6 +70,13 @@ export function mergePrefs(raw) {
     merged.gridMajor = clampGridSpacing(merged.gridMinor * 10, GRID_DEFAULT_MAJOR_MM);
   }
   if (merged.gridMajor < merged.gridMinor) merged.gridMajor = merged.gridMinor;
+  if (stored && stored.canvas == null && stored.background != null) {
+    merged.canvas = LEGACY_BACKGROUNDS[stored.background] || "theme";
+  }
+  delete merged.background;
+  if (!THEME_NAMES.includes(merged.theme)) merged.theme = "system";
+  if (!CANVAS_NAMES.includes(merged.canvas)) merged.canvas = "theme";
+  if (merged.curve === LEGACY_CURVE) merged.curve = "";
   return merged;
 }
 

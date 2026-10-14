@@ -35,6 +35,8 @@ DEFAULT_PORT = 8765
 PORT_SPAN = 16
 # Client ES modules imported by app.js. One flat folder; the name pattern rules out traversal.
 _JS_MODULE = re.compile(r"/js/([a-z0-9_-]+\.js)")
+_STYLESHEET = re.compile(r"/css/([a-z0-9_-]+\.css)")
+_FONT = re.compile(r"/fonts/([A-Za-z0-9_-]+\.woff2)")
 
 
 def _port_in_use(host: str, port: int) -> bool:
@@ -102,6 +104,14 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         module = _JS_MODULE.fullmatch(parsed.path)
         if module is not None:
             self._send_file(STATIC_DIR / "js" / module.group(1), "text/javascript; charset=utf-8")
+            return
+        sheet = _STYLESHEET.fullmatch(parsed.path)
+        if sheet is not None:
+            self._send_file(STATIC_DIR / "css" / sheet.group(1), "text/css; charset=utf-8")
+            return
+        font = _FONT.fullmatch(parsed.path)
+        if font is not None:
+            self._send_file(STATIC_DIR / "fonts" / font.group(1), "font/woff2")
             return
         static_images = {
             "/favicon.ico": ("favicon.ico", "image/x-icon"),

@@ -2,24 +2,11 @@
 // selection. Each object carries its entity id in userData for picking.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { INK, parseCssColor } from "./theme.js";
 import { ghosts, preselects } from "./viewport.js";
-
-const EDGE_COLOR = 0x111111;
-export const CURVE_PICK = 0x4a90d9;
-export const CURVE_HOVER = 0x6aa8e8;
-export const SNAP_COLOR = 0xd55e00;
 
 function isOverlayGroup(group) {
   return group === ghosts || group === preselects;
-}
-
-function parseCssHex(value, fallback) {
-  const raw = String(value || "").replace("#", "").trim();
-  const hex = raw.length === 3
-    ? raw.split("").map((ch) => ch + ch).join("")
-    : raw;
-  const parsed = Number.parseInt(hex, 16);
-  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 export function clayHex() {
@@ -28,7 +15,7 @@ export function clayHex() {
 }
 
 function curveIdle() {
-  return parseCssHex(S.prefs.curve, EDGE_COLOR);
+  return parseCssColor(S.prefs.curve) ?? INK.edge;
 }
 
 function isPicked(entityId) {
@@ -51,8 +38,8 @@ export function selectionTints(entityId) {
 }
 
 export function curveFor(entityId) {
-  if (selectionTints(entityId)) return CURVE_PICK;
-  if (entityId != null && S.cutterIds.has(entityId)) return CURVE_HOVER;
+  if (selectionTints(entityId)) return INK.pick;
+  if (entityId != null && S.cutterIds.has(entityId)) return INK.hover;
   return curveIdle();
 }
 
@@ -62,7 +49,7 @@ export function lineOverlay(entityId) {
 
 function clayMat(preview, opacity, entityId = null) {
   return new THREE.MeshLambertMaterial({
-    color: preview || selectionTints(entityId) ? CURVE_PICK : clayHex(),
+    color: preview || selectionTints(entityId) ? INK.pick : clayHex(),
     transparent: preview || opacity < 0.99,
     opacity,
     side: THREE.DoubleSide,
@@ -73,7 +60,7 @@ function addEdgeOverlay(group, mesh, entityId, preview) {
   if (preview || !S.prefs.showEdges) return;
   const edges = new THREE.LineSegments(
     new THREE.EdgesGeometry(mesh.geometry),
-    new THREE.LineBasicMaterial({ color: EDGE_COLOR }),
+    new THREE.LineBasicMaterial({ color: INK.edge }),
   );
   edges.position.copy(mesh.position);
   edges.quaternion.copy(mesh.quaternion);
@@ -163,7 +150,7 @@ export function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entity
   const outline = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(loop),
     new THREE.LineBasicMaterial({
-      color: preview ? (color ?? curveIdle()) : EDGE_COLOR,
+      color: preview ? (color ?? curveIdle()) : INK.edge,
     }),
   );
   mark(outline, entityId);
@@ -209,7 +196,7 @@ export function addPlanarFace(group, pts, entityId) {
     const outline = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(loop),
       new THREE.LineBasicMaterial({
-        color: preview ? CURVE_PICK : (selectionTints(entityId) ? CURVE_PICK : EDGE_COLOR),
+        color: preview ? INK.pick : (selectionTints(entityId) ? INK.pick : INK.edge),
       }),
     );
     mark(outline, entityId);
@@ -268,7 +255,7 @@ export function addVertexDot(group, point) {
   );
   const picked = selectionTints(point.entity_id);
   const material = new THREE.PointsMaterial({
-    color: picked ? CURVE_PICK : EDGE_COLOR,
+    color: picked ? INK.pick : INK.edge,
     size: S.selectFilter === "point" || picked ? 11 : 8,
     sizeAttenuation: false,
     depthTest: false,

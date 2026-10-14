@@ -12,6 +12,7 @@ import {
   syncViewMenu,
 } from "./camera.js";
 import { setHint } from "./cmdline.js";
+import { INK, chromeColors } from "./theme.js";
 import { ISO_DIR, WORLD_UP, viewUp } from "./viewport.js";
 
 const cubeCanvas = document.getElementById("viewcube");
@@ -22,25 +23,27 @@ const cubeRenderer = new THREE.WebGLRenderer({
 });
 
 cubeRenderer.setPixelRatio(window.devicePixelRatio);
-cubeRenderer.setClearColor(0x000000, 0);
+cubeRenderer.setClearAlpha(0);
 const cubeScene = new THREE.Scene();
 const cubeCam = new THREE.OrthographicCamera(-1.35, 1.35, 1.35, -1.35, 0.1, 20);
 cubeCam.up.copy(WORLD_UP);
 const cubeGroup = new THREE.Group();
 cubeScene.add(cubeGroup);
 
+// Face colours and type follow the chrome tokens; restyleCube() repaints them.
 function makeFaceTexture(label) {
+  const colors = chromeColors();
   const canvasFace = document.createElement("canvas");
   canvasFace.width = 256;
   canvasFace.height = 256;
   const ctx = canvasFace.getContext("2d");
-  ctx.fillStyle = "#1d2229";
+  ctx.fillStyle = colors.surface;
   ctx.fillRect(0, 0, 256, 256);
-  ctx.strokeStyle = "#2c333c";
+  ctx.strokeStyle = colors.line;
   ctx.lineWidth = 10;
   ctx.strokeRect(6, 6, 244, 244);
-  ctx.fillStyle = "#e8edf2";
-  ctx.font = "bold 52px Segoe UI, system-ui, sans-serif";
+  ctx.fillStyle = colors.text;
+  ctx.font = `600 56px ${colors.font}`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(label, 128, 128);
@@ -50,12 +53,15 @@ function makeFaceTexture(label) {
 }
 
 const CUBE_FACE = 1.12;
+const cubeFaces = [];
 
 function addCubeFace(nx, ny, nz, ux, uy, uz, label) {
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(CUBE_FACE, CUBE_FACE),
     new THREE.MeshBasicMaterial({ map: makeFaceTexture(label) }),
   );
+  mesh.userData.label = label;
+  cubeFaces.push(mesh);
   const normal = new THREE.Vector3(nx, ny, nz);
   mesh.position.copy(normal).multiplyScalar(CUBE_FACE / 2);
   mesh.up.set(ux, uy, uz);
@@ -74,10 +80,21 @@ const cubePick = new THREE.Mesh(
   new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
 );
 cubeGroup.add(cubePick);
-cubeGroup.add(new THREE.LineSegments(
+const cubeEdges = new THREE.LineSegments(
   new THREE.EdgesGeometry(cubePick.geometry),
-  new THREE.LineBasicMaterial({ color: 0x6cb3ff }),
-));
+  new THREE.LineBasicMaterial(),
+);
+cubeGroup.add(cubeEdges);
+
+// Repaint the faces and edges after a theme or canvas change, and once the UI font loads.
+export function restyleCube() {
+  for (const mesh of cubeFaces) {
+    mesh.material.map.dispose();
+    mesh.material.map = makeFaceTexture(mesh.userData.label);
+    mesh.material.needsUpdate = true;
+  }
+  cubeEdges.material.color.setHex(INK.ghost);
+}
 
 export function syncCube() {
   const cam = camera();
@@ -124,6 +141,7 @@ function viewDirFromCubePoint(point) {
 let cubePointer = null;
 
 export function bindViewCube() {
+  if (document.fonts) document.fonts.ready.then(() => restyleCube());
   cubeCanvas.addEventListener("pointerdown", (event) => {
     event.preventDefault();
     event.stopPropagation();

@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { S } from "./state.js";
 import { activeLength, setCoords, sidesValue } from "./cmdline.js";
-import { SNAP_COLOR, addCurve, addFaceGraphic, addVolume } from "./draw.js";
+import { addCurve, addFaceGraphic, addVolume } from "./draw.js";
 import {
   dist3,
   regularPolygon,
@@ -23,16 +23,17 @@ import {
   orthogonalize,
   rawHit,
 } from "./snap.js";
+import { INK } from "./theme.js";
 import { ghosts } from "./viewport.js";
 
 function ghostLine(a, b) {
-  ghostStroke(a, b, 0x6cb3ff, true);
+  ghostStroke(a, b, INK.ghost, true);
 }
 
 function ghostPolyline(pts, cursor) {
   const all = cursor ? pts.concat([cursor]) : pts;
   for (let index = 0; index < all.length - 1; index += 1) {
-    ghostStroke(all[index], all[index + 1], 0x6cb3ff, index === all.length - 2);
+    ghostStroke(all[index], all[index + 1], INK.ghost, index === all.length - 2);
   }
 }
 
@@ -62,11 +63,13 @@ function ghostStroke(a, b, color, dashed) {
 
 function drawTrimPreview(preview) {
   if (preview.mode === "extend") {
-    ghostStroke(preview.from, preview.cut, 0x7dce7d, true);
-    ghostStroke(preview.keepA, preview.from, 0x6cb3ff, false);
+    // Growth dashed and kept part solid, both ghost ink; trim discards in the snap ink.
+    // Never green against red (ADR 0031 §1.3).
+    ghostStroke(preview.from, preview.cut, INK.ghost, true);
+    ghostStroke(preview.keepA, preview.from, INK.ghost, false);
   } else {
-    ghostStroke(preview.discardA, preview.cut, 0xff6b6b, true);
-    ghostStroke(preview.keepA, preview.cut, 0x6cb3ff, false);
+    ghostStroke(preview.discardA, preview.cut, INK.snap, true);
+    ghostStroke(preview.keepA, preview.cut, INK.ghost, false);
   }
   drawSnapMarker(preview.cut, "node");
 }
@@ -87,7 +90,7 @@ function ghostRect(a, b, height = 0) {
       ghosts,
       [x0, y0, Math.min(0, height)],
       [Math.max(x1 - x0, 100), Math.max(y1 - y0, 100), Math.abs(height)],
-      0x6cb3ff,
+      INK.ghost,
       0.18,
     );
   }
@@ -105,7 +108,7 @@ function drawSnapMarker(xyz, kind) {
   ].map((corner) => new THREE.Vector3(...corner));
   ghosts.add(new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(loop),
-    new THREE.LineBasicMaterial({ color: SNAP_COLOR }),
+    new THREE.LineBasicMaterial({ color: INK.snap }),
   ));
 }
 
@@ -225,7 +228,7 @@ export function updateGhost(event) {
     if (S.pending.pts.length === 1) {
       ghostLine(S.pending.pts[0], cur);
     } else {
-      addCurve(ghosts, sampleArc(S.pending.pts[0], S.pending.pts[1], cur), 0x6cb3ff);
+      addCurve(ghosts, sampleArc(S.pending.pts[0], S.pending.pts[1], cur), INK.ghost);
     }
     setCoords(cur, S.pending.pts[0]);
     return;
@@ -235,8 +238,8 @@ export function updateGhost(event) {
     if (!cur) return;
     const pts = S.pending.pts.concat([cur]);
     if (pts.length === 2) ghostLine(pts[0], pts[1]);
-    else if (pts.length === 3) addCurve(ghosts, sampleBezier([pts[0], pts[1], pts[2], pts[2]]), 0x6cb3ff);
-    else addCurve(ghosts, sampleBezier(pts.slice(0, 4)), 0x6cb3ff);
+    else if (pts.length === 3) addCurve(ghosts, sampleBezier([pts[0], pts[1], pts[2], pts[2]]), INK.ghost);
+    else addCurve(ghosts, sampleBezier(pts.slice(0, 4)), INK.ghost);
     setCoords(cur, S.pending.pts[0]);
   }
 }

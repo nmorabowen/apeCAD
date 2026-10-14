@@ -45,4 +45,7 @@ logo/
 - **Print / dark slide:** `lockup.png` on black only. There is no light
   variant yet.
 
-Scratchpad chrome loads `web/favicon-32.png` and `favicon.ico`.
+Scratchpad chrome loads `web/favicon-32.png` and `favicon.ico`, and inlines the
+wordmark paths of `wordmark-transparent.svg` in the menubar with
+`stroke="currentColor"` and the underline in `--signal` (vest). That is the first light
+variant of the wordmark (ADR 0031 §1.8): it reads on paper and on carbon.
