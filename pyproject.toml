@@ -33,6 +33,11 @@ dev = [
     "pytest>=8",
     "pytest-cov>=5",
 ]
+# The MCP server, `python -m apeCAD.mcp` (spec agent-surface-mcp, stage S3). Written against
+# the 2.x SDK (`mcp.Client`, constructor-registered `Server` handlers).
+mcp = [
+    "mcp>=2.3,<3",
+]
 
 [project.urls]
 "Homepage" = "https://nmorabowen.github.io/apeCAD/"
