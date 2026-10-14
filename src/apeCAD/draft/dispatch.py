@@ -5,21 +5,30 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from apeCAD.draft import create, edit, meta, transform
+from apeCAD.draft import create, edit, meta, rebar, section, transform
 from apeCAD.draft.state import DraftState
 from apeCAD.errors import DocumentError
 from apeCAD.ops import (
     AddArc,
+    AddBar,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddBezier,
     AddBox,
     AddCircle,
+    AddConcreteFace,
+    AddCrosstie,
     AddEllipse,
     AddFace,
     AddFaceFromLines,
+    AddHoop,
     AddLine,
     AddLineChain,
     AddPoint,
     AddPolyline,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
     ArrayLinear,
     ArrayPolar,
     BreakCrossing,
@@ -32,7 +41,12 @@ from apeCAD.ops import (
     Mirror,
     Op,
     Rotate,
+    SetBarSize,
+    SetCover,
     SetLabel,
+    SetLegReinforcement,
+    SetMaterial,
+    SetTransverse,
     Sew,
     Simplify,
     Tag,
@@ -71,6 +85,20 @@ HANDLERS: dict[type[object], Handler] = {
     Delete: meta.delete,
     Tag: meta.tag,
     SetLabel: meta.set_label,
+    AddConcreteFace: section.add_concrete_face,
+    AddBar: section.add_bar,
+    AddHoop: section.add_hoop,
+    AddCrosstie: section.add_crosstie,
+    SetBarSize: section.set_bar_size,
+    SetMaterial: section.set_material,
+    SetTransverse: section.set_transverse,
+    AddSectionOutline: section.add_section_outline,
+    AddWallChain: section.add_wall_chain,
+    AddWallLeg: section.add_wall_leg,
+    SetLegReinforcement: section.set_leg_reinforcement,
+    SetCover: section.set_cover,
+    AddBarRow: rebar.add_bar_row,
+    AddBarsAlongEdge: rebar.add_bars_along_edge,
 }
 
 

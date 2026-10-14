@@ -8,42 +8,32 @@ from dataclasses import dataclass
 from apeCAD.entities import EntityId
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ, require_finite
+from apeCAD.ops.base import PointAt as PointAt  # re-exported
+from apeCAD.ops.base import VertexRef
+from apeCAD.ops.base import optional_label as _optional_label
+from apeCAD.ops.base import require_name as _require_name
+from apeCAD.ops.section import (
+    AddBar,
+    AddBarRow,
+    AddBarsAlongEdge,
+    AddConcreteFace,
+    AddCrosstie,
+    AddHoop,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
+    SetBarSize,
+    SetCover,
+    SetLegReinforcement,
+    SetMaterial,
+    SetTransverse,
+)
 
-SCHEMA_ID = "apeCAD.document.v0"
+SCHEMA_ID = "apeCAD.document.v1"
+"""The schema a Document writes. v1 adds the section-mode ops (ADR 0024 decision 9)."""
+SUPPORTED_SCHEMA_IDS = ("apeCAD.document.v0", SCHEMA_ID)
+"""Schemas a Document reads. v1 is a superset: a v0 log is a valid v1 log."""
 UNITS = "mm"
-
-
-def _optional_label(label: str | None) -> str | None:
-    if label is None:
-        return None
-    stripped = label.strip()
-    if stripped == "":
-        raise DocumentError("label must be None or a non-empty string")
-    return stripped
-
-
-def _require_name(name: str) -> str:
-    stripped = name.strip()
-    if stripped == "":
-        raise DocumentError("tag name must be a non-empty string")
-    return stripped
-
-
-@dataclass(frozen=True, slots=True)
-class PointAt:
-    """A vertex given by coordinates (ADR 0030).
-
-    Live, the handler reuses a point within 1 mm or creates one. The committed op records
-    a reused point as its plain id and a created one as `PointAt` with `entity_id` set, so
-    replay recreates that exact id without searching.
-    """
-
-    xyz_mm: XYZ
-    entity_id: EntityId | None = None
-
-
-VertexRef = EntityId | PointAt
-"""A creation op's vertex: an existing point id, or coordinates (ADR 0030)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -494,4 +484,18 @@ Op = (
     | Delete
     | Tag
     | SetLabel
+    | AddConcreteFace
+    | AddBar
+    | AddHoop
+    | AddCrosstie
+    | SetBarSize
+    | SetMaterial
+    | SetTransverse
+    | AddSectionOutline
+    | AddWallChain
+    | AddWallLeg
+    | SetLegReinforcement
+    | SetCover
+    | AddBarRow
+    | AddBarsAlongEdge
 )

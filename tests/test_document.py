@@ -165,7 +165,7 @@ def test_json_is_the_ops_log() -> None:
     document = Document()
     document.add_point(0.0, 0.0, 0.0, label="A")
     payload = json.loads(document.to_json())
-    assert payload["schema"] == "apeCAD.document.v0"
+    assert payload["schema"] == "apeCAD.document.v1"
     assert payload["units"] == "mm"
     assert payload["ops"][0]["op"] == "AddPoint"
     assert payload["ops"][0]["entity_id"] == 1

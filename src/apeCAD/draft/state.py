@@ -6,16 +6,21 @@ from typing import Protocol
 
 from apeCAD.entities import (
     Arc,
+    Bar,
     Bezier,
     Circle,
+    ConcreteFace,
+    Crosstie,
     Ellipse,
     Entity,
     EntityId,
     Face,
+    Hoop,
     Line,
     Point,
     Polyline,
     Solid,
+    WallLeg,
 )
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ
@@ -120,8 +125,14 @@ class DraftState:
         requested: EntityId | None,
         tolerance_mm: float = 1.0,
     ) -> tuple[EntityId, bool]:
-        """Reuse a point within tolerance, else create an unlabelled one."""
+        """Reuse a point within tolerance, else create an unlabelled one.
+
+        A bar's point is never reused: bars own their points (ADR 0024 decision 5).
+        """
+        owned = self.bar_points()
         for point in self.points():
+            if point.entity_id in owned:
+                continue
             dx = point.xyz_mm.x_mm - x_mm
             dy = point.xyz_mm.y_mm - y_mm
             dz = point.xyz_mm.z_mm - z_mm
@@ -143,6 +154,11 @@ class DraftState:
         """
         if not isinstance(ref, PointAt):
             self.require_point(ref)
+            owner = self.bar_points().get(ref)
+            if owner is not None:
+                raise DocumentError(
+                    f"point {ref} belongs to bar {owner}; a bar owns its point (ADR 0024)"
+                )
             return ref, ref
         xyz = ref.xyz_mm
         if ref.entity_id is not None:
@@ -158,13 +174,32 @@ class DraftState:
         resolved = [self.resolve(ref) for ref in refs]
         return tuple(i for i, _ in resolved), tuple(r for _, r in resolved)
 
+    def bar_points(self) -> dict[EntityId, EntityId]:
+        """Point id -> the bar that owns it."""
+        return {e.point_id: e.entity_id for e in self.entities.values() if isinstance(e, Bar)}
+
+    def require_bar(self, entity_id: EntityId) -> Bar:
+        entity = self.entities.get(entity_id)
+        if not isinstance(entity, Bar):
+            raise DocumentError(f"entity {entity_id} is not a bar")
+        return entity
+
     def point_ids_of(self, entity: Entity) -> tuple[EntityId, ...]:
         if isinstance(entity, Point):
             return (entity.entity_id,)
         if isinstance(entity, Line):
             return (entity.start_id, entity.end_id)
-        if isinstance(entity, (Polyline, Face, Bezier)):
+        if isinstance(entity, (Polyline, Face, Bezier, ConcreteFace)):
             return entity.point_ids
+        if isinstance(entity, Bar):
+            return (entity.point_id,)
+        if isinstance(entity, Hoop):
+            return tuple(self.require_bar(bar_id).point_id for bar_id in entity.bar_ids)
+        if isinstance(entity, Crosstie):
+            bars = (entity.bar_a_id, entity.bar_b_id)
+            return tuple(self.require_bar(bar_id).point_id for bar_id in bars)
+        if isinstance(entity, WallLeg):
+            return (entity.start_id, entity.end_id)
         if isinstance(entity, (Circle, Ellipse)):
             return (entity.center_id,)
         if isinstance(entity, Arc):

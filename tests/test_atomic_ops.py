@@ -14,16 +14,33 @@ import pytest
 from apeCAD import Document, DocumentError
 from apeCAD.draft.dispatch import HANDLERS
 from apeCAD.draft.state import DraftState
-from apeCAD.entities import Line
+from apeCAD.entities import LegSteel, Line
 from apeCAD.geometry import XYZ
 from apeCAD.ops import (
+    AddBarRow,
+    AddBarsAlongEdge,
+    AddCrosstie,
     AddFaceFromLines,
+    AddHoop,
+    AddLine,
+    AddWallChain,
+    AddWallLeg,
+    ArrayLinear,
+    ArrayPolar,
     BreakCrossing,
     ChamferCorner,
+    Delete,
     FilletCorner,
     InsertNode,
     JoinPolyline,
+    Mirror,
     PointAt,
+    SetBarSize,
+    SetCover,
+    SetLegReinforcement,
+    SetMaterial,
+    SetTransverse,
+    Sew,
     Simplify,
     TrimLine,
 )
@@ -35,6 +52,9 @@ _COORDS = (0.0, -1.0, 0.5, 1000.0, 1e300)
 _INTS = (-1, 0, 1, 2, 3)
 _LABELS = (None, "fresh", "corner", "  ")
 _NAMES = ("t", "group", "")
+_DESIGNATIONS = ("Ø16", "Ø10", "Ø32", "#4", "16", "")
+_MATERIALS = ("H30", "H35", "  ")
+_HOOKS = ("135", "135-135", "135-90", "90-90", "180")
 
 
 def _snapshot(document: Document) -> tuple[object, ...]:
@@ -71,6 +91,30 @@ def _fixture() -> Document:
     doc.add_ellipse(e, 200.0, 100.0)
     doc.add_box((-5000.0, 0.0, 0.0), (1000.0, 1000.0, 1000.0))
     doc.tag("group", (a, face.entity_id))
+    # Section mode (ADR 0024): a face, a 2 x 3 bar cage, a hoop and a crosstie.
+    corners = ((0.0, -800.0), (400.0, -800.0), (400.0, -200.0), (0.0, -200.0))
+    doc.add_concrete_face([PointAt(XYZ(x, y, 0.0)) for x, y in corners], "H30")
+    bars = [
+        doc.add_bar(x, y, "Ø16").entity_id
+        for x in (60.0, 340.0)
+        for y in (-740.0, -500.0, -260.0)
+    ]
+    hoop = doc.add_hoop(bars, "Ø10", 100.0)
+    doc.add_crosstie(bars[1], bars[4], "Ø10", 100.0)
+    doc.tag("cage", (hoop.entity_id,))
+    # Stage C2: an L wall chain (a face and 2 legs), a free leg and a cover guide.
+    axis = [PointAt(XYZ(x, y, 0.0)) for x, y in ((1000.0, -800.0), (2500.0, -800.0), (2500.0, 0.0))]
+    steel = LegSteel("Ø10", 200.0, 2)
+    wall = doc.add_wall_chain(axis, 250.0, "H30", horizontal=steel, label="wall")
+    doc.set_cover(wall.entity_id, 40.0, 10.0, 20.0)
+    outline = doc.add_section_outline(
+        [PointAt(XYZ(x, y, 0.0)) for x, y in ((3000.0, -800.0), (3300.0, -800.0), (3300.0, 0.0))],
+        "H30",
+    )
+    doc.add_wall_leg(
+        PointAt(XYZ(3100.0, -700.0, 0.0)), PointAt(XYZ(3100.0, -100.0, 0.0)), 200.0,
+        outline.entity_id,
+    )
     return doc
 
 
@@ -109,9 +153,18 @@ def _value(
         return rng.choice(_NAMES)
     if name == "closed":
         return rng.choice((False, True))
+    if name in ("designation", "material", "hooks"):
+        if optional and rng.random() < 0.4:
+            return None
+        pool = {"designation": _DESIGNATIONS, "material": _MATERIALS, "hooks": _HOOKS}[name]
+        return rng.choice(pool)
     vertex = _mentions(hint, PointAt)
     if name == "ring" and rng.random() < 0.5:
         return None
+    if name in ("leg_ids", "bar_ids", "bar_point_ids") and rng.random() < 0.7:
+        return ()  # ids the handler allocates, not references
+    if name in ("count", "spacing_mm") and optional and rng.random() < 0.5:
+        return None  # a bar layout takes one of count and spacing_mm (stage C3)
     if name.endswith("_ids") or name == "ring":
         pick = _vertex if vertex else _pick_id
         return tuple(pick(rng, ids, point_ids) for _ in range(rng.randint(0, 5)))
@@ -119,8 +172,14 @@ def _value(
         if optional and rng.random() < 0.7:
             return None  # an id the handler allocates, not a reference
         return _vertex(rng, ids, point_ids) if vertex else _pick_id(rng, ids, point_ids)
-    if name in ("copies", "count"):
+    if name in ("copies", "count", "curtains", "edge_index"):
         return rng.choice(_INTS)
+    if name == "horizontal":  # a wall leg's web steel (ADR 0024 P4), or none
+        if rng.random() < 0.4:
+            return None
+        return LegSteel(rng.choice(_DESIGNATIONS), rng.choice(_FLOATS), rng.choice(_INTS))
+    if get_origin(hint) is tuple:  # a wall chain's thicknesses: one, or one per segment
+        return tuple(rng.choice(_FLOATS) for _ in range(rng.choice((0, 1, 1, 1, 2, 3))))
     return rng.choice(_FLOATS)
 
 
@@ -231,6 +290,91 @@ def _targeted_ops(doc: Document) -> list[object]:
 def test_targeted_edge_cases_are_atomic(index: int) -> None:
     doc = _fixture()
     op = _targeted_ops(doc)[index]
+    json_before = doc.to_json()
+    live_before = _snapshot(doc)
+    try:
+        doc.apply(op)  # type: ignore[arg-type]
+    except DocumentError:
+        assert doc.to_json() == json_before
+        assert _snapshot(doc) == live_before
+    else:
+        _assert_live_equals_replay(doc)
+
+
+def _section_targeted_ops(doc: Document) -> list[object]:
+    """Section ops on the fixture's real bars, face, hoop and crosstie (ADR 0024)."""
+    face = doc.concrete_faces()[0].entity_id
+    bars = [bar.entity_id for bar in doc.bars()]
+    hoop = doc.hoops()[0].entity_id
+    tie = doc.crossties()[0].entity_id
+    wall = doc.concrete_faces()[1].entity_id
+    leg = doc.wall_legs()[0]
+    guide = doc.cover_guides()[0].entity_id
+    axis = (PointAt(XYZ(5000.0, 0.0, 0.0)), PointAt(XYZ(5000.0, 2000.0, 0.0)))
+    return [
+        AddHoop(bar_ids=tuple(bars), designation="Ø12", spacing_mm=80.0),
+        AddHoop(bar_ids=tuple(bars[:3:2]), designation="Ø12", spacing_mm=80.0),  # collinear
+        AddHoop(bar_ids=(bars[0], bars[1], face), designation="Ø12", spacing_mm=80.0),
+        AddCrosstie(bar_a_id=bars[0], bar_b_id=bars[5], designation="Ø10", spacing_mm=100.0),
+        AddCrosstie(bar_a_id=bars[0], bar_b_id=face, designation="Ø10", spacing_mm=100.0),
+        SetBarSize(entity_ids=(bars[0], bars[3]), designation="Ø25"),
+        SetBarSize(entity_ids=(bars[0], hoop), designation="Ø25"),
+        SetMaterial(entity_ids=(face,), material="H40"),
+        SetMaterial(entity_ids=(face, bars[0]), material="H40"),
+        SetTransverse(entity_ids=(hoop, tie), designation="Ø12", spacing_mm=75.0),
+        SetTransverse(entity_ids=(hoop,), hooks="135-90"),
+        SetTransverse(entity_ids=(tie,), hooks="135-90"),
+        Delete(entity_ids=(bars[1],)),
+        Delete(entity_ids=(hoop,)),
+        Mirror(entity_ids=(hoop, face), ax_mm=0.0, ay_mm=0.0, bx_mm=0.0, by_mm=1.0),
+        ArrayLinear(entity_ids=(hoop, tie), dx_mm=1000.0, dy_mm=0.0, copies=2),
+        ArrayPolar(entity_ids=(face, hoop), origin_x_mm=0.0, origin_y_mm=0.0, count=4),
+        AddLine(start_id=doc.bars()[0].point_id, end_id=1),
+        Sew(entity_ids=(bars[0], face), tolerance_mm=1e6),
+        # Stage C2: wall chains, legs, leg steel and cover.
+        AddWallChain(point_ids=axis, thickness_mm=(300.0,), material="H30"),
+        AddWallChain(
+            point_ids=axis, thickness_mm=(300.0,), material="H30", leg_ids=(leg.entity_id,)
+        ),
+        AddWallChain(point_ids=axis, thickness_mm=(1e6,), material="H30"),  # fine, just wide
+        AddWallChain(point_ids=(*axis, axis[0]), thickness_mm=(300.0,), material="H30"),
+        AddWallLeg(start_id=leg.start_id, end_id=leg.start_id, thickness_mm=200.0, face_id=wall),
+        AddWallLeg(start_id=leg.start_id, end_id=leg.end_id, thickness_mm=200.0, face_id=hoop),
+        SetLegReinforcement(leg_id=leg.entity_id, designation="Ø12", spacing_mm=150.0, curtains=1),
+        SetLegReinforcement(leg_id=wall, designation="Ø12", spacing_mm=150.0, curtains=1),
+        SetCover(face_id=wall, cover_mm=50.0, tie_diameter_mm=12.0, bar_diameter_mm=25.0),
+        SetCover(face_id=wall, cover_mm=50.0, tie_diameter_mm=0.0, bar_diameter_mm=25.0,
+                 entity_id=guide + 1000),
+        SetCover(face_id=face, cover_mm=1e5, tie_diameter_mm=10.0, bar_diameter_mm=20.0),
+        Delete(entity_ids=(wall,)),
+        Delete(entity_ids=(leg.start_id,)),
+        Mirror(entity_ids=(wall,), ax_mm=0.0, ay_mm=0.0, bx_mm=0.0, by_mm=1.0),
+        ArrayLinear(entity_ids=(leg.entity_id, guide), dx_mm=0.0, dy_mm=5000.0, copies=2),
+        Sew(entity_ids=(leg.entity_id,), tolerance_mm=1e6),
+        # Stage C3: bar rows and edge layouts.
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=900.0, end_y_mm=400.0,
+                  designation="Ø16", count=5),
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=0.0, end_y_mm=0.0,
+                  designation="Ø16", count=5),
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=1e7, end_y_mm=1.0,
+                  designation="Ø16", count=3),  # beyond the exact extent
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=1e6, end_y_mm=0.0,
+                  designation="Ø16", spacing_mm=1.0),  # too many bars
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=100.0, end_y_mm=0.0,
+                  designation="Ø16", spacing_mm=500.0),  # spacing longer than the row
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=100.0, end_y_mm=0.0,
+                  designation="Ø16", count=2, bar_ids=(guide, 999), bar_point_ids=(998, 997)),
+        AddBarsAlongEdge(face_id=wall, edge_index=0, designation="Ø20", spacing_mm=150.0),
+        AddBarsAlongEdge(face_id=wall, edge_index=99, designation="Ø20", count=3),
+        AddBarsAlongEdge(face_id=face, edge_index=0, designation="Ø20", count=3),  # no guide
+        AddBarsAlongEdge(face_id=hoop, edge_index=0, designation="Ø20", count=3),
+    ]
+
+
+@pytest.mark.parametrize("index", range(45))
+def test_section_edge_cases_are_atomic(index: int) -> None:
+    doc = _fixture()
+    op = _section_targeted_ops(doc)[index]
     json_before = doc.to_json()
     live_before = _snapshot(doc)
     try:

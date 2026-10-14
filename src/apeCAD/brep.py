@@ -8,16 +8,22 @@ from dataclasses import dataclass
 
 from apeCAD.entities import (
     Arc,
+    Bar,
     Bezier,
     Box,
     Circle,
+    ConcreteFace,
+    CoverGuide,
+    Crosstie,
     Ellipse,
     Entity,
     EntityId,
     Face,
+    Hoop,
     Line,
     Polyline,
     Solid,
+    WallLeg,
 )
 
 
@@ -106,8 +112,27 @@ def _children_of(
         return (entity.center_id,)
     if isinstance(entity, Arc):
         return (entity.start_id, entity.mid_id, entity.end_id)
+    if isinstance(entity, ConcreteFace):
+        # Section mode: a face owns its legs and cover guide (ADR 0024 decision 8).
+        ring = tuple(pid for pid in entity.point_ids if pid in entities)
+        owned = tuple(
+            other.entity_id
+            for other in entities.values()
+            if isinstance(other, (WallLeg, CoverGuide))
+            and other.face_id == entity.entity_id
+        )
+        return ring + tuple(sorted(owned))
+    if isinstance(entity, WallLeg):
+        return tuple(i for i in (entity.start_id, entity.end_id) if i in entities)
     if isinstance(entity, (Polyline, Bezier)):
         return tuple(pid for pid in entity.point_ids if pid in entities)
+    # Section mode (ADR 0024): a hoop is built from its bars, a bar from its point.
+    if isinstance(entity, Hoop):
+        return tuple(bar_id for bar_id in entity.bar_ids if bar_id in entities)
+    if isinstance(entity, Crosstie):
+        return tuple(i for i in (entity.bar_a_id, entity.bar_b_id) if i in entities)
+    if isinstance(entity, Bar):
+        return (entity.point_id,) if entity.point_id in entities else ()
     return ()
 
 

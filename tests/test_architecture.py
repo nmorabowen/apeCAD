@@ -32,6 +32,8 @@ DRAFT_RANK: dict[str, int] = {
     "edit": 3,
     "transform": 3,
     "meta": 3,
+    "section": 3,
+    "rebar": 3,
     "dispatch": 4,
 }
 
@@ -94,8 +96,14 @@ def test_every_op_has_exactly_one_handler() -> None:
     assert set(HANDLERS) == op_types
 
 
+def _codec_text() -> str:
+    """The op codecs: ops/codec.py and the family codecs it delegates to (ops/*_codec.py)."""
+    paths = [SRC / "ops" / "codec.py", *sorted((SRC / "ops").glob("*_codec.py"))]
+    return "\n".join(path.read_text(encoding="utf-8") for path in paths)
+
+
 def test_every_op_has_a_codec_entry() -> None:
-    codec = (SRC / "ops" / "codec.py").read_text(encoding="utf-8")
+    codec = _codec_text()
     missing = [
         op_type.__name__
         for op_type in get_args(Op)
@@ -107,7 +115,7 @@ def test_every_op_has_a_codec_entry() -> None:
 
 def test_catalog_handlers_and_codec_name_the_same_ops() -> None:
     """ADR 0028: an op is sendable by agents exactly when it can be applied and serialized."""
-    codec = (SRC / "ops" / "codec.py").read_text(encoding="utf-8")
+    codec = _codec_text()
     to_dict = set(re.findall(r'"op": "(\w+)"', codec))
     parse = set(re.findall(r'kind == "(\w+)"', codec))
     handlers = {op_type.__name__ for op_type in HANDLERS}
@@ -178,6 +186,19 @@ def test_section_imports_only_geometry_entities_and_errors() -> None:
         )
     ]
     assert not violations, "\n".join(violations)
+
+
+def test_section_draft_sits_above_the_document() -> None:
+    """`apeCAD.section_draft` wraps `Document` for the section-draft (ADR 0025), so nothing the
+    document is built from may import it: not `document.py`, `draft/`, `section/` or `ops/`."""
+    below = [SRC / "document.py", *(SRC / "draft").glob("*.py"), *(SRC / "section").glob("*.py")]
+    below += [*(SRC / "ops").glob("*.py")]
+    offenders = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in below
+        if any(name.startswith("apeCAD.section_draft") for name in _apecad_imports(path))
+    )
+    assert not offenders, f"these sit below apeCAD.section_draft: {offenders}"
 
 
 def test_core_never_imports_the_scratchpad() -> None:

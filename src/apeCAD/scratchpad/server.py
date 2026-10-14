@@ -7,6 +7,7 @@ import json
 import os
 import re
 import socket
+import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,12 +15,19 @@ from typing import cast
 from urllib.parse import parse_qs, urlparse
 
 from apeCAD import catalog
+from apeCAD.agent import Session, ToolError, tools
+from apeCAD.agent.args import opt_int
+from apeCAD.agent.errors import Envelope, guarded
+from apeCAD.agent.hosted import INSTANCE_HEADER, call_hosted
+from apeCAD.agent.query import query_from_string
 from apeCAD.document import Document
-from apeCAD.errors import DocumentError, OpArgumentError
+from apeCAD.errors import DETACHED, STALE, DocumentError, OpArgumentError
 from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import RenderArgumentError
 from apeCAD.render.query import render_from_query
 from apeCAD.scratchpad.payload import scene_payload
+from apeCAD.scratchpad.transport import handle as transport_handle
+from apeCAD.scratchpad.transport import refusal as transport_refusal
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_HOST = "127.0.0.1"
@@ -54,15 +62,23 @@ class ScratchpadServer(ThreadingHTTPServer):
         *,
         root: Path | None = None,
     ) -> None:
-        self.document = document
+        self.session = Session(document)
         self.root = root
+        # The instance id attached callers must name; a restarted scratchpad has a new one.
+        self.pid = os.getpid()
+        # One request at a time touches the session: the browser and an agent may both post.
+        self.lock = threading.Lock()
         super().__init__(address, ScratchpadHandler)
+
+    @property
+    def document(self) -> Document:
+        return self.session.document
 
     def identity_payload(self) -> dict[str, object]:
         host, port = self.server_address[:2]
         return {
             "name": "apeCAD",
-            "pid": os.getpid(),
+            "pid": self.pid,
             "host": host,
             "port": port,
             "root": None if self.root is None else str(self.root),
@@ -97,62 +113,140 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             name, mime = static_images[parsed.path]
             self._send_file(STATIC_DIR / name, mime)
             return
-        if parsed.path == "/api/scene":
-            self._send_json(200, scene_payload(self.server.document))
-            return
-        if parsed.path == "/api/identity":
-            self._send_json(200, self.server.identity_payload())
-            return
-        if parsed.path == "/api/render.svg":
-            self._render_svg(parsed.query)
-            return
-        if parsed.path == "/api/ops":
-            self._list_ops(parsed.query)
-            return
+        if parsed.path.startswith("/api/"):
+            if self._detached():
+                return
+            with self.server.lock:
+                if self._get_api(parsed.path, parsed.query):
+                    return
         self._send_json(404, {"error": f"unknown path {parsed.path}"})
+
+    def _get_api(self, path: str, query: str) -> bool:
+        session = self.server.session
+        if path == "/api/scene":
+            self._send_json(200, self._scene())
+        elif path == "/api/identity":
+            self._send_json(200, self.server.identity_payload())
+        elif path == "/api/render.svg":
+            self._render_svg(query)
+        elif path == "/api/ops":
+            self._list_ops(query)
+        elif path == "/api/inspect":
+            self._send_envelope(tools.inspect(session))
+        elif path == "/api/entities":
+            self._send_envelope(guarded(lambda: session.revision, lambda: self._entities(query)))
+        elif path == "/api/document":
+            self._send_envelope(tools.get_document(session))
+        elif path == "/api/section/draft":
+            self._send_envelope(tools.get_section_draft(session))
+        elif path == "/api/revision":
+            self._send_json(200, {"revision": session.revision})
+        else:
+            return False
+        return True
+
+    def _entities(self, query: str) -> Envelope:
+        session = self.server.session
+        return {"ok": True, "revision": session.revision, **query_from_string(session, query)}
+
+    def _detached(self) -> bool:
+        """Answer 409 `DETACHED` when the caller is attached to another instance (a restart)."""
+        claimed = self.headers.get(INSTANCE_HEADER)
+        if claimed is None or claimed.strip() == str(self.server.pid):
+            return False
+        message = (
+            f"this scratchpad is instance {self.server.pid}, not {claimed.strip()}: "
+            "it was restarted; restart the attached agent"
+        )
+        self._send_json(409, {"error": message, "code": DETACHED})
+        return True
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        try:
-            if parsed.path == "/api/op":
-                self._apply_op()
-                return
-            if parsed.path == "/api/undo":
-                self.server.document.undo()
-                self._send_json(200, scene_payload(self.server.document))
-                return
-            if parsed.path == "/api/redo":
-                self.server.document.redo()
-                self._send_json(200, scene_payload(self.server.document))
-                return
-            if parsed.path == "/api/reset":
-                self.server.document = Document()
-                self._send_json(200, scene_payload(self.server.document))
-                return
-            if parsed.path == "/api/load":
-                payload = self._read_json_object()
-                nested = payload.get("document")
-                if payload.get("schema") is None and isinstance(nested, dict):
-                    source = cast(dict[object, object], nested)
-                    payload = {
-                        key: value
-                        for key, value in source.items()
-                        if isinstance(key, str)
-                    }
-                self.server.document = Document.from_dict(payload)
-                self._send_json(200, scene_payload(self.server.document))
-                return
-        except DocumentError as exc:
-            self._send_json(400, {"error": str(exc), "code": exc.code})
+        if parsed.path == "/api/section/transport":
+            self._transport()  # stateless: no instance check, no lock, no revision
             return
+        if self._detached():
+            return
+        with self.server.lock:
+            try:
+                if self._post_api(parsed.path):
+                    return
+            except (DocumentError, ToolError) as exc:
+                status = 409 if exc.code in (STALE, DETACHED) else 400
+                revision = self.server.session.revision
+                self._send_json(status, {"error": str(exc), "code": exc.code, "revision": revision})
+                return
         self._send_json(404, {"error": f"unknown path {parsed.path}"})
 
+    def _post_api(self, path: str) -> bool:
+        """Mutations go through the session, so each success bumps the revision once."""
+        session = self.server.session
+        if path == "/api/op":
+            self._apply_op()
+            return True
+        if path == "/api/ops":
+            body = self._read_json_object()
+            extra = sorted(set(body) - {"ops", "expect_revision"})
+            if extra:
+                raise OpArgumentError(f"/api/ops takes only ops and expect_revision: {extra}")
+            ops, expect = body.get("ops"), body.get("expect_revision")
+            self._send_envelope(tools.apply_ops(session, ops, expect))
+            return True
+        if path == "/api/tool":
+            self._send_envelope(call_hosted(session, self._read_json_object()))
+            return True
+        if path == "/api/undo":
+            session.undo(expect_revision=self._expect_revision())
+        elif path == "/api/redo":
+            session.redo(expect_revision=self._expect_revision())
+        elif path == "/api/reset":
+            session.replace(Document(), expect_revision=self._expect_revision())
+        elif path == "/api/load":
+            session.replace(Document.from_dict(_document_body(self._read_json_object())))
+        else:
+            return False
+        self._send_json(200, self._scene())
+        return True
+
+    def _transport(self) -> None:
+        """ADR 0026: the HTTP status is the body's `status` (P8), 200 or 422."""
+        try:
+            request: object = self._read_json_object()
+        except OpArgumentError as exc:
+            response = transport_refusal(exc.code, str(exc))
+        else:
+            response = transport_handle(request)
+        self._send_json(cast(int, response["status"]), response)
+
+    def _scene(self) -> dict[str, object]:
+        scene = scene_payload(self.server.session.document)
+        scene["revision"] = self.server.session.revision
+        return scene
+
+    def _expect_revision(self, body: dict[str, object] | None = None) -> int | None:
+        """`expect_revision` from a JSON body; an empty body (`{}` or none) sends none."""
+        source = self._read_json_object(allow_empty=True) if body is None else body
+        return opt_int("expect_revision", source.get("expect_revision"))
+
     def _apply_op(self) -> None:
-        name, params = catalog.split_request(self._read_json_object())
-        applied = catalog.apply(self.server.document, name, params)
-        scene = scene_payload(self.server.document)
+        body = self._read_json_object()
+        expect = self._expect_revision(body)
+        body.pop("expect_revision", None)
+        name, params = catalog.split_request(body)
+        applied = self.server.session.apply(name, params, expect_revision=expect)
+        scene = self._scene()
         scene["created_id"] = applied.created_id
         self._send_json(200, scene)
+
+    def _send_envelope(self, envelope: Envelope) -> None:
+        """200 on success; 409 for `STALE` and `DETACHED`; 400 for every other failure."""
+        status = 200
+        error = envelope.get("error")
+        if envelope.get("ok") is not True and isinstance(error, dict):
+            code = cast(dict[str, object], error).get("code")
+            status = 409 if code in (STALE, DETACHED) else 400
+        self._send_json(status, envelope)
 
     def _list_ops(self, query: str) -> None:
         names = parse_qs(query).get("name")
@@ -171,9 +265,11 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             return
         self._send_bytes(200, result.svg.encode("utf-8"), "image/svg+xml; charset=utf-8")
 
-    def _read_json_object(self) -> dict[str, object]:
+    def _read_json_object(self, *, allow_empty: bool = False) -> dict[str, object]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
+        if allow_empty and not raw.strip():
+            return {}
         try:
             parsed: object = json.loads(raw.decode("utf-8") or "null")
         except ValueError as exc:
@@ -301,3 +397,12 @@ def main(argv: list[str] | None = None) -> None:
         print("\nstopped")
     finally:
         server.server_close()
+
+
+def _document_body(payload: dict[str, object]) -> dict[str, object]:
+    """`/api/load` takes a document, or a scene-shaped `{"document": {...}}` wrapper."""
+    nested = payload.get("document")
+    if payload.get("schema") is None and isinstance(nested, dict):
+        source = cast(dict[object, object], nested)
+        return {key: value for key, value in source.items() if isinstance(key, str)}
+    return payload

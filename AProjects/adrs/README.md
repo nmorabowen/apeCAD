@@ -41,6 +41,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0029](0029-delete-takes-the-brep-subtree.md) | Delete takes the selection's whole B-rep subtree | Proposed |
 | [0030](0030-one-gesture-one-op.md) | One drawing gesture is one op: creation ops take vertex references | Proposed |
 | [0031](0031-ape-design-system.md) | The APE design system: UI tokens, UI voice and drawing output style | Proposed |
+| [0032](0032-exact-collinear-bar-layouts.md) | Bar layouts snap to a lattice so inclined rows stay exactly collinear | Proposed |
 
 ## Template
 

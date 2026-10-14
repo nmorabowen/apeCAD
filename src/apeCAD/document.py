@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from typing import TypeVar, cast
+from typing import cast
 
 from apeCAD.brep import BrepIndex, build_brep
 from apeCAD.draft.dispatch import apply_op
@@ -12,420 +12,62 @@ from apeCAD.draft.invariants import check_state
 from apeCAD.draft.state import DraftState, produced_id
 from apeCAD.entities import (
     Arc,
+    Bar,
     Bezier,
     Box,
     Circle,
+    ConcreteFace,
+    CoverGuide,
+    Crosstie,
     Ellipse,
     Entity,
     EntityId,
     Face,
+    Hoop,
     Line,
     Point,
     Polyline,
     Solid,
+    WallLeg,
 )
 from apeCAD.errors import DocumentError
 from apeCAD.frame import FrameGraph, document_to_frame
-from apeCAD.geometry import XYZ
 from apeCAD.ops import (
     SCHEMA_ID,
+    SUPPORTED_SCHEMA_IDS,
     UNITS,
-    AddArc,
-    AddBezier,
-    AddBox,
-    AddCircle,
-    AddEllipse,
-    AddFace,
-    AddFaceFromLines,
-    AddLine,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddLineChain,
-    AddPoint,
-    AddPolyline,
     ArrayLinear,
     ArrayPolar,
-    BreakCrossing,
-    ChamferCorner,
     Delete,
-    Extrude,
-    FilletCorner,
-    InsertNode,
-    JoinPolyline,
     Mirror,
     Op,
     Rotate,
+    SetBarSize,
     SetLabel,
+    SetLegReinforcement,
+    SetMaterial,
+    SetTransverse,
     Sew,
     Simplify,
     Tag,
     Translate,
-    TrimLine,
-    VertexRef,
     op_from_dict,
     op_to_dict,
 )
+from apeCAD.section.lint import LintWarning, lint_section
+from apeCAD.typed_section_ops import SectionTypedOps
 
-TEntity = TypeVar("TEntity", bound=Entity)
 
-
-class Document:
+class Document(SectionTypedOps):
     """In-memory scratchpad. Mutate only through ops; JSON replays the log."""
 
     def __init__(self) -> None:
         self._ops: list[Op] = []
         self._redo: list[Op] = []
         self._state = DraftState()
-
-    def add_point(
-        self,
-        x_mm: float,
-        y_mm: float,
-        z_mm: float,
-        *,
-        label: str | None = None,
-    ) -> Point:
-        return self._require_produced(
-            self._apply(AddPoint(x_mm=x_mm, y_mm=y_mm, z_mm=z_mm, label=label)),
-            Point,
-        )
-
-    def add_line(
-        self,
-        start_id: VertexRef,
-        end_id: VertexRef,
-        *,
-        label: str | None = None,
-    ) -> Line:
-        return self._require_produced(
-            self._apply(AddLine(start_id=start_id, end_id=end_id, label=label)),
-            Line,
-        )
-
-    def add_line_chain(
-        self, point_ids: Sequence[VertexRef], *, label: str | None = None
-    ) -> tuple[Line, ...]:
-        """One line-tool gesture: a Line per consecutive pair, one op (ADR 0030)."""
-        self._apply(AddLineChain(point_ids=tuple(point_ids), label=label))
-        committed = self._ops[-1]
-        assert isinstance(committed, AddLineChain) and committed.line_ids is not None
-        return tuple(self._require_produced(self.entity(i), Line) for i in committed.line_ids)
-
-    def add_polyline(
-        self,
-        point_ids: Sequence[VertexRef],
-        *,
-        closed: bool = False,
-        label: str | None = None,
-    ) -> Polyline:
-        return self._require_produced(
-            self._apply(AddPolyline(point_ids=tuple(point_ids), closed=closed, label=label)),
-            Polyline,
-        )
-
-    def add_box(
-        self,
-        origin_xyz_mm: tuple[float, float, float] | XYZ,
-        size_xyz_mm: tuple[float, float, float] | XYZ,
-        *,
-        label: str | None = None,
-    ) -> Solid:
-        """AABB sugar: four points, a Face, and Extrude. One AddBox op in the log."""
-        op = AddBox(
-            origin_xyz_mm=XYZ.from_sequence(origin_xyz_mm),
-            size_xyz_mm=XYZ.from_sequence(size_xyz_mm),
-            label=label,
-        )
-        return self._require_produced(self._apply(op), Solid)
-
-    def add_face(
-        self,
-        point_ids: Sequence[VertexRef],
-        *,
-        label: str | None = None,
-    ) -> Face:
-        return self._require_produced(
-            self._apply(AddFace(point_ids=tuple(point_ids), label=label)),
-            Face,
-        )
-
-    def extrude(
-        self,
-        face_id: EntityId | None,
-        distance_mm: float,
-        *,
-        direction_xyz: tuple[float, float, float] | XYZ | None = None,
-        label: str | None = None,
-        ring: Sequence[VertexRef] | None = None,
-    ) -> Solid:
-        """Extrude a profile, or with `ring` (and face_id None) make the face too (ADR 0030)."""
-        op = Extrude(
-            face_id=face_id,
-            distance_mm=distance_mm,
-            direction_xyz=XYZ(0.0, 0.0, 1.0)
-            if direction_xyz is None
-            else XYZ.from_sequence(direction_xyz),
-            label=label,
-            ring=None if ring is None else tuple(ring),
-        )
-        return self._require_produced(self._apply(op), Solid)
-
-    def add_circle(
-        self,
-        center_id: VertexRef,
-        radius_mm: float,
-        *,
-        label: str | None = None,
-    ) -> Circle:
-        return self._require_produced(
-            self._apply(AddCircle(center_id=center_id, radius_mm=radius_mm, label=label)),
-            Circle,
-        )
-
-    def add_arc(
-        self,
-        start_id: VertexRef,
-        mid_id: VertexRef,
-        end_id: VertexRef,
-        *,
-        label: str | None = None,
-    ) -> Arc:
-        return self._require_produced(
-            self._apply(
-                AddArc(start_id=start_id, mid_id=mid_id, end_id=end_id, label=label)
-            ),
-            Arc,
-        )
-
-    def add_ellipse(
-        self,
-        center_id: VertexRef,
-        radius_x_mm: float,
-        radius_y_mm: float,
-        *,
-        label: str | None = None,
-    ) -> Ellipse:
-        return self._require_produced(
-            self._apply(
-                AddEllipse(
-                    center_id=center_id,
-                    radius_x_mm=radius_x_mm,
-                    radius_y_mm=radius_y_mm,
-                    label=label,
-                )
-            ),
-            Ellipse,
-        )
-
-    def add_bezier(
-        self,
-        point_ids: Sequence[VertexRef],
-        *,
-        label: str | None = None,
-    ) -> Bezier:
-        return self._require_produced(
-            self._apply(AddBezier(point_ids=tuple(point_ids), label=label)),
-            Bezier,
-        )
-
-    def translate(
-        self,
-        entity_ids: tuple[EntityId, ...] | list[EntityId],
-        dx_mm: float,
-        dy_mm: float,
-        dz_mm: float = 0.0,
-    ) -> None:
-        self._apply(
-            Translate(
-                entity_ids=tuple(entity_ids),
-                dx_mm=dx_mm,
-                dy_mm=dy_mm,
-                dz_mm=dz_mm,
-            )
-        )
-
-    def insert_node(
-        self,
-        target_id: EntityId,
-        x_mm: float,
-        y_mm: float,
-        z_mm: float = 0.0,
-    ) -> Point:
-        return self._require_produced(
-            self._apply(InsertNode(target_id=target_id, x_mm=x_mm, y_mm=y_mm, z_mm=z_mm)),
-            Point,
-        )
-
-    def trim_line(
-        self,
-        line_id: EntityId,
-        keep_id: EntityId,
-        x_mm: float,
-        y_mm: float,
-        z_mm: float = 0.0,
-    ) -> Point:
-        return self._require_produced(
-            self._apply(
-                TrimLine(line_id=line_id, keep_id=keep_id, x_mm=x_mm, y_mm=y_mm, z_mm=z_mm)
-            ),
-            Point,
-        )
-
-    def break_crossing(
-        self,
-        line_a_id: EntityId,
-        line_b_id: EntityId,
-    ) -> Point:
-        return self._require_produced(
-            self._apply(BreakCrossing(line_a_id=line_a_id, line_b_id=line_b_id)),
-            Point,
-        )
-
-    def add_face_from_lines(
-        self,
-        line_ids: tuple[EntityId, ...] | list[EntityId],
-        *,
-        label: str | None = None,
-    ) -> Face:
-        return self._require_produced(
-            self._apply(AddFaceFromLines(line_ids=tuple(line_ids), label=label)),
-            Face,
-        )
-
-    def join_polyline(
-        self,
-        entity_ids: tuple[EntityId, ...] | list[EntityId],
-        *,
-        label: str | None = None,
-    ) -> Polyline:
-        return self._require_produced(
-            self._apply(JoinPolyline(entity_ids=tuple(entity_ids), label=label)),
-            Polyline,
-        )
-
-    def rotate(
-        self,
-        entity_ids: tuple[EntityId, ...] | list[EntityId],
-        origin_x_mm: float,
-        origin_y_mm: float,
-        angle_deg: float,
-    ) -> None:
-        self._apply(
-            Rotate(
-                entity_ids=tuple(entity_ids),
-                origin_x_mm=origin_x_mm,
-                origin_y_mm=origin_y_mm,
-                angle_deg=angle_deg,
-            )
-        )
-
-    def mirror(
-        self,
-        entity_ids: tuple[EntityId, ...] | list[EntityId],
-        ax_mm: float,
-        ay_mm: float,
-        bx_mm: float,
-        by_mm: float,
-    ) -> None:
-        self._apply(
-            Mirror(
-                entity_ids=tuple(entity_ids),
-                ax_mm=ax_mm,
-                ay_mm=ay_mm,
-                bx_mm=bx_mm,
-                by_mm=by_mm,
-            )
-        )
-
-    def chamfer_corner(
-        self,
-        target_id: EntityId,
-        vertex_id: EntityId,
-        distance_mm: float,
-    ) -> Line:
-        return self._require_produced(
-            self._apply(
-                ChamferCorner(
-                    target_id=target_id,
-                    vertex_id=vertex_id,
-                    distance_mm=distance_mm,
-                )
-            ),
-            Line,
-        )
-
-    def fillet_corner(
-        self,
-        target_id: EntityId,
-        vertex_id: EntityId,
-        radius_mm: float,
-    ) -> Arc:
-        return self._require_produced(
-            self._apply(
-                FilletCorner(
-                    target_id=target_id,
-                    vertex_id=vertex_id,
-                    radius_mm=radius_mm,
-                )
-            ),
-            Arc,
-        )
-
-    def sew(
-        self,
-        entity_ids: tuple[EntityId, ...] | list[EntityId],
-        *,
-        tolerance_mm: float = 1.0,
-    ) -> None:
-        self._apply(Sew(entity_ids=tuple(entity_ids), tolerance_mm=tolerance_mm))
-
-    def simplify(self, entity_ids: tuple[EntityId, ...] | list[EntityId]) -> None:
-        self._apply(Simplify(entity_ids=tuple(entity_ids)))
-
-    def array_linear(
-        self,
-        entity_ids: tuple[EntityId, ...] | list[EntityId],
-        dx_mm: float,
-        dy_mm: float,
-        dz_mm: float = 0.0,
-        *,
-        copies: int = 1,
-    ) -> None:
-        self._apply(
-            ArrayLinear(
-                entity_ids=tuple(entity_ids),
-                dx_mm=dx_mm,
-                dy_mm=dy_mm,
-                dz_mm=dz_mm,
-                copies=copies,
-            )
-        )
-
-    def array_polar(
-        self,
-        entity_ids: tuple[EntityId, ...] | list[EntityId],
-        origin_x_mm: float,
-        origin_y_mm: float,
-        count: int,
-        *,
-        angle_deg: float = 360.0,
-    ) -> None:
-        self._apply(
-            ArrayPolar(
-                entity_ids=tuple(entity_ids),
-                origin_x_mm=origin_x_mm,
-                origin_y_mm=origin_y_mm,
-                count=count,
-                angle_deg=angle_deg,
-            )
-        )
-
-    def delete(self, entity_ids: tuple[EntityId, ...] | list[EntityId]) -> None:
-        self._apply(Delete(entity_ids=tuple(entity_ids)))
-
-    def tag(self, name: str, entity_ids: tuple[EntityId, ...] | list[EntityId]) -> None:
-        self._apply(Tag(name=name, entity_ids=tuple(entity_ids)))
-
-    def set_label(self, entity_id: EntityId, label: str | None) -> None:
-        self._apply(SetLabel(entity_id=entity_id, label=label))
 
     def undo(self) -> None:
         if not self._ops:
@@ -481,6 +123,29 @@ class Document:
     def beziers(self) -> tuple[Bezier, ...]:
         return tuple(e for e in self._state.ordered() if isinstance(e, Bezier))
 
+    def concrete_faces(self) -> tuple[ConcreteFace, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, ConcreteFace))
+
+    def bars(self) -> tuple[Bar, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, Bar))
+
+    def hoops(self) -> tuple[Hoop, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, Hoop))
+
+    def crossties(self) -> tuple[Crosstie, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, Crosstie))
+
+    def wall_legs(self) -> tuple[WallLeg, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, WallLeg))
+
+    def cover_guides(self) -> tuple[CoverGuide, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, CoverGuide))
+
+    def section_lint(self) -> tuple[LintWarning, ...]:
+        """Section drawing warnings (`section.lint`); returned, never raised. The
+        section-draft's `warnings[]` reads them (ADR 0025)."""
+        return lint_section(self._state.entities)
+
     def brep(self) -> BrepIndex:
         """Evaluated vertex/edge/face/solid graph (ADR 0018)."""
         return build_brep(self._state.entities)
@@ -494,6 +159,11 @@ class Document:
     def ops(self) -> tuple[Op, ...]:
         return tuple(self._ops)
 
+    def redo_ops(self) -> tuple[Op, ...]:
+        """The redo stack, next redo first: `redo()` applies `redo_ops()[0]`. Pass it back as
+        `from_dict(..., redo=...)` so a stateless host round-trips undo (ADR 0026)."""
+        return tuple(reversed(self._redo))
+
     def to_frame(self) -> FrameGraph:
         """Project points/lines/polylines into a millimetre frame graph."""
         return document_to_frame(self)
@@ -501,11 +171,6 @@ class Document:
     def apply(self, op: Op) -> Entity | None:
         """Apply one typed operation. The scratchpad client uses this."""
         return self._apply(op)
-
-    def _require_produced(self, entity: Entity | None, kind: type[TEntity]) -> TEntity:
-        if not isinstance(entity, kind):
-            raise DocumentError(f"internal error: expected {kind.__name__}")
-        return entity
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -518,10 +183,17 @@ class Document:
         return json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n"
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object]) -> Document:
+    def from_dict(
+        cls, payload: dict[str, object], *, redo: Sequence[object] | None = None
+    ) -> Document:
+        """Replay a document's ops log. `redo` is a redo stack as op dicts, next redo first
+        (the order of `redo_ops()`); its ops are decoded here and replayed only by `redo()`.
+        """
         schema = payload.get("schema")
-        if schema != SCHEMA_ID:
-            raise DocumentError(f"unsupported schema {schema!r}, expected {SCHEMA_ID!r}")
+        if schema not in SUPPORTED_SCHEMA_IDS:
+            raise DocumentError(
+                f"unsupported schema {schema!r}, expected one of {SUPPORTED_SCHEMA_IDS!r}"
+            )
         units = payload.get("units")
         if units != UNITS:
             raise DocumentError(f"unsupported units {units!r}, expected {UNITS!r}")
@@ -531,6 +203,9 @@ class Document:
         document = cls()
         ops = [op_from_dict(_as_string_dict(raw)) for raw in cast(list[object], raw_ops)]
         document._replay(ops)
+        if redo is not None:
+            stack = [op_from_dict(_as_string_dict(raw)) for raw in redo]
+            document._redo = list(reversed(stack))
         return document
 
     @classmethod
@@ -584,6 +259,12 @@ _NO_PRODUCT = (
     ArrayPolar,
     Delete,
     SetLabel,
+    SetBarSize,
+    SetMaterial,
+    SetTransverse,
+    SetLegReinforcement,
+    AddBarRow,
+    AddBarsAlongEdge,
 )
 """Ops that change the draft without producing exactly one entity to return."""
 

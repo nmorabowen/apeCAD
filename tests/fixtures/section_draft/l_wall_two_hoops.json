@@ -1,0 +1,493 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 1,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddWallChain",
+        "point_ids": [
+          {
+            "xyz": [
+              0.0,
+              150.0,
+              0.0
+            ],
+            "id": 1
+          },
+          {
+            "xyz": [
+              2850.0,
+              150.0,
+              0.0
+            ],
+            "id": 2
+          },
+          {
+            "xyz": [
+              2850.0,
+              3000.0,
+              0.0
+            ],
+            "id": 3
+          }
+        ],
+        "thickness_mm": [
+          300.0
+        ],
+        "material": "concrete",
+        "horizontal": {
+          "designation": "Ø10",
+          "spacing_mm": 200.0,
+          "curtains": 2
+        },
+        "label": "L1",
+        "entity_id": 10,
+        "ring": [
+          {
+            "xyz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "id": 4
+          },
+          {
+            "xyz": [
+              3000.0,
+              0.0,
+              0.0
+            ],
+            "id": 5
+          },
+          {
+            "xyz": [
+              3000.0,
+              3000.0,
+              0.0
+            ],
+            "id": 6
+          },
+          {
+            "xyz": [
+              2700.0,
+              3000.0,
+              0.0
+            ],
+            "id": 7
+          },
+          {
+            "xyz": [
+              2700.0,
+              300.0,
+              0.0
+            ],
+            "id": 8
+          },
+          {
+            "xyz": [
+              0.0,
+              300.0,
+              0.0
+            ],
+            "id": 9
+          }
+        ],
+        "leg_ids": [
+          11,
+          12
+        ]
+      },
+      {
+        "op": "SetCover",
+        "face_id": 10,
+        "cover_mm": 25.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 16.0,
+        "entity_id": 13
+      },
+      {
+        "op": "AddBarRow",
+        "start_x_mm": 43.0,
+        "start_y_mm": 43.0,
+        "end_x_mm": 557.0,
+        "end_y_mm": 43.0,
+        "designation": "Ø16",
+        "count": 4,
+        "spacing_mm": null,
+        "bar_ids": [
+          15,
+          17,
+          19,
+          21
+        ],
+        "bar_point_ids": [
+          14,
+          16,
+          18,
+          20
+        ]
+      },
+      {
+        "op": "AddBarRow",
+        "start_x_mm": 43.0,
+        "start_y_mm": 257.0,
+        "end_x_mm": 557.0,
+        "end_y_mm": 257.0,
+        "designation": "Ø16",
+        "count": 4,
+        "spacing_mm": null,
+        "bar_ids": [
+          23,
+          25,
+          27,
+          29
+        ],
+        "bar_point_ids": [
+          22,
+          24,
+          26,
+          28
+        ]
+      },
+      {
+        "op": "AddHoop",
+        "bar_ids": [
+          15,
+          17,
+          19,
+          21,
+          23,
+          25,
+          27,
+          29
+        ],
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135",
+        "label": "BE1",
+        "entity_id": 30
+      },
+      {
+        "op": "AddBarRow",
+        "start_x_mm": 2743.0,
+        "start_y_mm": 2443.0,
+        "end_x_mm": 2743.0,
+        "end_y_mm": 2957.0,
+        "designation": "Ø16",
+        "count": 4,
+        "spacing_mm": null,
+        "bar_ids": [
+          32,
+          34,
+          36,
+          38
+        ],
+        "bar_point_ids": [
+          31,
+          33,
+          35,
+          37
+        ]
+      },
+      {
+        "op": "AddBarRow",
+        "start_x_mm": 2957.0,
+        "start_y_mm": 2443.0,
+        "end_x_mm": 2957.0,
+        "end_y_mm": 2957.0,
+        "designation": "Ø16",
+        "count": 4,
+        "spacing_mm": null,
+        "bar_ids": [
+          40,
+          42,
+          44,
+          46
+        ],
+        "bar_point_ids": [
+          39,
+          41,
+          43,
+          45
+        ]
+      },
+      {
+        "op": "AddHoop",
+        "bar_ids": [
+          32,
+          34,
+          36,
+          38,
+          40,
+          42,
+          44,
+          46
+        ],
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135",
+        "label": "BE2",
+        "entity_id": 47
+      }
+    ]
+  },
+  "section": {
+    "concrete_faces": [
+      {
+        "id": 10,
+        "label": "L1",
+        "material": "concrete",
+        "role": "solid",
+        "ring_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            3000.0,
+            0.0
+          ],
+          [
+            3000.0,
+            3000.0
+          ],
+          [
+            2700.0,
+            3000.0
+          ],
+          [
+            2700.0,
+            300.0
+          ],
+          [
+            0.0,
+            300.0
+          ]
+        ]
+      }
+    ],
+    "wall_legs": [
+      {
+        "id": 11,
+        "label": null,
+        "start_mm": [
+          0.0,
+          150.0
+        ],
+        "end_mm": [
+          2850.0,
+          150.0
+        ],
+        "thickness_mm": 300.0,
+        "concrete_face_id": 10,
+        "horizontal": {
+          "designation": "Ø10",
+          "spacing_mm": 200.0,
+          "curtains": 2
+        }
+      },
+      {
+        "id": 12,
+        "label": null,
+        "start_mm": [
+          2850.0,
+          150.0
+        ],
+        "end_mm": [
+          2850.0,
+          3000.0
+        ],
+        "thickness_mm": 300.0,
+        "concrete_face_id": 10,
+        "horizontal": {
+          "designation": "Ø10",
+          "spacing_mm": 200.0,
+          "curtains": 2
+        }
+      }
+    ],
+    "bars": [
+      {
+        "id": 15,
+        "label": null,
+        "x_mm": 43.0,
+        "y_mm": 43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 17,
+        "label": null,
+        "x_mm": 214.33333333333331,
+        "y_mm": 43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 19,
+        "label": null,
+        "x_mm": 385.66666666666663,
+        "y_mm": 43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 21,
+        "label": null,
+        "x_mm": 557.0,
+        "y_mm": 43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 23,
+        "label": null,
+        "x_mm": 43.0,
+        "y_mm": 257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 25,
+        "label": null,
+        "x_mm": 214.33333333333331,
+        "y_mm": 257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 27,
+        "label": null,
+        "x_mm": 385.66666666666663,
+        "y_mm": 257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 29,
+        "label": null,
+        "x_mm": 557.0,
+        "y_mm": 257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 32,
+        "label": null,
+        "x_mm": 2743.0,
+        "y_mm": 2443.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 34,
+        "label": null,
+        "x_mm": 2743.0,
+        "y_mm": 2614.3333333333335,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 36,
+        "label": null,
+        "x_mm": 2743.0,
+        "y_mm": 2785.6666666666665,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 38,
+        "label": null,
+        "x_mm": 2743.0,
+        "y_mm": 2957.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 40,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": 2443.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 42,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": 2614.3333333333335,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 44,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": 2785.6666666666665,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 46,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": 2957.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      }
+    ],
+    "hoops": [
+      {
+        "id": 30,
+        "label": "BE1",
+        "bar_ids": [
+          15,
+          21,
+          29,
+          23
+        ],
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135"
+      },
+      {
+        "id": 47,
+        "label": "BE2",
+        "bar_ids": [
+          32,
+          40,
+          46,
+          38
+        ],
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135"
+      }
+    ],
+    "crossties": [],
+    "cover_guides": [
+      {
+        "id": 13,
+        "face_id": 10,
+        "cover_mm": 25.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 16.0
+      }
+    ]
+  },
+  "warnings": []
+}

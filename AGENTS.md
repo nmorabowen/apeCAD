@@ -21,7 +21,7 @@ kernel or Qt viewer without an ADR). Cursor gets the English rule from
 ## Install and test
 
 ```bash
-pip install -e ".[dev]"          # the clone path from README.md
+pip install -e ".[dev,mcp]"      # the clone path from README.md, plus the MCP SDK
 python -m pytest -q              # 139 tests, ~18 s
 python -m ruff check src tests   # rules E, F, I, UP; line length 100
 pyright                          # strict, over src/ only
@@ -46,11 +46,44 @@ Traps (each verified 2026-09-25):
    ADR 0022). `.github/workflows/ci.yml` runs pytest, `ruff check` and
    pyright on Python 3.11 and 3.12, on every PR and on push to `main`. It
    does not run `ruff format --check` (trap 3), does not drive a browser,
-   and tool versions float with the `dev` extra. The PR "Test plan"
+   and tool versions float with the `dev` extra. The gate legs install
+   `.[dev,mcp]`; a `core` job runs pytest with `.[dev]` only, so the MCP
+   tests skip there and the stdlib-only core is proven. The PR "Test plan"
    checklist still records what *you* ran locally: tick only what you ran.
-5. Python ≥ 3.11 (pyright targets 3.11). Earlier PRs ran `py -3.12`; the suite
+5. **pyright needs the `mcp` extra.** `src/apeCAD/agent/mcp.py` imports the
+   SDK, so without `.[mcp]` local pyright reports about 33 errors there
+   (`reportMissingImports` and the unknown types that follow), seen while
+   merging PR #27 on 2026-10-14. Install `pip install -e ".[dev,mcp]"` into a
+   venv (trap 1); CI installs it. pyright resolves imports with the `python`
+   on `PATH`, not your venv, unless you pass
+   `pyright --pythonpath <venv>/Scripts/python.exe`; an `mcp` 1.x there gives
+   the same wall of errors (the adapter needs `mcp>=2.3`). Without it,
+   `tests/test_mcp.py` skips (stage S3). Only `apeCAD.agent.mcp` and
+   `python -m apeCAD.mcp` may import `mcp`; `tests/test_mcp_tools.py` checks
+   that `import apeCAD` does not.
+6. Python ≥ 3.11 (pyright targets 3.11). Earlier PRs ran `py -3.12`; the suite
    also passes on 3.11.9. The package has no runtime dependencies
    (`dependencies = []`); the HTTP host is stdlib.
+
+## Run the MCP server
+
+`python -m apeCAD.mcp [--root DIR]` serves the agent tools (spec
+`AProjects/specs/agent-surface-mcp.md` §4) over stdio, in local mode. It needs
+the `mcp` extra. Client config (spec §8):
+
+```json
+{"mcpServers": {"apecad": {"command": "python", "args": ["-m", "apeCAD.mcp"]}}}
+```
+
+stdout carries JSON-RPC only; logs go to stderr. Attach mode
+(`--attach-port N` or `--attach http://127.0.0.1:N`, plus `--root DIR` to
+match the scratchpad's root) edits the document of a running scratchpad, and
+the browser picks the edits up by polling `/api/revision`. A wrong root or no
+scratchpad exits 2; a stopped or restarted scratchpad is `DETACHED`.
+
+`python -m apeCAD.cli ops|new|apply|inspect|query|render ...` runs the same
+tools over document files and prints one JSON envelope (spec §7). It exits 0
+ok, 1 refusal or environment error, 2 bad argument.
 
 ## Run the scratchpad
 
@@ -64,12 +97,19 @@ Stop what you started, by PID.
 ## Layout
 
 ```text
-src/apeCAD/              document.py (Document facade: typed API, ops log, undo, JSON),
-                         ops/ (types.py op dataclasses + SCHEMA_ID, codec.py to/from dict),
-                         draft/ (state, topology, create/edit/transform/meta handlers,
+src/apeCAD/              document.py (Document facade: ops log, undo, queries, JSON),
+                         typed_ops.py (TypedOps mixin: one typed Document method per op),
+                         typed_section_ops.py (SectionTypedOps: the section-mode methods),
+                         ops/ (types.py op dataclasses + SCHEMA_ID, section.py section ops,
+                         codec.py + section_codec.py to/from dict, values.py field parsers),
+                         draft/ (state, topology, create/edit/transform/meta/section handlers,
                          dispatch.py HANDLERS table), entities.py, geometry.py, brep.py,
                          frame.py (to_frame), errors.py (error codes),
-                         catalog/ (op catalog: params schema, docs, example; apply)
+                         catalog/ (op catalog: params schema, docs, example; apply),
+                         section/ (section-mode geometry, bar designations, cover rings, bar layouts,
+                         lint and draft.py, the section-draft block; ADRs 0024, 0025, 0032),
+                         section_draft.py (section_draft / document_from_draft over a Document;
+                         sits above document.py), _version.py (__version__)
 src/apeCAD/scratchpad/   server.py (stdlib HTTP + CLI), payload.py (scene JSON),
                          static/ (index.html, app.js, js/*.js ES modules; three.js from CDN)
 tests/                   pytest; test_scratchpad.py drives the HTTP API on port 0;
@@ -111,7 +151,8 @@ These break a sibling repo if you change them:
 |---|---|
 | `apeCAD.scratchpad.server.main(argv)`: flags `--host`, `--port`, `--no-browser`, `--root` (ADR 0021); instance root from `--root`, else env `APE_HABITAT_ROOT`, else `APECAD_SESSION_SKETCHES` | apeWorkbench `src/apeWorkbench/services/tools.py` (`CadAdapter`); apeGmsh `src/apeGmsh/studio/template/tools/apeCAD/open_interface.py` |
 | `GET /api/identity` → `{name, pid, host, port, root}` (ADR 0019) | apeWorkbench `_probe_identity` |
-| Document JSON `schema: "apeCAD.document.v0"` (`ops/types.py` `SCHEMA_ID`) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`) |
+| Document JSON `schema: "apeCAD.document.v1"` (`ops/types.py` `SCHEMA_ID`); reads v0 and v1 (`SUPPORTED_SCHEMA_IDS`). v1 adds the section-mode ops and is a superset of v0 (ADR 0024 decision 9) | apeSketch ADR 0008 (`.ape.json` family, routed by `schema`): it must route `apeCAD.document.v1` too |
+| `apeCAD.scratchpad.transport.handle(request)`, `TRANSPORT_VERSION = 1`, `MAX_OPS`; refusals are `{ok: false, status: 422, error}` (ADR 0026). Importing it must not load `scratchpad.server` (`tests/test_transport.py`) | ape-web-tools HA-04 `POST /api/cad/transport` (its ADR-0006 D3) |
 | `Document.to_frame()` (mm internally) | apeSteel, per coupling-map; `to_gmsh` is not implemented |
 
 apeWorkbench's `CadAdapter` passes `--root <folder>`; the CLI accepts it

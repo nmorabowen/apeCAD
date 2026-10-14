@@ -1,0 +1,148 @@
+{
+  "schema": "apeCAD.document.v0",
+  "units": "mm",
+  "ops": [
+    {
+      "op": "AddPoint",
+      "x_mm": 0.0,
+      "y_mm": 0.0,
+      "z_mm": 0.0,
+      "label": "A",
+      "entity_id": 1
+    },
+    {
+      "op": "AddPoint",
+      "x_mm": 4000.0,
+      "y_mm": 0.0,
+      "z_mm": 0.0,
+      "label": null,
+      "entity_id": 2
+    },
+    {
+      "op": "AddLine",
+      "start_id": 1,
+      "end_id": 2,
+      "label": "beam",
+      "entity_id": 3
+    },
+    {
+      "op": "AddLineChain",
+      "point_ids": [
+        2,
+        {
+          "xyz": [
+            4000.0,
+            3000.0,
+            0.0
+          ],
+          "id": 4
+        },
+        {
+          "xyz": [
+            0.0,
+            3000.0,
+            0.0
+          ],
+          "id": 5
+        }
+      ],
+      "label": null,
+      "line_ids": [
+        6,
+        7
+      ]
+    },
+    {
+      "op": "AddFace",
+      "point_ids": [
+        {
+          "xyz": [
+            6000.0,
+            0.0,
+            0.0
+          ],
+          "id": 8
+        },
+        {
+          "xyz": [
+            7000.0,
+            0.0,
+            0.0
+          ],
+          "id": 9
+        },
+        {
+          "xyz": [
+            7000.0,
+            1000.0,
+            0.0
+          ],
+          "id": 10
+        }
+      ],
+      "label": null,
+      "entity_id": 11
+    },
+    {
+      "op": "Extrude",
+      "face_id": 11,
+      "distance_mm": 500.0,
+      "direction_xyz": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "label": "block",
+      "entity_id": 28
+    },
+    {
+      "op": "AddPoint",
+      "x_mm": 9000.0,
+      "y_mm": 0.0,
+      "z_mm": 0.0,
+      "label": null,
+      "entity_id": 29
+    },
+    {
+      "op": "AddCircle",
+      "center_id": 29,
+      "radius_mm": 250.0,
+      "label": null,
+      "entity_id": 30
+    },
+    {
+      "op": "Mirror",
+      "entity_ids": [
+        11
+      ],
+      "ax_mm": 0.0,
+      "ay_mm": -100.0,
+      "bx_mm": 1.0,
+      "by_mm": -100.0
+    },
+    {
+      "op": "ArrayLinear",
+      "entity_ids": [
+        1
+      ],
+      "dx_mm": 0.0,
+      "dy_mm": 0.0,
+      "dz_mm": 1000.0,
+      "copies": 2
+    },
+    {
+      "op": "Tag",
+      "name": "grid",
+      "entity_ids": [
+        1,
+        2
+      ]
+    },
+    {
+      "op": "Delete",
+      "entity_ids": [
+        29
+      ]
+    }
+  ]
+}
