@@ -5,6 +5,8 @@ from __future__ import annotations
 from apeCAD.catalog.spec import ENTITY_IDS, LABEL, OUTPUT_ID, VERTEX, VERTICES, OpSpec, entry
 from apeCAD.ops import (
     AddBar,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
@@ -29,6 +31,9 @@ _HORIZONTAL = (
     "yet; curtains is a count of 1 or more. A leg without it is a lint warning (ADR 0024 P4)."
 )
 _STEEL_EXAMPLE = {"designation": "Ø10", "spacing_mm": 200, "curtains": 2}
+_COUNT = "Number of bars, both ends included; 2 or more. Give this or spacing_mm, not both."
+_PLACED = "Output: the ids of the bars placed, in order. Do not send it."
+_PLACED_POINTS = "Output: the ids of the bars' own points, in order. Do not send it."
 
 SECTION_ENTRIES: tuple[OpSpec, ...] = (
     entry(
@@ -220,5 +225,49 @@ SECTION_ENTRIES: tuple[OpSpec, ...] = (
         },
         {"face_id": 5, "cover_mm": 40, "tie_diameter_mm": 10, "bar_diameter_mm": 20},
         outputs=("entity_id",),
+    ),
+    entry(
+        AddBarRow,
+        "Lay a row of bars between two points on z = 0, by count or by spacing (one op).",
+        "entities",
+        {
+            "start_x_mm": "Row start x, mm.",
+            "start_y_mm": "Row start y, mm.",
+            "end_x_mm": "Row end x, mm.",
+            "end_y_mm": "Row end y, mm.",
+            "designation": _DESIGNATION,
+            "count": _COUNT,
+            "spacing_mm": "Bar spacing, mm; positive. As many whole spacings as fit, the "
+            "remainder split evenly between the two ends. Give this or count, not both.",
+            "bar_ids": _PLACED,
+            "bar_point_ids": _PLACED_POINTS,
+        },
+        {
+            "start_x_mm": 60,
+            "start_y_mm": -740,
+            "end_x_mm": 340,
+            "end_y_mm": -740,
+            "designation": "Ø16",
+            "count": 3,
+        },
+        outputs=("bar_ids", "bar_point_ids"),
+    ),
+    entry(
+        AddBarsAlongEdge,
+        "Lay bars along one edge of a face's bar-centre ring; needs its cover guide.",
+        "entities",
+        {
+            "face_id": "The concrete face; it must have a cover guide (SetCover).",
+            "edge_index": "Edge i runs from face vertex i to i + 1 (vertices counter-clockwise, "
+            "from 0), inset by cover + tie + bar / 2.",
+            "designation": _DESIGNATION,
+            "count": _COUNT,
+            "spacing_mm": "Largest bar spacing, mm; positive. The edge takes the fewest equal "
+            "intervals no longer than it. Give this or count, not both.",
+            "bar_ids": _PLACED + " A position within 1 mm of a bar is skipped.",
+            "bar_point_ids": _PLACED_POINTS,
+        },
+        {"face_id": 5, "edge_index": 0, "designation": "Ø16", "spacing_mm": 150},
+        outputs=("bar_ids", "bar_point_ids"),
     ),
 )

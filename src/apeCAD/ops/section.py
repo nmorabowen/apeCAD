@@ -1,4 +1,5 @@
-"""Section-mode ops (ADR 0024): faces, outlines, wall legs, cover, bars, hoops, crossties.
+"""Section-mode ops (ADR 0024): faces, outlines, wall legs, cover, bars, bar layouts, hoops,
+crossties.
 
 Ops carry designations only; the handler looks the diameter up in the closed vocabulary
 (`section.designations`, P12), so a designation and its diameter can never disagree.
@@ -295,6 +296,76 @@ class SetCover:
         require_positive("bar_diameter_mm", self.bar_diameter_mm)
 
 
+def _require_count_or_spacing(count: int | None, spacing_mm: float | None) -> None:
+    if (count is None) == (spacing_mm is None):
+        raise DocumentError("give exactly one of count and spacing_mm")
+    if count is not None and (isinstance(count, bool) or count < 2):
+        raise DocumentError(f"count must be 2 or more (both ends hold a bar), got {count!r}")
+    if spacing_mm is not None:
+        require_spacing(spacing_mm)
+
+
+def _require_recorded(bar_ids: tuple[EntityId, ...], bar_point_ids: tuple[EntityId, ...]) -> None:
+    if len(bar_ids) != len(bar_point_ids):
+        raise DocumentError(
+            f"bar_ids records {len(bar_ids)} bars but bar_point_ids {len(bar_point_ids)} points"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class AddBarRow:
+    """A row of bars from start to end on z = 0: one gesture, one op (ADR 0024 decision 3).
+
+    By `count`, the bars split the row evenly, both ends included. By `spacing_mm`, the row
+    holds as many whole spacings as fit and the remainder is centred (ADR 0024 open q7). An
+    inclined row is placed on an exact lattice (ADR 0032). Every bar gets a fresh point; the
+    committed op records them in `bar_ids` and `bar_point_ids`.
+    """
+
+    start_x_mm: float
+    start_y_mm: float
+    end_x_mm: float
+    end_y_mm: float
+    designation: str
+    count: int | None = None
+    spacing_mm: float | None = None
+    bar_ids: tuple[EntityId, ...] = ()
+    bar_point_ids: tuple[EntityId, ...] = ()
+
+    def __post_init__(self) -> None:
+        for name in ("start_x_mm", "start_y_mm", "end_x_mm", "end_y_mm"):
+            require_finite(name, getattr(self, name))
+        require_designation_name(self.designation)
+        _require_count_or_spacing(self.count, self.spacing_mm)
+        _require_recorded(self.bar_ids, self.bar_point_ids)
+
+
+@dataclass(frozen=True, slots=True)
+class AddBarsAlongEdge:
+    """Bars along one edge of a face's bar-centre ring (its cover guide), corners included.
+
+    Edge i runs from face vertex i to i + 1, inset by `cover + tie + bar / 2`. By `count`
+    the edge is split evenly; by `spacing_mm` it takes the fewest equal intervals no longer
+    than that. A position within 1 mm of an existing bar is skipped, so a corner bar the
+    neighbouring edge placed is not doubled. Refused when the face has no cover guide.
+    """
+
+    face_id: EntityId
+    edge_index: int
+    designation: str
+    count: int | None = None
+    spacing_mm: float | None = None
+    bar_ids: tuple[EntityId, ...] = ()
+    bar_point_ids: tuple[EntityId, ...] = ()
+
+    def __post_init__(self) -> None:
+        if isinstance(self.edge_index, bool) or self.edge_index < 0:
+            raise DocumentError(f"edge_index must be 0 or more, got {self.edge_index!r}")
+        require_designation_name(self.designation)
+        _require_count_or_spacing(self.count, self.spacing_mm)
+        _require_recorded(self.bar_ids, self.bar_point_ids)
+
+
 SectionOp = (
     AddConcreteFace
     | AddBar
@@ -308,6 +379,8 @@ SectionOp = (
     | AddWallLeg
     | SetLegReinforcement
     | SetCover
+    | AddBarRow
+    | AddBarsAlongEdge
 )
 SECTION_OPS = (
     AddConcreteFace,
@@ -322,4 +395,6 @@ SECTION_OPS = (
     AddWallLeg,
     SetLegReinforcement,
     SetCover,
+    AddBarRow,
+    AddBarsAlongEdge,
 )

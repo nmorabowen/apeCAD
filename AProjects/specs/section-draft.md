@@ -39,6 +39,23 @@ A pasted copy is the contract only when it hashes to this value. The check takes
 read the text between the fences, normalise line endings to LF, ensure one trailing newline,
 and run `sha256`.
 
+## Hull arithmetic (ADR 0032)
+
+Outside the hashed block, so the contract is unchanged. `hoops[].bar_ids` is computed with
+exact float predicates and no tolerance, and a reader re-derives it the same way: no
+collinearity tolerance is part of v1. apeCAD's layout ops (`AddBarRow`,
+`AddBarsAlongEdge`) place inclined rows on a dyadic lattice, so the bars of one row are
+exactly collinear in floats and a middle bar is never a hull vertex. A consumer reads
+`x_mm` and `y_mm` as written and needs nothing more.
+
+## Lint codes (stage C3)
+
+`warnings[]` carries apeCAD's section lint (`apeCAD/section/lint.py`, `LINT_CODES`), in this
+order: `bar-overlap`, `bar-outside-concrete`, `hoop-bar-not-in-face`,
+`crosstie-crosses-outside`, `face-without-cover-guide`, `face-without-wall-leg`,
+`inclined-wall-leg`, `tie-mismatch-in-core`, `more-than-one-solid-face`. `Document.section_lint()`
+returns them; they are advisory (ADR 0025 rule 6).
+
 ## Rules (plan §4.1, verbatim)
 
 - Designations come from the closed vocabulary (P12). apeConcrete trusts the designation and refuses a `diameter_mm` that does not match it.

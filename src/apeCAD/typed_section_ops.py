@@ -19,6 +19,8 @@ from apeCAD.entities import (
 )
 from apeCAD.ops import (
     AddBar,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
@@ -204,3 +206,50 @@ class SectionTypedOps(TypedOps):
             bar_diameter_mm=bar_diameter_mm,
         )
         return self._require_produced(self._apply(op), CoverGuide)
+
+    def add_bar_row(
+        self,
+        start_xy_mm: tuple[float, float],
+        end_xy_mm: tuple[float, float],
+        designation: str,
+        *,
+        count: int | None = None,
+        spacing_mm: float | None = None,
+    ) -> tuple[Bar, ...]:
+        """A row of bars, by count (ends included) or spacing (remainder centred); one op."""
+        op = AddBarRow(
+            start_x_mm=start_xy_mm[0],
+            start_y_mm=start_xy_mm[1],
+            end_x_mm=end_xy_mm[0],
+            end_y_mm=end_xy_mm[1],
+            designation=designation,
+            count=count,
+            spacing_mm=spacing_mm,
+        )
+        self._apply(op)
+        return self._bars_placed()
+
+    def add_bars_along_edge(
+        self,
+        face_id: EntityId,
+        edge_index: int,
+        designation: str,
+        *,
+        count: int | None = None,
+        spacing_mm: float | None = None,
+    ) -> tuple[Bar, ...]:
+        """Bars on one edge of the face's bar-centre ring, skipping positions near a bar."""
+        op = AddBarsAlongEdge(
+            face_id=face_id,
+            edge_index=edge_index,
+            designation=designation,
+            count=count,
+            spacing_mm=spacing_mm,
+        )
+        self._apply(op)
+        return self._bars_placed()
+
+    def _bars_placed(self) -> tuple[Bar, ...]:
+        committed = self._ops[-1]
+        assert isinstance(committed, (AddBarRow, AddBarsAlongEdge))
+        return tuple(self._require_produced(self.entity(i), Bar) for i in committed.bar_ids)
