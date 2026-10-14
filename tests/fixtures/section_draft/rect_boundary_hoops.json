@@ -1,0 +1,1176 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 1,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddWallChain",
+        "point_ids": [
+          {
+            "xyz": [
+              0.0,
+              -150.0,
+              0.0
+            ],
+            "id": 1
+          },
+          {
+            "xyz": [
+              3000.0,
+              -150.0,
+              0.0
+            ],
+            "id": 2
+          }
+        ],
+        "thickness_mm": [
+          300.0
+        ],
+        "material": "concrete",
+        "horizontal": {
+          "designation": "Ø12",
+          "spacing_mm": 250.0,
+          "curtains": 2
+        },
+        "label": "rect_300x3000",
+        "entity_id": 7,
+        "ring": [
+          {
+            "xyz": [
+              0.0,
+              -300.0,
+              0.0
+            ],
+            "id": 3
+          },
+          {
+            "xyz": [
+              3000.0,
+              -300.0,
+              0.0
+            ],
+            "id": 4
+          },
+          {
+            "xyz": [
+              3000.0,
+              0.0,
+              0.0
+            ],
+            "id": 5
+          },
+          {
+            "xyz": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "id": 6
+          }
+        ],
+        "leg_ids": [
+          8
+        ]
+      },
+      {
+        "op": "SetCover",
+        "face_id": 7,
+        "cover_mm": 25.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 16.0,
+        "entity_id": 9
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 43.0,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 11,
+        "point_id": 10
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 128.66666666666606,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 13,
+        "point_id": 12
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 214.33333333333394,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 15,
+        "point_id": 14
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 300.0,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 17,
+        "point_id": 16
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 385.66666666666606,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 19,
+        "point_id": 18
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 471.33333333333394,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 21,
+        "point_id": 20
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 557.0,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 23,
+        "point_id": 22
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 557.0,
+        "y_mm": -185.66666666666697,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 25,
+        "point_id": 24
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 557.0,
+        "y_mm": -114.33333333333303,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 27,
+        "point_id": 26
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 557.0,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 29,
+        "point_id": 28
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 471.33333333333394,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 31,
+        "point_id": 30
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 385.66666666666606,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 33,
+        "point_id": 32
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 300.0,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 35,
+        "point_id": 34
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 214.33333333333394,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 37,
+        "point_id": 36
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 128.66666666666606,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 39,
+        "point_id": 38
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 43.0,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 41,
+        "point_id": 40
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 43.0,
+        "y_mm": -114.33333333333303,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 43,
+        "point_id": 42
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 43.0,
+        "y_mm": -185.66666666666697,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 45,
+        "point_id": 44
+      },
+      {
+        "op": "AddHoop",
+        "bar_ids": [
+          11,
+          13,
+          15,
+          17,
+          19,
+          21,
+          23,
+          25,
+          27,
+          29,
+          31,
+          33,
+          35,
+          37,
+          39,
+          41,
+          43,
+          45
+        ],
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135",
+        "label": "C1",
+        "entity_id": 46
+      },
+      {
+        "op": "AddCrosstie",
+        "bar_a_id": 15,
+        "bar_b_id": 37,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135",
+        "label": null,
+        "entity_id": 47
+      },
+      {
+        "op": "AddCrosstie",
+        "bar_a_id": 19,
+        "bar_b_id": 33,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135",
+        "label": null,
+        "entity_id": 48
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2443.0,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 50,
+        "point_id": 49
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2528.666666666666,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 52,
+        "point_id": 51
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2614.333333333334,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 54,
+        "point_id": 53
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2700.0,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 56,
+        "point_id": 55
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2785.666666666666,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 58,
+        "point_id": 57
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2871.333333333334,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 60,
+        "point_id": 59
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2957.0,
+        "y_mm": -257.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 62,
+        "point_id": 61
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2957.0,
+        "y_mm": -185.66666666666697,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 64,
+        "point_id": 63
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2957.0,
+        "y_mm": -114.33333333333303,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 66,
+        "point_id": 65
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2957.0,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 68,
+        "point_id": 67
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2871.333333333334,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 70,
+        "point_id": 69
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2785.666666666666,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 72,
+        "point_id": 71
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2700.0,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 74,
+        "point_id": 73
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2614.333333333334,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 76,
+        "point_id": 75
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2528.666666666666,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 78,
+        "point_id": 77
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2443.0,
+        "y_mm": -43.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 80,
+        "point_id": 79
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2443.0,
+        "y_mm": -114.33333333333303,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 82,
+        "point_id": 81
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2443.0,
+        "y_mm": -185.66666666666697,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 84,
+        "point_id": 83
+      },
+      {
+        "op": "AddHoop",
+        "bar_ids": [
+          50,
+          52,
+          54,
+          56,
+          58,
+          60,
+          62,
+          64,
+          66,
+          68,
+          70,
+          72,
+          74,
+          76,
+          78,
+          80,
+          82,
+          84
+        ],
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135",
+        "label": "C2",
+        "entity_id": 85
+      },
+      {
+        "op": "AddCrosstie",
+        "bar_a_id": 54,
+        "bar_b_id": 76,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135",
+        "label": null,
+        "entity_id": 86
+      },
+      {
+        "op": "AddCrosstie",
+        "bar_a_id": 58,
+        "bar_b_id": 72,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135",
+        "label": null,
+        "entity_id": 87
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 728.5714285714294,
+        "y_mm": -269.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 89,
+        "point_id": 88
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 985.7142857142862,
+        "y_mm": -269.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 91,
+        "point_id": 90
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 1242.8571428571431,
+        "y_mm": -269.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 93,
+        "point_id": 92
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 1500.0,
+        "y_mm": -269.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 95,
+        "point_id": 94
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 1757.1428571428569,
+        "y_mm": -269.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 97,
+        "point_id": 96
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2014.2857142857138,
+        "y_mm": -269.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 99,
+        "point_id": 98
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2271.4285714285706,
+        "y_mm": -269.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 101,
+        "point_id": 100
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 728.5714285714294,
+        "y_mm": -31.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 103,
+        "point_id": 102
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 985.7142857142862,
+        "y_mm": -31.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 105,
+        "point_id": 104
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 1242.8571428571431,
+        "y_mm": -31.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 107,
+        "point_id": 106
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 1500.0,
+        "y_mm": -31.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 109,
+        "point_id": 108
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 1757.1428571428569,
+        "y_mm": -31.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 111,
+        "point_id": 110
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2014.2857142857138,
+        "y_mm": -31.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 113,
+        "point_id": 112
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 2271.4285714285706,
+        "y_mm": -31.0,
+        "designation": "Ø12",
+        "label": null,
+        "entity_id": 115,
+        "point_id": 114
+      }
+    ]
+  },
+  "section": {
+    "concrete_faces": [
+      {
+        "id": 7,
+        "label": "rect_300x3000",
+        "material": "concrete",
+        "role": "solid",
+        "ring_mm": [
+          [
+            0.0,
+            -300.0
+          ],
+          [
+            3000.0,
+            -300.0
+          ],
+          [
+            3000.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "wall_legs": [
+      {
+        "id": 8,
+        "label": null,
+        "start_mm": [
+          0.0,
+          -150.0
+        ],
+        "end_mm": [
+          3000.0,
+          -150.0
+        ],
+        "thickness_mm": 300.0,
+        "concrete_face_id": 7,
+        "horizontal": {
+          "designation": "Ø12",
+          "spacing_mm": 250.0,
+          "curtains": 2
+        }
+      }
+    ],
+    "bars": [
+      {
+        "id": 11,
+        "label": null,
+        "x_mm": 43.0,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 13,
+        "label": null,
+        "x_mm": 128.66666666666606,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 15,
+        "label": null,
+        "x_mm": 214.33333333333394,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 17,
+        "label": null,
+        "x_mm": 300.0,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 19,
+        "label": null,
+        "x_mm": 385.66666666666606,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 21,
+        "label": null,
+        "x_mm": 471.33333333333394,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 23,
+        "label": null,
+        "x_mm": 557.0,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 25,
+        "label": null,
+        "x_mm": 557.0,
+        "y_mm": -185.66666666666697,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 27,
+        "label": null,
+        "x_mm": 557.0,
+        "y_mm": -114.33333333333303,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 29,
+        "label": null,
+        "x_mm": 557.0,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 31,
+        "label": null,
+        "x_mm": 471.33333333333394,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 33,
+        "label": null,
+        "x_mm": 385.66666666666606,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 35,
+        "label": null,
+        "x_mm": 300.0,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 37,
+        "label": null,
+        "x_mm": 214.33333333333394,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 39,
+        "label": null,
+        "x_mm": 128.66666666666606,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 41,
+        "label": null,
+        "x_mm": 43.0,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 43,
+        "label": null,
+        "x_mm": 43.0,
+        "y_mm": -114.33333333333303,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 45,
+        "label": null,
+        "x_mm": 43.0,
+        "y_mm": -185.66666666666697,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 50,
+        "label": null,
+        "x_mm": 2443.0,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 52,
+        "label": null,
+        "x_mm": 2528.666666666666,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 54,
+        "label": null,
+        "x_mm": 2614.333333333334,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 56,
+        "label": null,
+        "x_mm": 2700.0,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 58,
+        "label": null,
+        "x_mm": 2785.666666666666,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 60,
+        "label": null,
+        "x_mm": 2871.333333333334,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 62,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": -257.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 64,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": -185.66666666666697,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 66,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": -114.33333333333303,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 68,
+        "label": null,
+        "x_mm": 2957.0,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 70,
+        "label": null,
+        "x_mm": 2871.333333333334,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 72,
+        "label": null,
+        "x_mm": 2785.666666666666,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 74,
+        "label": null,
+        "x_mm": 2700.0,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 76,
+        "label": null,
+        "x_mm": 2614.333333333334,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 78,
+        "label": null,
+        "x_mm": 2528.666666666666,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 80,
+        "label": null,
+        "x_mm": 2443.0,
+        "y_mm": -43.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 82,
+        "label": null,
+        "x_mm": 2443.0,
+        "y_mm": -114.33333333333303,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 84,
+        "label": null,
+        "x_mm": 2443.0,
+        "y_mm": -185.66666666666697,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 89,
+        "label": null,
+        "x_mm": 728.5714285714294,
+        "y_mm": -269.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 91,
+        "label": null,
+        "x_mm": 985.7142857142862,
+        "y_mm": -269.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 93,
+        "label": null,
+        "x_mm": 1242.8571428571431,
+        "y_mm": -269.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 95,
+        "label": null,
+        "x_mm": 1500.0,
+        "y_mm": -269.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 97,
+        "label": null,
+        "x_mm": 1757.1428571428569,
+        "y_mm": -269.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 99,
+        "label": null,
+        "x_mm": 2014.2857142857138,
+        "y_mm": -269.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 101,
+        "label": null,
+        "x_mm": 2271.4285714285706,
+        "y_mm": -269.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 103,
+        "label": null,
+        "x_mm": 728.5714285714294,
+        "y_mm": -31.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 105,
+        "label": null,
+        "x_mm": 985.7142857142862,
+        "y_mm": -31.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 107,
+        "label": null,
+        "x_mm": 1242.8571428571431,
+        "y_mm": -31.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 109,
+        "label": null,
+        "x_mm": 1500.0,
+        "y_mm": -31.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 111,
+        "label": null,
+        "x_mm": 1757.1428571428569,
+        "y_mm": -31.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 113,
+        "label": null,
+        "x_mm": 2014.2857142857138,
+        "y_mm": -31.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      },
+      {
+        "id": 115,
+        "label": null,
+        "x_mm": 2271.4285714285706,
+        "y_mm": -31.0,
+        "diameter_mm": 12.0,
+        "designation": "Ø12"
+      }
+    ],
+    "hoops": [
+      {
+        "id": 46,
+        "label": "C1",
+        "bar_ids": [
+          11,
+          23,
+          29,
+          41
+        ],
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135"
+      },
+      {
+        "id": 85,
+        "label": "C2",
+        "bar_ids": [
+          50,
+          62,
+          68,
+          80
+        ],
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135"
+      }
+    ],
+    "crossties": [
+      {
+        "id": 47,
+        "label": null,
+        "bar_a_id": 15,
+        "bar_b_id": 37,
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135"
+      },
+      {
+        "id": 48,
+        "label": null,
+        "bar_a_id": 19,
+        "bar_b_id": 33,
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135"
+      },
+      {
+        "id": 86,
+        "label": null,
+        "bar_a_id": 54,
+        "bar_b_id": 76,
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135"
+      },
+      {
+        "id": 87,
+        "label": null,
+        "bar_a_id": 58,
+        "bar_b_id": 72,
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 100.0,
+        "hooks": "135-135"
+      }
+    ],
+    "cover_guides": [
+      {
+        "id": 9,
+        "face_id": 7,
+        "cover_mm": 25.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 16.0
+      }
+    ]
+  },
+  "warnings": []
+}

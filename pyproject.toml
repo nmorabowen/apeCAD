@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apeCAD"
-version = "0.0.0"
+version = "0.1.0"
 description = "Spatial scratchpad and intent document for ape* structural workflows."
 readme = "README.md"
 requires-python = ">=3.11"

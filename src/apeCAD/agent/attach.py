@@ -157,6 +157,9 @@ class AttachTools:
     def get_document(self, document: object) -> Envelope:
         return self._on(document, "get_document", {})
 
+    def get_section_draft(self, document: object) -> Envelope:
+        return self._on(document, "get_section_draft", {})
+
     def render(self, document: object, **params: object) -> Envelope:
         """Render a snapshot of the scratchpad's document, at the scratchpad's revision."""
         snapshot = self.get_document(document)

@@ -135,6 +135,8 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             self._send_envelope(guarded(lambda: session.revision, lambda: self._entities(query)))
         elif path == "/api/document":
             self._send_envelope(tools.get_document(session))
+        elif path == "/api/section/draft":
+            self._send_envelope(tools.get_section_draft(session))
         elif path == "/api/revision":
             self._send_json(200, {"revision": session.revision})
         else:
