@@ -8,6 +8,8 @@ from apeCAD.entities import LegSteel
 from apeCAD.errors import DocumentError
 from apeCAD.ops.section import (
     AddBar,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
@@ -86,6 +88,8 @@ def section_op_to_dict(op: SectionOp) -> dict[str, object]:
         return {"op": "SetMaterial", "entity_ids": list(op.entity_ids), "material": op.material}
     if isinstance(op, (AddSectionOutline, AddWallChain, AddWallLeg, SetLegReinforcement, SetCover)):
         return _wall_op_to_dict(op)
+    if isinstance(op, (AddBarRow, AddBarsAlongEdge)):
+        return _layout_op_to_dict(op)
     return {
         "op": "SetTransverse",
         "entity_ids": list(op.entity_ids),
@@ -145,6 +149,62 @@ def _wall_op_to_dict(
         "bar_diameter_mm": op.bar_diameter_mm,
         "entity_id": op.entity_id,
     }
+
+
+def _layout_op_to_dict(op: AddBarRow | AddBarsAlongEdge) -> dict[str, object]:
+    placed = {"bar_ids": list(op.bar_ids), "bar_point_ids": list(op.bar_point_ids)}
+    if isinstance(op, AddBarRow):
+        where: dict[str, object] = {
+            "op": "AddBarRow",
+            "start_x_mm": op.start_x_mm,
+            "start_y_mm": op.start_y_mm,
+            "end_x_mm": op.end_x_mm,
+            "end_y_mm": op.end_y_mm,
+        }
+    else:
+        where = {"op": "AddBarsAlongEdge", "face_id": op.face_id, "edge_index": op.edge_index}
+    return {
+        **where,
+        "designation": op.designation,
+        "count": op.count,
+        "spacing_mm": op.spacing_mm,
+        **placed,
+    }
+
+
+def _parse_layout_op(kind: object, payload: dict[str, object]) -> SectionOp | None:
+    if kind not in ("AddBarRow", "AddBarsAlongEdge"):
+        return None
+    designation = as_str("designation", payload["designation"])
+    raw_count = payload.get("count")
+    count = None if raw_count is None else as_int("count", raw_count)
+    raw_spacing = payload.get("spacing_mm")
+    spacing = None if raw_spacing is None else as_float("spacing_mm", raw_spacing)
+    bar_ids = as_id_tuple("bar_ids", payload.get("bar_ids", []))
+    bar_point_ids = as_id_tuple("bar_point_ids", payload.get("bar_point_ids", []))
+    if kind == "AddBarRow":
+        return AddBarRow(
+            start_x_mm=as_float("start_x_mm", payload["start_x_mm"]),
+            start_y_mm=as_float("start_y_mm", payload["start_y_mm"]),
+            end_x_mm=as_float("end_x_mm", payload["end_x_mm"]),
+            end_y_mm=as_float("end_y_mm", payload["end_y_mm"]),
+            designation=designation,
+            count=count,
+            spacing_mm=spacing,
+            bar_ids=bar_ids,
+            bar_point_ids=bar_point_ids,
+        )
+    if kind == "AddBarsAlongEdge":
+        return AddBarsAlongEdge(
+            face_id=as_entity_id("face_id", payload["face_id"]),
+            edge_index=as_int("edge_index", payload["edge_index"]),
+            designation=designation,
+            count=count,
+            spacing_mm=spacing,
+            bar_ids=bar_ids,
+            bar_point_ids=bar_point_ids,
+        )
+    return None
 
 
 def _steel_json(steel: LegSteel | None) -> dict[str, object] | None:
@@ -233,7 +293,7 @@ def _parse_wall_op(kind: object, payload: dict[str, object]) -> SectionOp | None
 
 def parse_section_op(kind: object, payload: dict[str, object]) -> SectionOp | None:
     """The section op `payload` names, or None when `kind` is not a section op."""
-    wall = _parse_wall_op(kind, payload)
+    wall = _parse_wall_op(kind, payload) or _parse_layout_op(kind, payload)
     if wall is not None:
         return wall
     if kind == "AddConcreteFace":

@@ -35,6 +35,8 @@ from apeCAD.ops import (
     SCHEMA_ID,
     SUPPORTED_SCHEMA_IDS,
     UNITS,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddLineChain,
     ArrayLinear,
     ArrayPolar,
@@ -54,6 +56,7 @@ from apeCAD.ops import (
     op_from_dict,
     op_to_dict,
 )
+from apeCAD.section.lint import LintWarning, lint_section
 from apeCAD.typed_section_ops import SectionTypedOps
 
 
@@ -136,6 +139,11 @@ class Document(SectionTypedOps):
 
     def cover_guides(self) -> tuple[CoverGuide, ...]:
         return tuple(e for e in self._state.ordered() if isinstance(e, CoverGuide))
+
+    def section_lint(self) -> tuple[LintWarning, ...]:
+        """Section drawing warnings (`section.lint`); returned, never raised. The
+        section-draft's `warnings[]` reads them (ADR 0025)."""
+        return lint_section(self._state.entities)
 
     def brep(self) -> BrepIndex:
         """Evaluated vertex/edge/face/solid graph (ADR 0018)."""
@@ -241,6 +249,8 @@ _NO_PRODUCT = (
     SetMaterial,
     SetTransverse,
     SetLegReinforcement,
+    AddBarRow,
+    AddBarsAlongEdge,
 )
 """Ops that change the draft without producing exactly one entity to return."""
 

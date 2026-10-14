@@ -17,6 +17,8 @@ from apeCAD.draft.state import DraftState
 from apeCAD.entities import LegSteel, Line
 from apeCAD.geometry import XYZ
 from apeCAD.ops import (
+    AddBarRow,
+    AddBarsAlongEdge,
     AddCrosstie,
     AddFaceFromLines,
     AddHoop,
@@ -159,8 +161,10 @@ def _value(
     vertex = _mentions(hint, PointAt)
     if name == "ring" and rng.random() < 0.5:
         return None
-    if name == "leg_ids" and rng.random() < 0.7:
+    if name in ("leg_ids", "bar_ids", "bar_point_ids") and rng.random() < 0.7:
         return ()  # ids the handler allocates, not references
+    if name in ("count", "spacing_mm") and optional and rng.random() < 0.5:
+        return None  # a bar layout takes one of count and spacing_mm (stage C3)
     if name.endswith("_ids") or name == "ring":
         pick = _vertex if vertex else _pick_id
         return tuple(pick(rng, ids, point_ids) for _ in range(rng.randint(0, 5)))
@@ -168,7 +172,7 @@ def _value(
         if optional and rng.random() < 0.7:
             return None  # an id the handler allocates, not a reference
         return _vertex(rng, ids, point_ids) if vertex else _pick_id(rng, ids, point_ids)
-    if name in ("copies", "count", "curtains"):
+    if name in ("copies", "count", "curtains", "edge_index"):
         return rng.choice(_INTS)
     if name == "horizontal":  # a wall leg's web steel (ADR 0024 P4), or none
         if rng.random() < 0.4:
@@ -347,10 +351,27 @@ def _section_targeted_ops(doc: Document) -> list[object]:
         Mirror(entity_ids=(wall,), ax_mm=0.0, ay_mm=0.0, bx_mm=0.0, by_mm=1.0),
         ArrayLinear(entity_ids=(leg.entity_id, guide), dx_mm=0.0, dy_mm=5000.0, copies=2),
         Sew(entity_ids=(leg.entity_id,), tolerance_mm=1e6),
+        # Stage C3: bar rows and edge layouts.
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=900.0, end_y_mm=400.0,
+                  designation="Ø16", count=5),
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=0.0, end_y_mm=0.0,
+                  designation="Ø16", count=5),
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=1e7, end_y_mm=1.0,
+                  designation="Ø16", count=3),  # beyond the exact extent
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=1e6, end_y_mm=0.0,
+                  designation="Ø16", spacing_mm=1.0),  # too many bars
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=100.0, end_y_mm=0.0,
+                  designation="Ø16", spacing_mm=500.0),  # spacing longer than the row
+        AddBarRow(start_x_mm=0.0, start_y_mm=0.0, end_x_mm=100.0, end_y_mm=0.0,
+                  designation="Ø16", count=2, bar_ids=(guide, 999), bar_point_ids=(998, 997)),
+        AddBarsAlongEdge(face_id=wall, edge_index=0, designation="Ø20", spacing_mm=150.0),
+        AddBarsAlongEdge(face_id=wall, edge_index=99, designation="Ø20", count=3),
+        AddBarsAlongEdge(face_id=face, edge_index=0, designation="Ø20", count=3),  # no guide
+        AddBarsAlongEdge(face_id=hoop, edge_index=0, designation="Ø20", count=3),
     ]
 
 
-@pytest.mark.parametrize("index", range(35))
+@pytest.mark.parametrize("index", range(45))
 def test_section_edge_cases_are_atomic(index: int) -> None:
     doc = _fixture()
     op = _section_targeted_ops(doc)[index]

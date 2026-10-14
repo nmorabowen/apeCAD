@@ -14,6 +14,8 @@ from apeCAD.ops.base import optional_label as _optional_label
 from apeCAD.ops.base import require_name as _require_name
 from apeCAD.ops.section import (
     AddBar,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
@@ -494,4 +496,6 @@ Op = (
     | AddWallLeg
     | SetLegReinforcement
     | SetCover
+    | AddBarRow
+    | AddBarsAlongEdge
 )

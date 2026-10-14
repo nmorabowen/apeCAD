@@ -5,12 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from apeCAD.draft import create, edit, meta, section, transform
+from apeCAD.draft import create, edit, meta, rebar, section, transform
 from apeCAD.draft.state import DraftState
 from apeCAD.errors import DocumentError
 from apeCAD.ops import (
     AddArc,
     AddBar,
+    AddBarRow,
+    AddBarsAlongEdge,
     AddBezier,
     AddBox,
     AddCircle,
@@ -95,6 +97,8 @@ HANDLERS: dict[type[object], Handler] = {
     AddWallLeg: section.add_wall_leg,
     SetLegReinforcement: section.set_leg_reinforcement,
     SetCover: section.set_cover,
+    AddBarRow: rebar.add_bar_row,
+    AddBarsAlongEdge: rebar.add_bars_along_edge,
 }
 
 

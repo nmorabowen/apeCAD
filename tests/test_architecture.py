@@ -33,6 +33,7 @@ DRAFT_RANK: dict[str, int] = {
     "transform": 3,
     "meta": 3,
     "section": 3,
+    "rebar": 3,
     "dispatch": 4,
 }
 

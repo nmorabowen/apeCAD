@@ -40,6 +40,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0028](0028-agent-surface-mcp.md) | One op catalog behind every surface; MCP, render and query tools | Proposed |
 | [0029](0029-delete-takes-the-brep-subtree.md) | Delete takes the selection's whole B-rep subtree | Proposed |
 | [0030](0030-one-gesture-one-op.md) | One drawing gesture is one op: creation ops take vertex references | Proposed |
+| [0032](0032-exact-collinear-bar-layouts.md) | Bar layouts snap to a lattice so inclined rows stay exactly collinear | Proposed |
 
 ## Template
 
