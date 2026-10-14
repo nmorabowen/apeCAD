@@ -1,6 +1,6 @@
 # Spec — APE design system for apeCAD
 
-**Status:** Accepted (2026-10-14). **ADR:** [0031](../adrs/0031-ape-design-system.md).
+**Status:** Accepted (2026-10-14). **ADRs:** [0031](../adrs/0031-ape-design-system.md), [0033](../adrs/0033-ape-drawing-style-errata.md) (drawing-style errata).
 **Mockup:** [`design/ape-design-mockup.html`](../design/ape-design-mockup.html), published at
 <https://claude.ai/artifact/8o96Ef5efK79HYXGuWBDbj> (private to the owner until shared).
 
@@ -363,7 +363,7 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 
 ## 3. Drawing output style
 
-### 3.1 Pens, ink, fills, type (the `render/style.py` data)
+### 3.1 Pens, ink, fills, type (the `render/style.py` data, ADR 0033)
 
 | Token | Value | Source |
 |---|---|---|
@@ -385,22 +385,22 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 
 ### 3.2 Entity → drawing style
 
-`Role` is what `scene.py` attaches to a drawable; `render/style.py` resolves it.
+`Role` is what `scene.py` attaches to a drawable (`Drawable.layer`); `render/style.py` resolves it: `SECTION_STYLE` for the section roles, `SKETCH_STYLE` for the rest ([ADR 0033](../adrs/0033-ape-drawing-style-errata.md)). The canvas twin is `static/js/section.js` `SECTION_STYLE`, reading the canvas roles of §1.1.
 
 | Entity (kind) | Role | Line style | Fill | Layer (DXF) | Notes |
 |---|---|---|---|---|---|
 | `Point` | `point` | — | disc 0.5 mm, Black | `POINT` | Bar points are drawn by the bar, not as points |
 | `Line`, `Polyline` (sketch, frame axis) | `sketch` | `0.30mm S-Black` | — | `SKETCH` | Frame axes are intent, not structure edges |
 | `Circle`, `Arc`, `Ellipse`, `Bezier` | `sketch` | `0.30mm S-Black` | — | `SKETCH` | |
-| `Face` (3-D, not section) | `face` | boundary as its lines | none | `FACE` | The 15 % blue tint goes |
-| `Box`, `Solid` edges | `solid-edge` | `0.20mm S-Black` | — | `SOLID-EDGE` | Projection; no hidden-line removal |
+| `Face` (3-D, not section) | `face` | `0.20mm S-Black` outline | none | `FACE` | The 15 % blue tint goes; projection weight (ADR 0033) |
+| `Box`, `Solid` edges | `solid` | `0.20mm S-Black` | — | `SOLID-EDGE` | Projection; no hidden-line removal |
 | `ConcreteFace` | `concrete-cut` | `0.40mm S-Black` | `Solid - Grey210 - Transparent` | `CONCRETE-CUT`, fill on `CONCRETE-FILL` | Section is a cut (ADR-005 D2) |
 | `WallLeg` axis | `wall-axis` | `0.10mm H-Dark Grey` | — | `WALL-AXIS` | Intent line; thickness is shown by the face |
 | `WallLeg.horizontal` | `tag` | — | — | `TAG` | `Φd @ s mm, {curtains} curtains` beside the leg |
 | `Bar` | `bar` | edge `0.10mm S-Blue` | disc at `diameter_mm`, Blue | `BAR` | True scale; never below 0.6 mm on paper |
 | `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (D4) |
 | `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick per `hooks` (D4) |
-| `CoverGuide` | `cover-guide` | `0.10mm H-Grey` | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
+| `CoverGuide` | `cover` | `0.10mm H-Dark Grey`, short dash (ADR 0033; Grey 192 vanishes on Grey210) | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
 | entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue |
 | `#id` (show_ids) | `label` | — | — | not exported | Debug only |
 | Bar group tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `n Φd`, one per designation (D4) |
@@ -415,14 +415,13 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 
 ### 3.3 View-title vocabulary
 
+The views `render_svg` offers (`render/api.py` `VIEW_NAMES`); a new view adds its row here and in `render/style.py` `VIEW_TITLES`.
+
 | `view.name` (identifier, unchanged) | Title on the drawing |
 |---|---|
 | `top` | PLAN |
-| `bottom` | BOTTOM VIEW |
 | `front` | FRONT ELEVATION |
-| `back` | BACK ELEVATION |
 | `right` | RIGHT ELEVATION |
-| `left` | LEFT ELEVATION |
 | `iso` | ISOMETRIC |
 | section (z = 0 with section entities) | SECTION {face label, or none} |
 
@@ -465,16 +464,22 @@ ADR 0031 "Implementation stages".
 - Tests: `tests/js/strings.test.mjs` asserts no entry matches `/—|–|\.\.\.|…|!|\?|\bOK\b|\byou\b|\bwe\b|\bplease\b/i`
   (menu labels ending in `…` are exempt by key prefix `menu.`).
 
-### D3 — Render style
+### D3 — Render style (implemented)
 
-- `render/style.py`: `PENS`, `COLORS`, `FILLS`, `FONTS`, `ROLES: dict[Role, Style]`
-  (frozen dataclasses, pure data, pyright strict).
-- `scene.py`: `Drawable.layer` widens to the roles in §3.2 (section roles arrive with C1).
-- `svg.py`: one `<g class="{role}">` per role in a fixed paint order (fills, cut, projection,
-  sketch, rebar, annotation, highlight); widths from `style.screen_px`; texts with the
-  working font; titles from §3.3; `data-*` attributes unchanged.
-- Tests: golden SVG per view in `tests/fixtures/render/`; a test that every `Role` has a
-  `Style` and every style name is an ADR-005 name.
+- `render/style.py` (#32's table, extended; ADR 0033): `pen_px(mm)`, the ink and font
+  constants, `LayerStyle` with its ADR-005 `line_style`, ADR-010 `fill_name` and DXF
+  `layer_name`, `SECTION_STYLE` (concrete, cover, leg, hoop, crosstie, bar),
+  `SKETCH_STYLE` (face, solid, edge, point), `VIEW_TITLES`.
+- `drawable.py` / `scene.py`: boxes and solids move from `edge` to a `solid` layer.
+- `svg.py`: one group per layer in a fixed paint order (faces, section layers, solids,
+  sketch edges, points, highlight, text, legend); widths from `pen_px`; labels in the
+  working font, blue; the view title in the display font with a 0.30 mm rule; the empty
+  placeholder `Empty drawing`; `data-*` attributes unchanged.
+- Canvas: the light values of `--fill-concrete`, `--ink-concrete`, `--ink-section-guide`
+  and `--ink-rebar` in `css/app.css` become `#d2d2d2`, `#000000`, `#808080`, `#000077`;
+  carbon keeps the D1 lifted values.
+- Tests: the 19 goldens in `tests/fixtures/render/` regenerated; `tests/test_render_style.py`
+  checks every style name is an ADR-005 / ADR-010 name and every layer has a style.
 
 ### D4 — Section annotation
 

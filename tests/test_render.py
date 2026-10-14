@@ -82,7 +82,7 @@ def test_empty_draft_golden() -> None:
     result = render_svg(Document())
     assert result.view == "top"
     assert result.entities == 0
-    assert "empty draft" in result.svg
+    assert "Empty drawing" in result.svg
     # No extents: a 1000 mm box plus the 5 % margin, fitted to the shorter side (600 px).
     assert result.scale_px_per_mm == pytest.approx(600.0 / 1100.0)
     _check_golden("empty_top", result.svg)

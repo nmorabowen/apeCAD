@@ -9,16 +9,30 @@ from xml.sax.saxutils import escape
 
 from apeCAD.entities import EntityId
 from apeCAD.render.drawable import SECTION_LAYERS, Drawable, Path3
-from apeCAD.render.style import MIN_BAR_RADIUS_PX, SECTION_STYLE
+from apeCAD.render.style import (
+    ANNOTATION_PEN_PX,
+    BACKGROUND,
+    BLUE,
+    DISPLAY_FONT,
+    EMPTY_TEXT,
+    HIGHLIGHT,
+    MIN_BAR_RADIUS_PX,
+    POINT_RADIUS_PX,
+    SECTION_STYLE,
+    SECTION_TITLE,
+    SKETCH_STYLE,
+    TEXT_PX,
+    TITLE_PX,
+    TITLE_RULE_PX,
+    VIEW_TITLES,
+    WORKING_FONT,
+)
 from apeCAD.render.views import Vec2, View
 
-BACKGROUND = "#ffffff"
-INK = "#1f2933"
-FACE_FILL = "#3b6ea5"
-ACCENT = "#e8590c"
-FONT = 'font-family="sans-serif" font-size="11"'
-FONT_PX = 11.0
-CHAR_PX = 6.6  # a generous sans-serif average at 11 px, to keep labels inside the frame
+ACCENT = HIGHLIGHT
+FONT = f'font-family="{WORKING_FONT}" font-size="{TEXT_PX:g}"'
+FONT_PX = TEXT_PX
+CHAR_PX = 6.6  # generous for Arial Narrow at 10 px, to keep labels inside the frame
 TEXT_GAP_PX = 5.0
 
 
@@ -84,22 +98,25 @@ def write_svg(
         f'<rect width="{w}" height="{h}" fill="{BACKGROUND}"/>',
     ]
     faces = [d for d in items if d.layer == "face"]
+    solids = [d for d in items if d.layer == "solid"]
     edges = [d for d in items if d.layer == "edge"]
     points = [d for d in items if d.layer == "point"]
-    out.append(
-        f'<g class="faces" fill="{FACE_FILL}" fill-opacity="0.15" stroke="none">'
-    )
+    out.append(f'<g class="faces" {SKETCH_STYLE["face"].attrs()}>')
     out.extend(_group(d, view, viewport, "data-id", _plain_body) for d in faces)
     out.append("</g>")
     out.extend(_section_layers(items, view, viewport))
-    out.append(
-        f'<g class="edges" fill="none" stroke="{INK}" stroke-width="1.5" '
-        'stroke-linecap="round" stroke-linejoin="round">'
-    )
+    if solids:
+        out.append(f'<g class="solids" {SKETCH_STYLE["solid"].attrs()}>')
+        out.extend(_group(d, view, viewport, "data-id", _plain_body) for d in solids)
+        out.append("</g>")
+    out.append(f'<g class="edges" {SKETCH_STYLE["edge"].attrs()}>')
     out.extend(_group(d, view, viewport, "data-id", _plain_body) for d in edges)
     out.append("</g>")
-    out.append(f'<g class="points" fill="{INK}">')
-    out.extend(_group(d, view, viewport, "data-id", _dot_body(1.5, INK)) for d in points)
+    point_ink = SKETCH_STYLE["point"].fill
+    out.append(f'<g class="points" fill="{point_ink}">')
+    out.extend(
+        _group(d, view, viewport, "data-id", _dot_body(POINT_RADIUS_PX, point_ink)) for d in points
+    )
     out.append("</g>")
     marked = [d for d in items if d.entity_id in highlight]
     if marked:
@@ -111,15 +128,15 @@ def write_svg(
             body = _HIGHLIGHT_BODIES.get(d.layer, _dot_body(2.5, ACCENT))
             out.append(_group(d, view, viewport, "data-highlight", body))
         out.append("</g>")
-    out.append(f'<g class="text" {FONT} fill="{INK}">')
+    out.append(f'<g class="text" {FONT} fill="{BLUE}">')
     out.extend(_texts(items, view, viewport, text))
     if not items:
         out.append(
             f'<text x="{num(w / 2.0)}" y="{num(h / 2.0)}" text-anchor="middle" '
-            'fill-opacity="0.5">empty draft</text>'
+            f'fill-opacity="0.5">{EMPTY_TEXT}</text>'
         )
     out.append("</g>")
-    out.extend(_legend(view, viewport))
+    out.extend(_legend(view, viewport, _title(view, items)))
     out.append("</svg>")
     return "\n".join(out) + "\n"
 
@@ -202,6 +219,7 @@ def _dot_body(radius: float, color: str) -> _BodyFn:
 _HIGHLIGHT_BODIES: dict[str, _BodyFn] = {
     "face": _accent_fill_body,
     "concrete": _accent_fill_body,
+    "solid": _accent_stroke_body,
     "edge": _accent_stroke_body,
     "cover": _accent_stroke_body,
     "leg": _accent_stroke_body,
@@ -250,16 +268,35 @@ def scale_bar_mm(viewport: Viewport) -> float:
     return power / 2.0
 
 
-def _legend(view: View, viewport: Viewport) -> list[str]:
+def _title(view: View, items: list[Drawable]) -> str:
+    """English view title (spec §3.3); a plan of a section is SECTION plus the face label."""
+    concrete = [d for d in items if d.layer == "concrete"]
+    if view.name == "top" and concrete:
+        label = concrete[0].label
+        return f"{SECTION_TITLE} {label}" if label else SECTION_TITLE
+    return VIEW_TITLES.get(view.name, view.name.upper())
+
+
+def _legend(view: View, viewport: Viewport, title: str) -> list[str]:
+    """Scale bar (0.10 mm pen, working font) under the view title (display font, 3.5 mm,
+    0.30 mm rule), bottom left, all in annotation blue (ADR-004, ADR-007, ADR-009)."""
     length = scale_bar_mm(viewport)
     x0 = 12.0
     y0 = viewport.height - 12.0
     x1 = x0 + length * viewport.scale
+    title_y = y0 - 14.0  # clear of the scale bar's ticks and label
+    rule_y = title_y + 3.0
+    rule_x1 = x0 + 0.55 * TITLE_PX * len(title)  # under the title only
     return [
-        f'<g class="legend" {FONT} fill="{INK}" stroke="{INK}" stroke-width="1">',
+        f'<g class="legend" {FONT} fill="{BLUE}" stroke="{BLUE}" '
+        f'stroke-width="{ANNOTATION_PEN_PX:g}">',
         f'<path d="M{num(x0)} {num(y0 - 4.0)} L{num(x0)} {num(y0)} L{num(x1)} {num(y0)} '
         f'L{num(x1)} {num(y0 - 4.0)}" fill="none"/>',
         f'<text x="{num(x1 + 6.0)}" y="{num(y0)}" stroke="none">{length:.10g} mm</text>',
-        f'<text x="{num(x0)}" y="{num(y0 - 10.0)}" stroke="none">{view.name}</text>',
+        f'<text class="view-title" x="{num(x0)}" y="{num(title_y)}" stroke="none" '
+        f'font-family="{DISPLAY_FONT}" font-size="{TITLE_PX:g}" font-weight="600" '
+        f'data-view="{view.name}">{clean_text(title)}</text>',
+        f'<path class="view-title-rule" d="M{num(x0)} {num(rule_y)} L{num(rule_x1)} {num(rule_y)}" '
+        f'fill="none" stroke-width="{TITLE_RULE_PX:g}"/>',
         "</g>",
     ]

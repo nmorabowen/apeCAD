@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="iso">
 <rect width="800" height="600" fill="#ffffff"/>
-<g class="faces" fill="#3b6ea5" fill-opacity="0.15" stroke="none">
+<g class="faces" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
 <g data-id="5"><path d="M89.45 344.82 L477.64 568.94 L710.55 434.47 L322.36 210.35 Z"/></g>
 <g data-id="14"><path d="M89.45 165.53 L477.64 389.65 L710.55 255.18 L322.36 31.06 Z"/></g>
 <g data-id="19"><path d="M89.45 344.82 L477.64 568.94 L477.64 389.65 L89.45 165.53 Z"/></g>
@@ -8,7 +8,10 @@
 <g data-id="24"><path d="M710.55 434.47 L322.36 210.35 L322.36 31.06 L710.55 255.18 Z"/></g>
 <g data-id="26"><path d="M322.36 210.35 L89.45 344.82 L89.45 165.53 L322.36 31.06 Z"/></g>
 </g>
-<g class="edges" fill="none" stroke="#1f2933" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g class="solids" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="27"></g>
+</g>
+<g class="edges" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
 <g data-id="6"><path d="M89.45 344.82 L477.64 568.94"/></g>
 <g data-id="7"><path d="M477.64 568.94 L710.55 434.47"/></g>
 <g data-id="8"><path d="M710.55 434.47 L322.36 210.35"/></g>
@@ -21,24 +24,24 @@
 <g data-id="21"><path d="M89.45 165.53 L89.45 344.82"/></g>
 <g data-id="23"><path d="M710.55 434.47 L710.55 255.18"/></g>
 <g data-id="25"><path d="M322.36 210.35 L322.36 31.06"/></g>
-<g data-id="27"></g>
 </g>
-<g class="points" fill="#1f2933">
-<g data-id="1"><circle cx="89.45" cy="344.82" r="1.5" fill="#1f2933" stroke="none"/></g>
-<g data-id="2"><circle cx="477.64" cy="568.94" r="1.5" fill="#1f2933" stroke="none"/></g>
-<g data-id="3"><circle cx="710.55" cy="434.47" r="1.5" fill="#1f2933" stroke="none"/></g>
-<g data-id="4"><circle cx="322.36" cy="210.35" r="1.5" fill="#1f2933" stroke="none"/></g>
-<g data-id="10"><circle cx="89.45" cy="165.53" r="1.5" fill="#1f2933" stroke="none"/></g>
-<g data-id="11"><circle cx="477.64" cy="389.65" r="1.5" fill="#1f2933" stroke="none"/></g>
-<g data-id="12"><circle cx="710.55" cy="255.18" r="1.5" fill="#1f2933" stroke="none"/></g>
-<g data-id="13"><circle cx="322.36" cy="31.06" r="1.5" fill="#1f2933" stroke="none"/></g>
+<g class="points" fill="#000000">
+<g data-id="1"><circle cx="89.45" cy="344.82" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="2"><circle cx="477.64" cy="568.94" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="3"><circle cx="710.55" cy="434.47" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="4"><circle cx="322.36" cy="210.35" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="10"><circle cx="89.45" cy="165.53" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="11"><circle cx="477.64" cy="389.65" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="12"><circle cx="710.55" cy="255.18" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="13"><circle cx="322.36" cy="31.06" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
-<g class="text" font-family="sans-serif" font-size="11" fill="#1f2933">
+<g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
 <text x="405" y="295" data-for="27">block</text>
 </g>
-<g class="legend" font-family="sans-serif" font-size="11" fill="#1f2933" stroke="#1f2933" stroke-width="1">
+<g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
 <path d="M12 584 L12 588 L121.8 588 L121.8 584" fill="none"/>
 <text x="127.8" y="588" stroke="none">200 mm</text>
-<text x="12" y="578" stroke="none">iso</text>
+<text class="view-title" x="12" y="574" stroke="none" font-family="Bahnschrift SemiBold Condensed, Bahnschrift, Saira SemiCondensed, Archivo Narrow, sans-serif" font-size="17.5" font-weight="600" data-view="iso">ISOMETRIC</text>
+<path class="view-title-rule" d="M12 577 L98.62 577" fill="none" stroke-width="1.5"/>
 </g>
 </svg>
