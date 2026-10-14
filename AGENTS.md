@@ -21,7 +21,7 @@ kernel or Qt viewer without an ADR). Cursor gets the English rule from
 ## Install and test
 
 ```bash
-pip install -e ".[dev]"          # the clone path from README.md
+pip install -e ".[dev,mcp]"      # the clone path from README.md, plus the MCP SDK
 python -m pytest -q              # 139 tests, ~18 s
 python -m ruff check src tests   # rules E, F, I, UP; line length 100
 pyright                          # strict, over src/ only
@@ -46,11 +46,31 @@ Traps (each verified 2026-09-25):
    ADR 0022). `.github/workflows/ci.yml` runs pytest, `ruff check` and
    pyright on Python 3.11 and 3.12, on every PR and on push to `main`. It
    does not run `ruff format --check` (trap 3), does not drive a browser,
-   and tool versions float with the `dev` extra. The PR "Test plan"
+   and tool versions float with the `dev` extra. The gate legs install
+   `.[dev,mcp]`; a `core` job runs pytest with `.[dev]` only, so the MCP
+   tests skip there and the stdlib-only core is proven. The PR "Test plan"
    checklist still records what *you* ran locally: tick only what you ran.
-5. Python ≥ 3.11 (pyright targets 3.11). Earlier PRs ran `py -3.12`; the suite
+5. **pyright needs the `mcp` extra.** `src/apeCAD/agent/mcp.py` imports the
+   SDK, so without `.[mcp]` pyright reports missing imports. Without it,
+   `tests/test_mcp.py` skips (stage S3). Only `apeCAD.agent.mcp` and
+   `python -m apeCAD.mcp` may import `mcp`; `tests/test_mcp_tools.py` checks
+   that `import apeCAD` does not.
+6. Python ≥ 3.11 (pyright targets 3.11). Earlier PRs ran `py -3.12`; the suite
    also passes on 3.11.9. The package has no runtime dependencies
    (`dependencies = []`); the HTTP host is stdlib.
+
+## Run the MCP server
+
+`python -m apeCAD.mcp [--root DIR]` serves the agent tools (spec
+`AProjects/specs/agent-surface-mcp.md` §4) over stdio, in local mode. It needs
+the `mcp` extra. Client config (spec §8):
+
+```json
+{"mcpServers": {"apecad": {"command": "python", "args": ["-m", "apeCAD.mcp"]}}}
+```
+
+stdout carries JSON-RPC only; logs go to stderr. Attach mode (`--attach-port`,
+stage S5) is not built yet.
 
 ## Run the scratchpad
 
