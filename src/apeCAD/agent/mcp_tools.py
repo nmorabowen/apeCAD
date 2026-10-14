@@ -1,7 +1,8 @@
 """The MCP tool table: name, description and input schema per §4 tool (spec agent-surface-mcp).
 
 No SDK here, so the table can be read and tested without the `mcp` extra; `apeCAD.agent.mcp`
-serves it. Each tool calls the matching `LocalTools` method one to one.
+serves it. Each tool calls the matching `ToolSet` method one to one: `LocalTools` (local
+mode) or `AttachTools` (attach mode, `apeCAD.agent.attach`).
 
 `check_arguments` checks only the top level of a call (an object, no unknown keys, the
 required keys, each value's JSON type). A failure there is a protocol error. What the tool
@@ -13,20 +14,43 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import cast
+from typing import Protocol, cast
 
 from apeCAD.agent.errors import Envelope
-from apeCAD.agent.local import LocalTools
 
 JsonSchema = dict[str, object]
 
-_DOCUMENT: JsonSchema = {"type": "string", "description": "Document id from new_document"}
+_DOCUMENT: JsonSchema = {
+    "type": "string",
+    "description": "Document id: from new_document, or the attached scratchpad's apecad:// id",
+}
 _EXPECT: JsonSchema = {
     "type": ["integer", "null"],
     "description": "Refuse with STALE unless the document is at this revision",
 }
 _IDS: JsonSchema = {"type": ["array", "null"], "items": {"type": "integer"}}
 _XYZ: JsonSchema = {"type": "array", "items": {"type": "number"}, "minItems": 3, "maxItems": 3}
+
+
+class ToolSet(Protocol):
+    """What the MCP tools call: `LocalTools` and `AttachTools` both have these methods."""
+
+    def list_ops(self, name: object = None) -> Envelope: ...
+    def new_document(self) -> Envelope: ...
+    def open_document(self, path: object) -> Envelope: ...
+    def save_document(self, document: object, path: object) -> Envelope: ...
+    def apply_op(
+        self, document: object, op: object, params: object = None, expect_revision: object = None
+    ) -> Envelope: ...
+    def apply_ops(
+        self, document: object, ops: object, expect_revision: object = None
+    ) -> Envelope: ...
+    def undo(self, document: object, expect_revision: object = None) -> Envelope: ...
+    def redo(self, document: object, expect_revision: object = None) -> Envelope: ...
+    def inspect(self, document: object) -> Envelope: ...
+    def query_entities(self, document: object, **filters: object) -> Envelope: ...
+    def render(self, document: object, **params: object) -> Envelope: ...
+    def get_document(self, document: object) -> Envelope: ...
 
 
 class ArgumentProblem(Exception):
@@ -39,7 +63,7 @@ class McpTool:
     description: str
     properties: dict[str, JsonSchema]
     required: tuple[str, ...]
-    call: Callable[[LocalTools, dict[str, object]], Envelope]
+    call: Callable[[ToolSet, dict[str, object]], Envelope]
 
     @property
     def input_schema(self) -> JsonSchema:
@@ -55,7 +79,7 @@ def _tool(
     name: str,
     description: str,
     properties: dict[str, JsonSchema],
-    call: Callable[[LocalTools, dict[str, object]], Envelope],
+    call: Callable[[ToolSet, dict[str, object]], Envelope],
     required: tuple[str, ...] = (),
 ) -> McpTool:
     return McpTool(name, description, properties, required, call)
