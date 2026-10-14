@@ -1,6 +1,6 @@
 # ADR 0027 — Ops are atomic; a refused op changes nothing
 
-**Status:** Proposed (2026-10-10)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-10; accepted by the owner on 2026-10-14
 
 Amends [ADR 0007](0007-clean-room-inspiration.md): its list of principle sources gains
 **cadcraft** (validate on a trial copy, then commit). Principles only, no code.
