@@ -51,7 +51,13 @@ Traps (each verified 2026-09-25):
    tests skip there and the stdlib-only core is proven. The PR "Test plan"
    checklist still records what *you* ran locally: tick only what you ran.
 5. **pyright needs the `mcp` extra.** `src/apeCAD/agent/mcp.py` imports the
-   SDK, so without `.[mcp]` pyright reports missing imports. Without it,
+   SDK, so without `.[mcp]` local pyright reports about 33 errors there
+   (`reportMissingImports` and the unknown types that follow), seen while
+   merging PR #27 on 2026-10-14. Install `pip install -e ".[dev,mcp]"` into a
+   venv (trap 1); CI installs it. pyright resolves imports with the `python`
+   on `PATH`, not your venv, unless you pass
+   `pyright --pythonpath <venv>/Scripts/python.exe`; an `mcp` 1.x there gives
+   the same wall of errors (the adapter needs `mcp>=2.3`). Without it,
    `tests/test_mcp.py` skips (stage S3). Only `apeCAD.agent.mcp` and
    `python -m apeCAD.mcp` may import `mcp`; `tests/test_mcp_tools.py` checks
    that `import apeCAD` does not.
@@ -69,8 +75,15 @@ the `mcp` extra. Client config (spec §8):
 {"mcpServers": {"apecad": {"command": "python", "args": ["-m", "apeCAD.mcp"]}}}
 ```
 
-stdout carries JSON-RPC only; logs go to stderr. Attach mode (`--attach-port`,
-stage S5) is not built yet.
+stdout carries JSON-RPC only; logs go to stderr. Attach mode
+(`--attach-port N` or `--attach http://127.0.0.1:N`, plus `--root DIR` to
+match the scratchpad's root) edits the document of a running scratchpad, and
+the browser picks the edits up by polling `/api/revision`. A wrong root or no
+scratchpad exits 2; a stopped or restarted scratchpad is `DETACHED`.
+
+`python -m apeCAD.cli ops|new|apply|inspect|query|render ...` runs the same
+tools over document files and prints one JSON envelope (spec §7). It exits 0
+ok, 1 refusal or environment error, 2 bad argument.
 
 ## Run the scratchpad
 

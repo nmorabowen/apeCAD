@@ -6,11 +6,15 @@ import { bindMenus } from "./js/commands.js";
 import { bindFileOpen, reload } from "./js/docfile.js";
 import { bindGridPrefs } from "./js/grid-ui.js";
 import { rebuildGrid } from "./js/grid.js";
+import { api } from "./js/api.js";
 import { bindCanvas, bindKeys, bindToolButtons } from "./js/input.js";
 import { bindLayout, restoreLayout } from "./js/layout.js";
+import { startRevisionPoll } from "./js/live.js";
 import { bindOutliner } from "./js/outliner.js";
 import { applyViz, bindPrefsDialogs, syncPrefsForm } from "./js/prefs-ui.js";
 import { initPrefs } from "./js/prefs.js";
+import { refreshFrom } from "./js/render.js";
+import { S } from "./js/state.js";
 import { bindViewCube, syncCube } from "./js/viewcube.js";
 import { renderer, scene } from "./js/viewport.js";
 
@@ -44,3 +48,9 @@ applyViz();
 refreshToggles();
 tick();
 reload().catch((error) => setHint(error.message));
+startRevisionPoll({
+  fetchJson: api,
+  current: () => S.sceneState,
+  apply: refreshFrom,
+  busy: () => Boolean(S.pending),
+});

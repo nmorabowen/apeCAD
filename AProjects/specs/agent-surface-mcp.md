@@ -290,21 +290,33 @@ attached scratchpad.
 | `GET /api/revision` | | `{revision}`; the browser polls it about once a second |
 | `POST /api/op` (changed) | adds optional `expect_revision`; also accepts `{op, params}` | as today, plus `revision`; errors gain `code` |
 | `POST /api/ops` | `{ops: [{op, params}], expect_revision?}` | `apply_ops` result |
+| `POST /api/tool` (S5) | `{tool, arguments}`: `list_ops`, `apply_op`, `apply_ops`, `undo`, `redo`, `inspect`, `query_entities`, `get_document`, with the §4 params minus `document` | that tool's envelope, from the scratchpad's session. What attach mode calls. `render` is not hosted: the attached side renders a `get_document` snapshot, so `save_to` resolves under the agent's root and the scratchpad writes no files |
 | `POST /api/undo`, `/api/redo`, `/api/reset`, `/api/load` (changed) | | as today, plus `revision` |
 
 `/api/op` keeps status 400 for bad arguments and refusals (ADR 0026 decision 2). `STALE` and
 `DETACHED` are new and only occur when a caller sends `expect_revision` or
-`X-ApeCAD-Instance`; they answer 409. The ADR 0026 transport keeps 422 for refusals, and its `apply` action goes through
+`X-ApeCAD-Instance`; they answer 409. Every `/api/` route checks `X-ApeCAD-Instance` when it
+is sent, before anything else. The ADR 0026 transport keeps 422 for refusals, and its `apply` action goes through
 `catalog.apply`.
 
 ## 7. CLI (`python -m apeCAD.cli`)
 
 ```text
 python -m apeCAD.cli ops [NAME]                     # list_ops as JSON
+python -m apeCAD.cli new FILE [--force]             # write an empty document
 python -m apeCAD.cli apply FILE OP PARAMS_JSON      # apply, write FILE back
+python -m apeCAD.cli apply FILE - OPS_JSON          # apply_ops: an array of {op, params}
 python -m apeCAD.cli inspect FILE
+python -m apeCAD.cli query FILE [--kind K,K] [--tag T] [--label L] [--ids 1,2]
+                     [--window=x0,y0,z0,x1,y1,z1] [--mode crossing] [--detail full]
+                     [--limit N] [--cursor C]
 python -m apeCAD.cli render FILE [-o OUT.svg] [--view top] [--size 800x600]
+                     [--ids 1,2] [--highlight 3] [--window=...] [--no-labels] [--show-ids]
 ```
+
+Without `-o`, `render` puts the SVG in the envelope's `svg` field. Each call is its own
+process, so revisions start at 0 and `apply` reports 1. A file that is missing is `IO_ERROR`,
+one that does not replay is `REFUSED`, and a failed `apply` leaves the file unchanged.
 
 It prints the §2 envelope to stdout. Exit status: 0 ok, 1 refusal or environment error,
 2 bad argument. `python -m apeCAD` is unchanged (ADR 0021).
