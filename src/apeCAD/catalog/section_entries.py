@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from apeCAD.catalog.spec import ENTITY_IDS, LABEL, OUTPUT_ID, VERTICES, OpSpec, entry
+from apeCAD.catalog.spec import ENTITY_IDS, LABEL, OUTPUT_ID, VERTEX, VERTICES, OpSpec, entry
 from apeCAD.ops import (
     AddBar,
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
     SetBarSize,
+    SetCover,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
 )
@@ -19,6 +24,11 @@ _DESIGNATION = (
     "follows from it."
 )
 _SPACING = "Spacing along the member, mm; positive."
+_HORIZONTAL = (
+    "The leg's horizontal web steel {designation, spacing_mm, curtains}, or null for none "
+    "yet; curtains is a count of 1 or more. A leg without it is a lint warning (ADR 0024 P4)."
+)
+_STEEL_EXAMPLE = {"designation": "Ø10", "spacing_mm": 200, "curtains": 2}
 
 SECTION_ENTRIES: tuple[OpSpec, ...] = (
     entry(
@@ -114,5 +124,101 @@ SECTION_ENTRIES: tuple[OpSpec, ...] = (
             "hooks": "\"135\" for hoops; \"135-135\" or \"135-90\" for crossties. Null keeps it.",
         },
         {"entity_ids": [9], "spacing_mm": 150},
+    ),
+    entry(
+        AddSectionOutline,
+        "Draw a section outline: one solid concrete face on z = 0, stored counter-clockwise.",
+        "entity",
+        {
+            "point_ids": VERTICES + " At least 3, all at z = 0, forming a simple ring; a "
+            "bow-tie is refused. Every outline is solid (no role, ADR 0024 P3).",
+            "material": "Concrete material name, e.g. \"H30\"; a name, not a law.",
+            "label": LABEL,
+            "entity_id": OUTPUT_ID,
+        },
+        {
+            "point_ids": [
+                {"xyz": [0, 0, 0]},
+                {"xyz": [2000, 0, 0]},
+                {"xyz": [2000, 300, 0]},
+                {"xyz": [0, 300, 0]},
+            ],
+            "material": "H30",
+            "label": "pier-P1",
+        },
+        outputs=("entity_id",),
+    ),
+    entry(
+        AddWallChain,
+        "Draw a wall along its axis: one outline face plus one leg per axis segment.",
+        "entity",
+        {
+            "point_ids": VERTICES + " The open wall axis, at least 2 points, all at z = 0.",
+            "thickness_mm": "Wall thickness in mm: one value for every segment, or one per "
+            "segment; positive.",
+            "material": "Concrete material name, e.g. \"H30\".",
+            "horizontal": _HORIZONTAL + " It goes on every leg.",
+            "label": LABEL + " It names the face.",
+            "entity_id": OUTPUT_ID + " The outline face.",
+            "ring": "Output: the outline vertices the handler resolved. Do not send it.",
+            "leg_ids": "Output: the legs, one per axis segment. Do not send it.",
+        },
+        {
+            "point_ids": [{"xyz": [0, 0, 0]}, {"xyz": [3000, 0, 0]}, {"xyz": [3000, 2000, 0]}],
+            "thickness_mm": [250],
+            "material": "H30",
+            "horizontal": _STEEL_EXAMPLE,
+            "label": "wall-L1",
+        },
+        outputs=("entity_id", "ring", "leg_ids"),
+    ),
+    entry(
+        AddWallLeg,
+        "Add a wall leg on an existing concrete face, e.g. each of the three legs of a T.",
+        "entity",
+        {
+            "start_id": VERTEX + " One end of the leg axis, at z = 0.",
+            "end_id": VERTEX + " The other end; not the start.",
+            "thickness_mm": "Leg thickness, mm; positive.",
+            "face_id": "The concrete face the leg belongs to.",
+            "horizontal": _HORIZONTAL,
+            "label": LABEL,
+            "entity_id": OUTPUT_ID,
+        },
+        {
+            "start_id": {"xyz": [0, 150, 0]},
+            "end_id": {"xyz": [2000, 150, 0]},
+            "thickness_mm": 300,
+            "face_id": 5,
+            "horizontal": _STEEL_EXAMPLE,
+        },
+        outputs=("entity_id",),
+    ),
+    entry(
+        SetLegReinforcement,
+        "Set a wall leg's horizontal web steel.",
+        "none",
+        {
+            "leg_id": "The wall leg.",
+            "designation": _DESIGNATION,
+            "spacing_mm": _SPACING,
+            "curtains": "Number of curtains (layers) of horizontal steel; 1 or more.",
+        },
+        {"leg_id": 8, "designation": "Ø12", "spacing_mm": 150, "curtains": 2},
+    ),
+    entry(
+        SetCover,
+        "Set a concrete face's cover guide; it creates the guide or changes the face's one.",
+        "entity",
+        {
+            "face_id": "The concrete face.",
+            "cover_mm": "Clear cover to the outside of the transverse bar, mm; positive.",
+            "tie_diameter_mm": "Transverse bar diameter, mm; 0 for a wall without hoops.",
+            "bar_diameter_mm": "Longitudinal bar diameter, mm; positive. Bar centres sit "
+            "cover + tie + bar / 2 inside the outline.",
+            "entity_id": OUTPUT_ID + " The face's cover guide.",
+        },
+        {"face_id": 5, "cover_mm": 40, "tie_diameter_mm": 10, "bar_diameter_mm": 20},
+        outputs=("entity_id",),
     ),
 )

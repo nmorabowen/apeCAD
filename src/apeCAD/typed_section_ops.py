@@ -7,13 +7,27 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from apeCAD.entities import Bar, ConcreteFace, Crosstie, EntityId, Hoop
+from apeCAD.entities import (
+    Bar,
+    ConcreteFace,
+    CoverGuide,
+    Crosstie,
+    EntityId,
+    Hoop,
+    LegSteel,
+    WallLeg,
+)
 from apeCAD.ops import (
     AddBar,
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
     SetBarSize,
+    SetCover,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
     VertexRef,
@@ -109,3 +123,84 @@ class SectionTypedOps(TypedOps):
                 hooks=hooks,
             )
         )
+
+    def add_section_outline(
+        self,
+        point_ids: Sequence[VertexRef],
+        material: str,
+        *,
+        label: str | None = None,
+    ) -> ConcreteFace:
+        """The outline gesture: one solid face on z = 0, stored CCW; a bow-tie is refused."""
+        op = AddSectionOutline(point_ids=tuple(point_ids), material=material, label=label)
+        return self._require_produced(self._apply(op), ConcreteFace)
+
+    def add_wall_chain(
+        self,
+        point_ids: Sequence[VertexRef],
+        thickness_mm: float | Sequence[float],
+        material: str,
+        *,
+        horizontal: LegSteel | None = None,
+        label: str | None = None,
+    ) -> ConcreteFace:
+        """One outline face around a wall axis, plus one leg per axis segment."""
+        thicknesses = (
+            (float(thickness_mm),)
+            if isinstance(thickness_mm, (int, float))
+            else tuple(thickness_mm)
+        )
+        op = AddWallChain(
+            point_ids=tuple(point_ids),
+            thickness_mm=thicknesses,
+            material=material,
+            horizontal=horizontal,
+            label=label,
+        )
+        return self._require_produced(self._apply(op), ConcreteFace)
+
+    def add_wall_leg(
+        self,
+        start_id: VertexRef,
+        end_id: VertexRef,
+        thickness_mm: float,
+        face_id: EntityId,
+        *,
+        horizontal: LegSteel | None = None,
+        label: str | None = None,
+    ) -> WallLeg:
+        """A leg on an existing concrete face (a T outline takes three)."""
+        op = AddWallLeg(
+            start_id=start_id,
+            end_id=end_id,
+            thickness_mm=thickness_mm,
+            face_id=face_id,
+            horizontal=horizontal,
+            label=label,
+        )
+        return self._require_produced(self._apply(op), WallLeg)
+
+    def set_leg_reinforcement(
+        self, leg_id: EntityId, designation: str, spacing_mm: float, curtains: int
+    ) -> None:
+        self._apply(
+            SetLegReinforcement(
+                leg_id=leg_id, designation=designation, spacing_mm=spacing_mm, curtains=curtains
+            )
+        )
+
+    def set_cover(
+        self,
+        face_id: EntityId,
+        cover_mm: float,
+        tie_diameter_mm: float,
+        bar_diameter_mm: float,
+    ) -> CoverGuide:
+        """Create or change the face's cover guide (clear cover to the outside of the tie)."""
+        op = SetCover(
+            face_id=face_id,
+            cover_mm=cover_mm,
+            tie_diameter_mm=tie_diameter_mm,
+            bar_diameter_mm=bar_diameter_mm,
+        )
+        return self._require_produced(self._apply(op), CoverGuide)

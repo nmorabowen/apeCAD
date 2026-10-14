@@ -27,6 +27,9 @@ from apeCAD.ops.types import (
     AddLineChain,
     AddPoint,
     AddPolyline,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
     ArrayLinear,
     ArrayPolar,
     BreakCrossing,
@@ -41,7 +44,9 @@ from apeCAD.ops.types import (
     PointAt,
     Rotate,
     SetBarSize,
+    SetCover,
     SetLabel,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
     Sew,
@@ -53,6 +58,11 @@ from apeCAD.ops.types import (
 )
 
 __all__ = [
+    "AddSectionOutline",
+    "AddWallChain",
+    "AddWallLeg",
+    "SetLegReinforcement",
+    "SetCover",
     "AddArc",
     "AddBar",
     "AddBezier",

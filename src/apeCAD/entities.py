@@ -165,8 +165,50 @@ class Crosstie:
     label: str | None = None
 
 
-SectionEntity = ConcreteFace | Bar | Hoop | Crosstie
-"""Section-mode kinds (ADR 0024). C2 adds WallLeg and CoverGuide."""
+@dataclass(frozen=True, slots=True)
+class LegSteel:
+    """A wall leg's horizontal web steel (ADR 0024 P4): a designation, not a diameter."""
+
+    designation: str
+    spacing_mm: float
+    curtains: int
+
+
+@dataclass(frozen=True, slots=True)
+class WallLeg:
+    """Section mode: a rectangular wall leg on its axis, inside a concrete face (P4).
+
+    `start_id` and `end_id` are axis points. `horizontal` is the leg's web steel, or None
+    when not yet given; apeConcrete's reader refuses a leg without it, apeCAD only warns.
+    """
+
+    entity_id: EntityId
+    start_id: EntityId
+    end_id: EntityId
+    thickness_mm: float
+    face_id: EntityId
+    horizontal: LegSteel | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CoverGuide:
+    """Section mode: a face's cover intent, one per face (ADR 0024).
+
+    Clear cover is measured to the outside of the transverse bar (ADR 0024 open q6, the
+    proposed default); bar centres sit `cover + tie + bar / 2` inside the outline.
+    """
+
+    entity_id: EntityId
+    face_id: EntityId
+    cover_mm: float
+    tie_diameter_mm: float
+    bar_diameter_mm: float
+    label: str | None = None
+
+
+SectionEntity = ConcreteFace | Bar | Hoop | Crosstie | WallLeg | CoverGuide
+"""Section-mode kinds (ADR 0024)."""
 
 Entity = (
     Point | Line | Polyline | Box | Face | Solid | Circle | Arc | Ellipse | Bezier | SectionEntity

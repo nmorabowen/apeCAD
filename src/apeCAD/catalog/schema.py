@@ -116,11 +116,25 @@ def _field_schema(name: str, hint: object) -> Schema:
         }
     if hint is XYZ:
         return _XYZ
+    if isinstance(hint, type) and dataclasses.is_dataclass(hint):
+        return _record_schema(hint)
     if hint is int and is_id:
         return _ID
     if hint in _SCALARS:
         return _SCALARS[hint]
     raise TypeError(f"{name}: no JSON schema for {hint!r}")
+
+
+def _record_schema(record: type) -> Schema:
+    """A nested value object (a wall leg's `LegSteel`): every field required, no others."""
+    hints = get_type_hints(record)
+    names = [field.name for field in dataclasses.fields(record)]
+    return {
+        "type": "object",
+        "properties": {name: _field_schema(name, hints[name]) for name in names},
+        "required": names,
+        "additionalProperties": False,
+    }
 
 
 def _nullable(inner: Schema) -> Schema:

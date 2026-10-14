@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from apeCAD.document import Document
+from apeCAD.entities import ConcreteFace, CoverGuide, LegSteel, Point
+from apeCAD.section.cover import bar_centre_inset_mm, cover_rings
 
 
 def scene_payload(document: Document) -> dict[str, object]:
@@ -148,6 +150,57 @@ def scene_payload(document: Document) -> dict[str, object]:
             }
             for tie in document.crossties()
         ],
+        "wall_legs": [
+            {
+                "entity_id": leg.entity_id,
+                "start_id": leg.start_id,
+                "end_id": leg.end_id,
+                "thickness_mm": leg.thickness_mm,
+                "face_id": leg.face_id,
+                "horizontal": _steel(leg.horizontal),
+                "label": leg.label,
+            }
+            for leg in document.wall_legs()
+        ],
+        "cover_guides": [_cover_guide(document, guide) for guide in document.cover_guides()],
         "tags": {name: sorted(ids) for name, ids in document.tags().items()},
         "brep": document.brep().to_payload(),
     }
+
+
+def _steel(steel: LegSteel | None) -> dict[str, object] | None:
+    if steel is None:
+        return None
+    return {
+        "designation": steel.designation,
+        "spacing_mm": steel.spacing_mm,
+        "curtains": steel.curtains,
+    }
+
+
+def _cover_guide(document: Document, guide: CoverGuide) -> dict[str, object]:
+    """The guide with its rings, computed here in Python (plan C2: never in the client)."""
+    face = document.entity(guide.face_id)
+    assert isinstance(face, ConcreteFace)
+    outline: list[tuple[float, float]] = []
+    for point_id in face.point_ids:
+        point = document.entity(point_id)
+        assert isinstance(point, Point)
+        outline.append((point.xyz_mm.x_mm, point.xyz_mm.y_mm))
+    rings = cover_rings(outline, guide)
+    return {
+        "entity_id": guide.entity_id,
+        "face_id": guide.face_id,
+        "cover_mm": guide.cover_mm,
+        "tie_diameter_mm": guide.tie_diameter_mm,
+        "bar_diameter_mm": guide.bar_diameter_mm,
+        "bar_centre_inset_mm": bar_centre_inset_mm(guide),
+        "cover_ring_mm": _ring(rings.cover_ring_mm),
+        "bar_centre_ring_mm": _ring(rings.bar_centre_ring_mm),
+        "reason": rings.reason,
+        "label": guide.label,
+    }
+
+
+def _ring(ring: list[tuple[float, float]] | None) -> list[list[float]] | None:
+    return None if ring is None else [[x, y] for x, y in ring]

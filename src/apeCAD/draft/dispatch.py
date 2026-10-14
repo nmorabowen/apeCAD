@@ -24,6 +24,9 @@ from apeCAD.ops import (
     AddLineChain,
     AddPoint,
     AddPolyline,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
     ArrayLinear,
     ArrayPolar,
     BreakCrossing,
@@ -37,7 +40,9 @@ from apeCAD.ops import (
     Op,
     Rotate,
     SetBarSize,
+    SetCover,
     SetLabel,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
     Sew,
@@ -85,6 +90,11 @@ HANDLERS: dict[type[object], Handler] = {
     SetBarSize: section.set_bar_size,
     SetMaterial: section.set_material,
     SetTransverse: section.set_transverse,
+    AddSectionOutline: section.add_section_outline,
+    AddWallChain: section.add_wall_chain,
+    AddWallLeg: section.add_wall_leg,
+    SetLegReinforcement: section.set_leg_reinforcement,
+    SetCover: section.set_cover,
 }
 
 

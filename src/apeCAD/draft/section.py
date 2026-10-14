@@ -1,4 +1,4 @@
-"""Handlers for section mode (ADR 0024): concrete faces, bars, hoops, crossties, settings.
+"""Handlers for section mode (ADR 0024): faces, outlines, wall legs, cover, bars, hoops, ties.
 
 Intent only: positions, rings of bar ids, designations and names. No mechanics. A section
 lives on z = 0, x right and y up, in world millimetres (decision 6).
@@ -6,10 +6,20 @@ lives on z = 0, x right and y up, in world millimetres (decision 6).
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from apeCAD.draft.state import DraftState
-from apeCAD.entities import Bar, ConcreteFace, Crosstie, EntityId, Hoop, Point
+from apeCAD.entities import (
+    Bar,
+    ConcreteFace,
+    CoverGuide,
+    Crosstie,
+    EntityId,
+    Hoop,
+    LegSteel,
+    Point,
+    WallLeg,
+)
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ
 from apeCAD.ops import (
@@ -17,13 +27,26 @@ from apeCAD.ops import (
     AddConcreteFace,
     AddCrosstie,
     AddHoop,
+    AddSectionOutline,
+    AddWallChain,
+    AddWallLeg,
+    PointAt,
     SetBarSize,
+    SetCover,
+    SetLegReinforcement,
     SetMaterial,
     SetTransverse,
+    VertexRef,
 )
 from apeCAD.ops.section import require_crosstie_hooks, require_hoop_hooks
 from apeCAD.section.designations import diameter_of
-from apeCAD.section.geometry import Point2, convex_hull_ccw, require_simple, signed_area
+from apeCAD.section.geometry import (
+    Point2,
+    chain_outline,
+    convex_hull_ccw,
+    require_simple,
+    signed_area,
+)
 
 
 def add_concrete_face(state: DraftState, op: AddConcreteFace) -> AddConcreteFace:
@@ -32,21 +55,165 @@ def add_concrete_face(state: DraftState, op: AddConcreteFace) -> AddConcreteFace
     A second solid face is allowed: it is a lint warning, not a refusal (ADR 0024 P3).
     """
     point_ids, refs = state.resolve_all(op.point_ids)
+    entity_id = _store_face(state, point_ids, op.material, op.label, op.entity_id)
+    return replace(op, point_ids=refs, entity_id=entity_id)
+
+
+def add_section_outline(state: DraftState, op: AddSectionOutline) -> AddSectionOutline:
+    """The outline gesture: one solid face, one op, one undo (ADR 0024 decision 3)."""
+    point_ids, refs = state.resolve_all(op.point_ids)
+    entity_id = _store_face(state, point_ids, op.material, op.label, op.entity_id)
+    return replace(op, point_ids=refs, entity_id=entity_id)
+
+
+def add_wall_chain(state: DraftState, op: AddWallChain) -> AddWallChain:
+    """An axis chain becomes one outline face (`chain_outline`) and one leg per segment.
+
+    Live, the outline vertices reuse a point within 1 mm or create one; the committed op
+    records them in `ring`, and the legs in `leg_ids`, so replay rebuilds the same ids.
+    """
+    axis_ids, axis_refs = state.resolve_all(op.point_ids)
+    axis = [_xy_on_plane(state, point_id) for point_id in axis_ids]
+    segments = len(axis) - 1
+    thicknesses = op.thickness_mm * segments if len(op.thickness_mm) == 1 else op.thickness_mm
+    outline = chain_outline(axis, list(thicknesses))
+    ring_refs: tuple[VertexRef, ...]
+    if op.ring is None:
+        ring_refs = tuple(PointAt(XYZ(x, y, 0.0)) for x, y in outline)
+    elif len(op.ring) != len(outline):
+        raise DocumentError(
+            f"ring records {len(op.ring)} vertices; this wall chain's outline has {len(outline)}"
+        )
+    else:
+        ring_refs = op.ring
+    ring_ids, ring_refs = state.resolve_all(ring_refs)
+    face_id = _store_face(state, ring_ids, op.material, op.label, op.entity_id)
+    leg_ids: list[EntityId] = []
+    for k in range(segments):
+        leg = _LegSpec(axis_ids[k], axis_ids[k + 1], thicknesses[k], face_id, op.horizontal)
+        leg_ids.append(_store_leg(state, leg, None, op.leg_ids[k] if op.leg_ids else None))
+    return replace(
+        op,
+        point_ids=axis_refs,
+        entity_id=face_id,
+        ring=ring_refs,
+        leg_ids=tuple(leg_ids),
+    )
+
+
+def add_wall_leg(state: DraftState, op: AddWallLeg) -> AddWallLeg:
+    """A leg on an existing face, e.g. the three legs of a T drawn as one polygon."""
+    _require_face(state, op.face_id)
+    start_id, start_ref = state.resolve(op.start_id)
+    end_id, end_ref = state.resolve(op.end_id)
+    state.reject_taken_label(op.label)
+    leg = _LegSpec(start_id, end_id, op.thickness_mm, op.face_id, op.horizontal)
+    entity_id = _store_leg(state, leg, op.label, op.entity_id)
+    return replace(op, start_id=start_ref, end_id=end_ref, entity_id=entity_id)
+
+
+def set_leg_reinforcement(state: DraftState, op: SetLegReinforcement) -> SetLegReinforcement:
+    leg = state.entities.get(op.leg_id)
+    if not isinstance(leg, WallLeg):
+        raise DocumentError(f"entity {op.leg_id} is not a wall leg")
+    steel = LegSteel(op.designation, op.spacing_mm, op.curtains)
+    state.entities[op.leg_id] = replace(leg, horizontal=steel)
+    return op
+
+
+def set_cover(state: DraftState, op: SetCover) -> SetCover:
+    """Create the face's cover guide, or change the one it has (one per face)."""
+    _require_face(state, op.face_id)
+    existing = next(
+        (
+            e
+            for e in state.entities.values()
+            if isinstance(e, CoverGuide) and e.face_id == op.face_id
+        ),
+        None,
+    )
+    if existing is not None:
+        if op.entity_id is not None and op.entity_id != existing.entity_id:
+            raise DocumentError(
+                f"face {op.face_id} already has cover guide {existing.entity_id}, "
+                f"not {op.entity_id}"
+            )
+        entity_id = existing.entity_id
+    else:
+        entity_id = state.allocate_id(op.entity_id)
+    state.entities[entity_id] = CoverGuide(
+        entity_id=entity_id,
+        face_id=op.face_id,
+        cover_mm=op.cover_mm,
+        tie_diameter_mm=op.tie_diameter_mm,
+        bar_diameter_mm=op.bar_diameter_mm,
+        label=None if existing is None else existing.label,
+    )
+    return replace(op, entity_id=entity_id)
+
+
+def _store_face(
+    state: DraftState,
+    point_ids: tuple[EntityId, ...],
+    material: str,
+    label: str | None,
+    requested: EntityId | None,
+) -> EntityId:
     ring = [_xy_on_plane(state, point_id) for point_id in point_ids]
     require_simple(ring, "a concrete face")
     if signed_area(ring) < 0.0:
         point_ids = point_ids[::-1]
-    state.reject_taken_label(op.label)
-    entity_id = state.allocate_id(op.entity_id)
-    state.register_label(entity_id, op.label)
+    state.reject_taken_label(label)
+    entity_id = state.allocate_id(requested)
+    state.register_label(entity_id, label)
     state.entities[entity_id] = ConcreteFace(
         entity_id=entity_id,
         point_ids=point_ids,
-        material=op.material,
+        material=material,
         role="solid",
-        label=op.label,
+        label=label,
     )
-    return replace(op, point_ids=refs, entity_id=entity_id)
+    return entity_id
+
+
+@dataclass(frozen=True, slots=True)
+class _LegSpec:
+    start_id: EntityId
+    end_id: EntityId
+    thickness_mm: float
+    face_id: EntityId
+    horizontal: LegSteel | None
+
+
+def _store_leg(
+    state: DraftState, leg: _LegSpec, label: str | None, requested: EntityId | None
+) -> EntityId:
+    start = _xy_on_plane(state, leg.start_id)
+    end = _xy_on_plane(state, leg.end_id)
+    if start == end:
+        raise DocumentError(
+            f"a wall leg needs two distinct axis points; {leg.start_id} and {leg.end_id} "
+            f"are both at {start}"
+        )
+    entity_id = state.allocate_id(requested)
+    state.register_label(entity_id, label)
+    state.entities[entity_id] = WallLeg(
+        entity_id=entity_id,
+        start_id=leg.start_id,
+        end_id=leg.end_id,
+        thickness_mm=leg.thickness_mm,
+        face_id=leg.face_id,
+        horizontal=leg.horizontal,
+        label=label,
+    )
+    return entity_id
+
+
+def _require_face(state: DraftState, face_id: EntityId) -> ConcreteFace:
+    face = state.entities.get(face_id)
+    if not isinstance(face, ConcreteFace):
+        raise DocumentError(f"entity {face_id} is not a concrete face")
+    return face
 
 
 def add_bar(state: DraftState, op: AddBar) -> AddBar:
@@ -120,9 +287,7 @@ def set_bar_size(state: DraftState, op: SetBarSize) -> SetBarSize:
 
 def set_material(state: DraftState, op: SetMaterial) -> SetMaterial:
     for entity_id in op.entity_ids:
-        face = state.entities.get(entity_id)
-        if not isinstance(face, ConcreteFace):
-            raise DocumentError(f"entity {entity_id} is not a concrete face")
+        face = _require_face(state, entity_id)
         state.entities[entity_id] = replace(face, material=op.material)
     return op
 
