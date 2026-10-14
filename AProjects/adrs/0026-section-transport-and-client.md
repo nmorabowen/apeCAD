@@ -1,6 +1,6 @@
 # ADR 0026 — A stateless op transport and an embeddable 2-D section client
 
-**Status:** Proposed (2026-10-09)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-09; accepted by the owner on 2026-10-14
 
 Plan number 0022 (see the numbering table in [ADR 0024](0024-section-mode-rc-intent.md)).
 Amends [ADR 0003](0003-python-document-web-client.md)'s "TypeScript + Three.js" for this one

@@ -1,6 +1,6 @@
 # ADR 0029 — Delete takes the selection's whole B-rep subtree
 
-**Status:** Proposed (2026-10-11)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-11; accepted by the owner on 2026-10-14
 
 Amends `specs/modeling-helpers.md`, which said that `Delete` removes the named entities,
 anything that still referenced them, and the unused endpoints left behind. It also builds on

@@ -33,15 +33,15 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0021](0021-scratchpad-root-flag.md) | Scratchpad CLI accepts `--root` | Proposed |
 | [0022](0022-ci-gates.md) | CI runs pytest, ruff check and pyright | Proposed |
 | [0023](0023-module-boundaries.md) | Module boundaries and a line budget | Proposed |
-| [0024](0024-section-mode-rc-intent.md) | Section mode: RC section entities are drawing intent | Proposed |
-| [0025](0025-section-draft-contract.md) | The `apeCAD.section-draft` v1 contract | Proposed |
-| [0026](0026-section-transport-and-client.md) | Stateless op transport and a 2-D section client | Proposed |
-| [0027](0027-atomic-ops.md) | Ops are atomic; a refused op changes nothing | Proposed |
-| [0028](0028-agent-surface-mcp.md) | One op catalog behind every surface; MCP, render and query tools | Proposed |
-| [0029](0029-delete-takes-the-brep-subtree.md) | Delete takes the selection's whole B-rep subtree | Proposed |
-| [0030](0030-one-gesture-one-op.md) | One drawing gesture is one op: creation ops take vertex references | Proposed |
+| [0024](0024-section-mode-rc-intent.md) | Section mode: RC section entities are drawing intent | Accepted |
+| [0025](0025-section-draft-contract.md) | The `apeCAD.section-draft` v1 contract | Accepted |
+| [0026](0026-section-transport-and-client.md) | Stateless op transport and a 2-D section client | Accepted |
+| [0027](0027-atomic-ops.md) | Ops are atomic; a refused op changes nothing | Accepted |
+| [0028](0028-agent-surface-mcp.md) | One op catalog behind every surface; MCP, render and query tools | Accepted |
+| [0029](0029-delete-takes-the-brep-subtree.md) | Delete takes the selection's whole B-rep subtree | Accepted |
+| [0030](0030-one-gesture-one-op.md) | One drawing gesture is one op: creation ops take vertex references | Accepted |
 | [0031](0031-ape-design-system.md) | The APE design system: UI tokens, UI voice and drawing output style | Accepted |
-| [0032](0032-exact-collinear-bar-layouts.md) | Bar layouts snap to a lattice so inclined rows stay exactly collinear | Proposed |
+| [0032](0032-exact-collinear-bar-layouts.md) | Bar layouts snap to a lattice so inclined rows stay exactly collinear | Accepted |
 
 ## Template
 

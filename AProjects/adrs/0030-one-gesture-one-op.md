@@ -1,6 +1,6 @@
 # ADR 0030 — One drawing gesture is one op: creation ops take vertex references
 
-**Status:** Proposed (2026-10-10)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-10; accepted by the owner on 2026-10-14
 
 Applies [ADR 0024](0024-section-mode-rc-intent.md) decision 3 ("one gesture is one composite
 op") to the scratchpad's existing draw tools. Extends the `apeCAD.document.v0` codec

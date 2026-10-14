@@ -1,6 +1,6 @@
 # ADR 0028 — One op catalog behind every surface; agents get MCP, render and query tools
 
-**Status:** Proposed (2026-10-10)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-10; accepted by the owner on 2026-10-14
 
 Spec: [`specs/agent-surface-mcp.md`](../specs/agent-surface-mcp.md). Builds on
 [ADR 0023](0023-module-boundaries.md) (`draft.dispatch.HANDLERS`) and
