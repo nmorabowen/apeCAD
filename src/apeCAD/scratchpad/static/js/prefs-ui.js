@@ -17,7 +17,7 @@ import {
 import { rebuild } from "./render.js";
 import { INK, applyTheme, cssHex, watchSystemTheme } from "./theme.js";
 import { restyleCube } from "./viewcube.js";
-import { contact, hemi, keyLight, scene } from "./viewport.js";
+import { contact, hemi, keyLight, LIGHT_SCALE, LIGHTS, scene } from "./viewport.js";
 
 export const prefsDialog = document.getElementById("prefs-dialog");
 export const gridPrefsDialog = document.getElementById("grid-prefs-dialog");
@@ -29,9 +29,9 @@ export function applyViz() {
   rebuildGrid();
   hemi.color.setHex(INK.lightSky);
   hemi.groundColor.setHex(S.prefs.ao ? INK.lightGround : INK.lightGroundFlat);
-  hemi.intensity = S.prefs.ao ? 0.58 : 0.42;
+  hemi.intensity = (S.prefs.ao ? LIGHTS.hemi : LIGHTS.hemiFlat) * LIGHT_SCALE;
   keyLight.visible = S.prefs.keyLight;
-  keyLight.intensity = S.prefs.keyLight ? 0.45 : 0;
+  keyLight.intensity = S.prefs.keyLight ? LIGHTS.key * LIGHT_SCALE : 0;
   contact.visible = S.prefs.ao;
   contact.material.opacity = INK.contactOpacity;
   restyleCube();
