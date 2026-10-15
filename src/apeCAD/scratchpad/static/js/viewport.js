@@ -42,10 +42,19 @@ controls.minDistance = 10;
 controls.maxDistance = 2_000_000;
 controls.update();
 
-export const hemi = new THREE.HemisphereLight(undefined, undefined, 0.55); // colours: applyViz()
+// Light intensities in the legacy scale the clay was tuned in. three r155+ lights are
+// physical: a Lambert surface returns intensity / π, so applyViz() multiplies by
+// LIGHT_SCALE. Without it a solid renders at about a third of its clay grey (near black).
+export const LIGHT_SCALE = Math.PI;
+export const LIGHTS = { hemi: 0.58, hemiFlat: 0.42, key: 0.45 };
+// Colours: applyViz().
+export const hemi = new THREE.HemisphereLight(undefined, undefined, LIGHTS.hemi * LIGHT_SCALE);
 scene.add(hemi);
-export const keyLight = new THREE.DirectionalLight(0xffffff, 0.45);
-keyLight.position.set(-1.1, 0.85, 1.35);
+export const keyLight = new THREE.DirectionalLight(0xffffff, LIGHTS.key * LIGHT_SCALE);
+// Over the viewer's left shoulder in the ISO view (camera at +x -y +z), so the three faces
+// it shows read as three greys: top lightest, front, then right. It used to sit behind the
+// camera (-x +y), which left both visible side faces unlit.
+keyLight.position.set(0.35, -0.8, 1.0);
 scene.add(keyLight);
 
 export const contact = new THREE.Mesh(

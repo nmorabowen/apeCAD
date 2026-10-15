@@ -10,6 +10,7 @@ import {
   catalog,
   collectNested,
   gatherPoints,
+  outlinerChildren,
   pointById,
 } from "./brep.js";
 import { camera, fitView, frameDistance, goToView, resetViewZoom } from "./camera.js";
@@ -28,7 +29,7 @@ const propBody = document.getElementById("prop-body");
 const collapsedTree = new Set();
 
 function renderTreeNode(row, parent) {
-  const kids = brepChildren(row);
+  const kids = outlinerChildren(brepChildren(row), S.selectFilter);
   const node = document.createElement("div");
   node.className = "tree-node";
   const rowEl = document.createElement("div");

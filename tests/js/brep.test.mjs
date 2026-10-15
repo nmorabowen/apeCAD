@@ -10,6 +10,7 @@ import {
   findRecord,
   gatherPoints,
   indexBrep,
+  outlinerChildren,
   owningSolidId,
   rootId,
 } from "../../src/apeCAD/scratchpad/static/js/brep.js";
@@ -74,4 +75,12 @@ test("gatherPoints and curveWorldPoints read point records", () => {
   const shape = curveWorldPoints(findRecord(11));
   assert.equal(shape.closed, false);
   assert.deepEqual(shape.pts.map((p) => p.x_mm), [500, 600]);
+});
+
+test("outlinerChildren hides nested Vertex rows except under the Point filter", () => {
+  const kids = [{ id: 1, kind: "Point" }, { id: 5, kind: "Line" }, { id: 2, kind: "Point" }];
+  assert.deepEqual(outlinerChildren(kids, "element").map((row) => row.id), [5]);
+  assert.deepEqual(outlinerChildren(kids, "section").map((row) => row.id), [5]);
+  assert.deepEqual(outlinerChildren(kids, "point").map((row) => row.id), [1, 5, 2]);
+  assert.deepEqual(outlinerChildren([], "element"), []);
 });
