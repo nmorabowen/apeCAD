@@ -1,6 +1,6 @@
 # ADR 0033 — APE drawing style errata: cover guide ink and projection weights
 
-**Status:** Proposed (2026-10-14)
+**Status:** Accepted (2026-10-14). Proposed 2026-10-14; accepted by the owner the same day.
 
 Amends [ADR 0031](0031-ape-design-system.md) decision 3 ("Drawing output style") where
 stage D3 found that the accepted text does not survive contact with the screen or with

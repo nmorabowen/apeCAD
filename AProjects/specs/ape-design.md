@@ -525,8 +525,15 @@ ADR 0031 "Implementation stages".
   that only plans of sections are annotated. The bare section goldens render with
   `annotate=False` and are unchanged.
 
-### D5 — DXF (needs its own ADR)
+### D5 — DXF (ADR 0034, Proposed)
 
-- `render/dxf.py`: R2013 ASCII writer, stdlib only; LAYER table from §3.2 with ByLayer
-  weight and colour; `LTYPE` `HIDDEN` for `H-`; text style `ArialNarrow`; no highlight.
-- An endpoint and an agent tool, coordinated with the ADR 0028 catalog.
+Decided in [ADR 0034](../adrs/0034-dxf-export.md), which replaces the stdlib writer first
+sketched here:
+- `render/dxf.py` uses ezdxf, behind an optional `apeCAD[dxf]` extra.
+- Output is AC1027 (R2013), model space at 1:1 mm.
+- Layers come from `render/style.py` `layer_name`, with ByLayer weight and colour; crossties
+  get their own `CROSSTIE` layer.
+- Annotation is native `MTEXT` and `DIMENSION` in the ADR-006 and ADR-007 style names, placed
+  by the D4 layout.
+- Surfaces: an `export_dxf` agent and MCP tool, `GET /api/export.dxf`, and the CLI
+  `export-dxf`.
