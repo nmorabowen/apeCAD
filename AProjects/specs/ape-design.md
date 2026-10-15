@@ -488,19 +488,31 @@ ADR 0031 "Implementation stages".
 - `render/annotate.py`, derived at render time from the document and the drawables: no
   op, no log entry, no change to the section-draft export. Only a `top` view with a
   concrete face drawn is annotated.
-- Tags in one column right of the concrete, ordered by their target top to bottom, a
-  16 px pitch apart, each with a leader (0.10 mm pen) and a 1 px dot on its target:
-  - bars, one tag per designation: `n Φd` (`32 Φ16`);
-  - hoops and crossties, one tag per designation and spacing: `Tie Φd @ s mm`,
-    `Crosstie Φd @ s mm`, with `×n` when the tag stands for several;
-  - wall-leg web steel: `Φd @ s mm, n curtains`;
-  - cover: `Cover c mm`.
-- Overall dimensions of the concrete's box, below and left of it: 0.10 mm lines, filled
-  30° arrows, Arial Narrow 2.5 mm, whole millimetres.
-- The legend adds `SCALE 1:n` under the title's rule, where n is the scale the 5 px per
-  paper mm mapping implies.
-- `render_svg(annotate=True)` reserves room for the notes (`SectionNotes.padding_px`) and
-  centres the section in what is left. Below 120 px of room it draws the bare section.
+- **Standard scale.** An annotated plan is drawn at exactly the largest drafting scale
+  at which the section, its dimensions and every tag stack fit the frame without
+  overlapping. Candidates are, in order, the office ladder (`apeRevit`
+  `library/graphics-tokens.json` `scale_ladder`: 1:5, 10, 15, 20, 25, 50, 75, 100) and
+  then ISO 5455 (1:200, 250, 500, 1000, 2000, 5000). The legend's `SCALE 1:n` and its
+  scale bar both use that n.
+- **Fixed paper sizes.** At 5 px per paper mm, text is 2.0 mm (ADR-007), dimension text
+  2.5 mm, arrowheads 1.6 mm, and the leader and dimension pen 0.10 mm, whatever the
+  scale.
+- **Tags by group,** each group a stack beside what it labels, with leaders (0.10 mm pen,
+  a 1 px dot on the target nearest the stack):
+  - each hoop: the bars inside its ring, one tag per designation (`6 Φ16`), then
+    `Tie Φd @ s mm`, then the crossties inside it (`Crosstie Φd @ s mm`, `×n` for several);
+  - the bars and crossties in no hoop (the web);
+  - the whole section: wall-leg web steel `Φd @ s mm, n curtains` and `Cover c mm`.
+
+  Identical tags in a group read once.
+- **Sides.** A section wider than it is deep stacks above or below, on the side nearer
+  each group; a deeper one stacks left or right. Stacks on one side are pushed apart
+  along it; when a side overflows, one stack spills to the opposite side. Stacks never
+  cross the concrete, the dimensions, the legend or the frame.
+- **Overall dimensions** of the concrete's box, below and left of it: 0.10 mm lines,
+  filled 30° arrows, whole millimetres.
+- `render_svg(annotate=True)` uses the layout's scale and centre. With a `window`, or
+  when no standard scale leaves room, it draws the bare section fitted as before.
   `annotate` is on the agent `render` tool, the MCP schema, `/api/render.svg`
   (`annotate=false`) and the CLI (`--no-annotate`).
 - SVG only: the 3-D canvas draws no tags (§3.2 asks for none there).
@@ -508,7 +520,8 @@ ADR 0031 "Implementation stages".
   hoop geometry and need their own overlap rules.
 - Tests: `tests/test_render_annotate.py`. It has annotated goldens for the pier and the
   four `section_draft` fixtures, and checks that tags clear each other, the concrete and
-  the frame, the office tag text, the flag on every surface, that nothing is stored, and
+  the frame (at 1200 × 500 and at the default 800 × 600), that each annotated drawing is
+  at a standard scale, that the pier's tags sit beside their group, the office tag text, the flag on every surface, that nothing is stored, and
   that only plans of sections are annotated. The bare section goldens render with
   `annotate=False` and are unchanged.
 

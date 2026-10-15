@@ -227,7 +227,7 @@ Filters are ANDed. Results are sorted by entity id. Result:
 | `highlight` | array of int \| null | null | Drawn in the accent colour, on top |
 | `labels` | bool | true | Entity labels as text |
 | `show_ids` | bool | false | Entity ids beside each entity, so the agent can refer to them |
-| `annotate` | bool | true | In a `top` view of a section: tags with leaders, overall dimensions and a scale note ([ADR 0031](../adrs/0031-ape-design-system.md), `ape-design.md` §4 D4). Drawn, never stored; skipped when the image is too small. `false` gives the bare drawing |
+| `annotate` | bool | true | In a `top` view of a section: drawn at a standard drafting scale with tags by group, overall dimensions and a `SCALE 1:n` note ([ADR 0031](../adrs/0031-ape-design-system.md), `ape-design.md` §4 D4). Drawn, never stored; the bare fitted drawing when a `window` is given or no standard scale leaves room. `false` gives the bare drawing |
 | `window` | `{min, max}` \| null | null | Fixes the view box, overriding fit-to-extents |
 | `format` | `"svg"`\|`"png"` | `"svg"` | `png` needs the `png` extra, else `UNAVAILABLE` |
 | `save_to` | string \| null | null | Relative to the root; must resolve under it |

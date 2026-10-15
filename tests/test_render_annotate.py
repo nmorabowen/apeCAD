@@ -17,9 +17,22 @@ import pytest
 from _section_fixtures import BUILDERS
 from apeCAD.document import Document
 from apeCAD.render import render_svg
-from apeCAD.render.annotate import TAG_CHAR_PX
+from apeCAD.render.annotate import (
+    STANDARD_SCALES,
+    TAG_CHAR_PX,
+    Layout,
+    ToPx,
+    _crosses,  # pyright: ignore[reportPrivateUsage]
+    dimension_text_boxes,
+    leaders,
+    plan_layout,
+    section_notes,
+)
+from apeCAD.render.api import _bounds  # pyright: ignore[reportPrivateUsage]
 from apeCAD.render.query import render_from_query
+from apeCAD.render.scene import drawables, entity_map
 from apeCAD.render.style import TEXT_PX
+from apeCAD.render.views import VIEWS
 from apeCAD.section_draft import section_draft
 from test_render import _check_golden  # pyright: ignore[reportPrivateUsage]
 from test_render_section import pier
@@ -30,8 +43,8 @@ Box = tuple[float, float, float, float]
 CASES: dict[str, Callable[[], Document]] = {"pier": pier, **BUILDERS}
 
 
-def _render(doc: Document, **kw: object) -> ET.Element:
-    return ET.fromstring(render_svg(doc, view="top", width=1200, height=500, **kw).svg)  # pyright: ignore[reportArgumentType]
+def _render(doc: Document, width: int = 1200, height: int = 500) -> ET.Element:
+    return ET.fromstring(render_svg(doc, view="top", width=width, height=height).svg)
 
 
 def _group(root: ET.Element, cls: str) -> list[ET.Element]:
@@ -44,7 +57,10 @@ def _tag_boxes(root: ET.Element) -> list[tuple[str, Box]]:
         text = tag.find(f"{SVG_NS}text")
         assert text is not None and text.text
         x, y = float(text.get("x", "0")), float(text.get("y", "0"))
-        out.append((text.text, (x, y - TEXT_PX, x + len(text.text) * TAG_CHAR_PX, y + 2.0)))
+        width = len(text.text) * TAG_CHAR_PX
+        if text.get("text-anchor") == "end":
+            x -= width
+        out.append((text.text, (x, y - TEXT_PX, x + width, y + 2.0)))
     return out
 
 
@@ -54,6 +70,22 @@ def _concrete_box(root: ET.Element) -> Box:
     pts = [(float(x), float(y)) for x, y in re.findall(r"[ML](-?[\d.]+) (-?[\d.]+)", data)]
     xs, ys = [p[0] for p in pts], [p[1] for p in pts]
     return min(xs), min(ys), max(xs), max(ys)
+
+
+def _layout(doc: Document, width: int, height: int) -> Layout:
+    entities = entity_map(doc)
+    items = drawables(entities, set(entities), None)
+    notes = section_notes(VIEWS["top"], entities, items)
+    bounds = _bounds(VIEWS["top"], items)
+    assert notes is not None and bounds is not None
+    layout = plan_layout(notes, bounds, width, height, 0.05)
+    assert layout is not None
+    return layout
+
+
+def _to_px(layout: Layout, width: int, height: int) -> ToPx:
+    (cu, cv), s = layout.centre_mm, layout.scale_px_per_mm
+    return lambda uv: (width / 2.0 + (uv[0] - cu) * s, height / 2.0 - (uv[1] - cv) * s)
 
 
 def _overlap(a: Box, b: Box) -> bool:
@@ -67,9 +99,12 @@ def test_annotated_golden(name: str) -> None:
     _check_golden(f"section_{name}_top_annotated", svg)
 
 
+@pytest.mark.parametrize(("width", "height"), [(1200, 500), (800, 600)])  # 800 x 600: default
 @pytest.mark.parametrize("name", sorted(CASES))
-def test_tags_clear_each_other_the_concrete_and_the_frame(name: str) -> None:
-    root = _render(CASES[name]())
+def test_tags_clear_each_other_the_concrete_and_the_frame(
+    name: str, width: int, height: int
+) -> None:
+    root = _render(CASES[name](), width, height)
     tags = _tag_boxes(root)
     assert tags, "a section gets tags"
     concrete = _concrete_box(root)
@@ -77,20 +112,47 @@ def test_tags_clear_each_other_the_concrete_and_the_frame(name: str) -> None:
         assert not _overlap(a, b), (a_text, b_text)
     for text, box in tags:
         assert not _overlap(box, concrete), text
-        assert box[0] >= 0.0 and box[2] <= 1200.0 and box[1] >= 0.0 and box[3] <= 500.0, text
+        assert box[0] >= 0.0 and box[2] <= width and box[1] >= 0.0 and box[3] <= height, text
     for dim in _group(root, "dimension"):
         label = dim.find(f"{SVG_NS}text")
         assert label is not None and label.text and label.text.isdigit()
+    layout = _layout(CASES[name](), width, height)
+    to_px = _to_px(layout, width, height)
+    for box in dimension_text_boxes(layout.notes, to_px, leaders(layout)):
+        for line in leaders(layout):
+            for a, b in zip(line, line[1:], strict=False):
+                assert not _crosses(box, a, b), "a leader crosses a dimension text"
+        for text, tag in tags:
+            assert not _overlap(box, tag), text
 
 
-def test_pier_tags_read_in_the_office_structure() -> None:
-    texts = {text for text, _ in _tag_boxes(_render(pier()))}
-    assert "32 Φ16" in texts
-    assert "Tie Φ10 @ 100 mm ×2" in texts
-    assert "Cover 25 mm" in texts
+def test_pier_tags_sit_beside_the_group_they_label() -> None:
+    root = _render(pier())
+    tags = _tag_boxes(root)
+    texts = [text for text, _ in tags]
+    assert texts.count("6 Φ16") == 2 and texts.count("Tie Φ10 @ 100 mm") == 2  # one per end
+    assert {"20 Φ16", "Cover 25 mm", "Φ10 @ 200 mm, 2 curtains"} <= set(texts)
     assert not any("Ø" in text for text in texts), "the drawing prints Φ"
-    dims = sorted(d.findtext(f"{SVG_NS}text") or "" for d in _group(_render(pier()), "dimension"))
+    ties = sorted(box[0] for text, box in tags if text.startswith("Tie "))
+    concrete = _concrete_box(root)
+    third = (concrete[2] - concrete[0]) / 3.0
+    assert ties[0] < concrete[0] + third and ties[1] > concrete[2] - third
+    for tag in _group(root, "tag"):  # leaders stay short: each stack sits by its group
+        path = tag.find(f"{SVG_NS}path")
+        assert path is not None
+        ends = re.findall(r"[ML](-?[\d.]+) (-?[\d.]+)", path.get("d", ""))
+        x0, x1 = float(ends[0][0]), float(ends[-1][0])  # target, then the stack
+        assert abs(x1 - x0) < 0.25 * 1200, tag.findtext(f"{SVG_NS}text")
+    dims = sorted(d.findtext(f"{SVG_NS}text") or "" for d in _group(root, "dimension"))
     assert dims == ["300", "3000"]
+
+
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_annotated_drawings_use_a_standard_scale(name: str) -> None:
+    result = render_svg(CASES[name](), view="top")
+    note = re.search(r"SCALE 1:(\d+)", result.svg)
+    assert note is not None and int(note.group(1)) in STANDARD_SCALES
+    assert result.scale_px_per_mm == pytest.approx(5.0 / int(note.group(1)))
 
 
 def test_crosstie_and_web_steel_tags() -> None:

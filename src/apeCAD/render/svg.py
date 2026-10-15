@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
 from apeCAD.entities import EntityId
-from apeCAD.render.annotate import SectionNotes, notes_svg, scale_note
+from apeCAD.render.annotate import Layout, notes_svg, scale_note
 from apeCAD.render.drawable import SECTION_LAYERS, Drawable, Path3
 from apeCAD.render.style import (
     ANNOTATION_PEN_PX,
@@ -91,7 +91,7 @@ def write_svg(
     items: list[Drawable],
     highlight: set[EntityId],
     text: TextOptions,
-    notes: SectionNotes | None = None,
+    layout: Layout | None = None,
 ) -> str:
     w, h = viewport.width, viewport.height
     out = [
@@ -120,8 +120,8 @@ def write_svg(
         _group(d, view, viewport, "data-id", _dot_body(POINT_RADIUS_PX, point_ink)) for d in points
     )
     out.append("</g>")
-    if notes is not None:
-        out.extend(notes_svg(notes, viewport.to_px, viewport.height, num))
+    if layout is not None:
+        out.extend(notes_svg(layout, viewport.to_px, num))
     marked = [d for d in items if d.entity_id in highlight]
     if marked:
         out.append(
@@ -140,7 +140,7 @@ def write_svg(
             f'fill-opacity="0.5">{EMPTY_TEXT}</text>'
         )
     out.append("</g>")
-    out.extend(_legend(view, viewport, _title(view, items), notes is not None))
+    out.extend(_legend(view, viewport, _title(view, items), layout))
     out.append("</svg>")
     return "\n".join(out) + "\n"
 
@@ -281,7 +281,7 @@ def _title(view: View, items: list[Drawable]) -> str:
     return VIEW_TITLES.get(view.name, view.name.upper())
 
 
-def _legend(view: View, viewport: Viewport, title: str, scale_line: bool = False) -> list[str]:
+def _legend(view: View, viewport: Viewport, title: str, layout: Layout | None) -> list[str]:
     """Scale bar (0.10 mm pen, working font) under the view title (display font, 3.5 mm,
     0.30 mm rule), bottom left, all in annotation blue (ADR-004, ADR-007, ADR-009)."""
     length = scale_bar_mm(viewport)
@@ -289,13 +289,13 @@ def _legend(view: View, viewport: Viewport, title: str, scale_line: bool = False
     y0 = viewport.height - 12.0
     x1 = x0 + length * viewport.scale
     # Annotated sections add a scale note between the title's rule and the scale bar.
-    title_y = y0 - (28.0 if scale_line else 14.0)  # clear of the scale bar's ticks and label
+    title_y = y0 - (28.0 if layout else 14.0)  # clear of the scale bar's ticks and label
     rule_y = title_y + 3.0
     rule_x1 = x0 + 0.55 * TITLE_PX * len(title)  # under the title only
     note = (
         [f'<text class="scale-note" x="{num(x0)}" y="{num(rule_y + 12.0)}" stroke="none">'
-         f"{scale_note(viewport.scale)}</text>"]
-        if scale_line
+         f"{scale_note(layout.scale_n)}</text>"]
+        if layout
         else []
     )
     return [
