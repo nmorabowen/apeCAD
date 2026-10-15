@@ -206,6 +206,7 @@ TOOLS: dict[str, McpTool] = {
                 "highlight": _IDS,
                 "labels": {"type": "boolean"},
                 "show_ids": {"type": "boolean"},
+                "annotate": {"type": "boolean"},
                 "window": {
                     "type": ["object", "null"],
                     "properties": {"min": _XYZ, "max": _XYZ},

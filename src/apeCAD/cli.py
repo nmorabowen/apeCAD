@@ -133,7 +133,9 @@ def cmd_query(args: argparse.Namespace) -> Envelope:
 
 def cmd_render(args: argparse.Namespace) -> Envelope:
     """SVG of FILE. With `-o`, the SVG goes to that file; without, it is the envelope's `svg`."""
-    params: dict[str, object] = {"labels": not args.no_labels, "show_ids": args.show_ids}
+    params: dict[str, object] = {
+        "labels": not args.no_labels, "show_ids": args.show_ids, "annotate": not args.no_annotate,
+    }
     if args.view is not None:
         params["view"] = args.view
     if args.size is not None:
@@ -223,6 +225,10 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--highlight", help="comma-separated ids drawn in the accent colour")
     render.add_argument("--window", help="x0,y0,z0,x1,y1,z1 in mm: fixes the view box")
     render.add_argument("--no-labels", action="store_true")
+    render.add_argument(
+        "--no-annotate", action="store_true",
+        help="no tags, dimensions or scale note on a plan of a section",
+    )
     render.add_argument("--show-ids", action="store_true")
     render.set_defaults(run=cmd_render)
     return parser

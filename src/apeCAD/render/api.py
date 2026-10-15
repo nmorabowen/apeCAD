@@ -9,6 +9,7 @@ from pathlib import Path
 
 from apeCAD.document import Document
 from apeCAD.entities import Box, EntityId, Solid
+from apeCAD.render.annotate import MIN_DRAWING_PX, SectionNotes, section_notes
 from apeCAD.render.scene import Drawable, closure, drawables, entity_map
 from apeCAD.render.svg import TextOptions, Viewport, write_svg
 from apeCAD.render.views import VIEW_NAMES, VIEWS, Vec2, Vec3, View, ViewName
@@ -53,12 +54,15 @@ def render_svg(
     window: tuple[Sequence[float], Sequence[float]] | None = None,
     save_to: str | None = None,
     root: Path | None = None,
+    annotate: bool = True,
 ) -> RenderResult:
     """Orthographic wireframe SVG of the draft (spec agent-surface-mcp §4 `render`).
 
     `width`/`height` clamp to 64–2048 px and `margin` to 0–0.4 of the larger extent.
     `ids` limits drawing (and the fit) to those entities and what they are built from.
     `save_to` is relative to `root` and must resolve under it.
+    `annotate` adds, in a plan of a section, tags, overall dimensions and a scale note
+    (spec ape-design §4 D4); they are drawn, never stored. Off gives the bare drawing.
     """
     width_px = _clamp_size("width", width)
     height_px = _clamp_size("height", height)
@@ -78,9 +82,16 @@ def render_svg(
     chosen = _choose_view(view, entities, draw_ids)
     coarse = drawables(entities, draw_ids, None)
     bounds = _window_bounds(chosen, window) if window is not None else _bounds(chosen, coarse)
+    notes = section_notes(chosen, entities, coarse) if annotate else None
     viewport = _fit(bounds, width_px, height_px, margin_frac)
+    if notes is not None and window is None:
+        padded = _fit_padded(bounds, width_px, height_px, margin_frac, notes)
+        if padded is None:
+            notes = None  # too small to annotate legibly; draw the bare section
+        else:
+            viewport = padded
     items = drawables(entities, draw_ids, CHORD_ERROR_PX / viewport.scale)
-    svg = write_svg(chosen, viewport, items, marked, TextOptions(labels, show_ids))
+    svg = write_svg(chosen, viewport, items, marked, TextOptions(labels, show_ids), notes)
     path = None if save_to is None else _save(svg, save_to, root)
     low, high = viewport.extents_mm()
     return RenderResult(
@@ -192,6 +203,33 @@ def _fit(bounds: Bounds, width: int, height: int, margin: float) -> Viewport:
         height / span_v if span_v > 0.0 else math.inf,
     )
     return Viewport(width, height, scale, ((u0 + u1) / 2.0, (v0 + v1) / 2.0))
+
+
+def _fit_padded(
+    bounds: Bounds, width: int, height: int, margin: float, notes: SectionNotes
+) -> Viewport | None:
+    """Fit the bounds into the image less the room the notes need; None if too little is left."""
+    if bounds is None:
+        return None
+    left, top, right, bottom = notes.padding_px()
+    room_w, room_h = width - left - right, height - top - bottom
+    if room_w < MIN_DRAWING_PX or room_h < MIN_DRAWING_PX / 3.0:
+        return None
+    (u0, v0), (u1, v1) = bounds
+    span_u, span_v = u1 - u0, v1 - v0
+    pad = margin * max(span_u, span_v)
+    span_u, span_v = span_u + 2.0 * pad, span_v + 2.0 * pad
+    scale = min(
+        room_w / span_u if span_u > 0.0 else math.inf,
+        room_h / span_v if span_v > 0.0 else math.inf,
+    )
+    if not math.isfinite(scale):
+        return None
+    # Centre the bounds in the room left over, not in the image.
+    cx_px, cy_px = left + room_w / 2.0, top + room_h / 2.0
+    mid_u, mid_v = (u0 + u1) / 2.0, (v0 + v1) / 2.0
+    centre = (mid_u - (cx_px - width / 2.0) / scale, mid_v + (cy_px - height / 2.0) / scale)
+    return Viewport(width, height, scale, centre)
 
 
 def _save(svg: str, save_to: str, root: Path | None) -> str:

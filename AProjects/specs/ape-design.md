@@ -398,17 +398,17 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 | `WallLeg` axis | `wall-axis` | `0.10mm H-Dark Grey` | — | `WALL-AXIS` | Intent line; thickness is shown by the face |
 | `WallLeg.horizontal` | `tag` | — | — | `TAG` | `Φd @ s mm, {curtains} curtains` beside the leg |
 | `Bar` | `bar` | edge `0.10mm S-Blue` | disc at `diameter_mm`, Blue | `BAR` | True scale; never below 0.6 mm on paper |
-| `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (D4) |
-| `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick per `hooks` (D4) |
+| `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (planned, not built in D4) |
+| `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick per `hooks` (planned, not built in D4) |
 | `CoverGuide` | `cover` | `0.10mm H-Dark Grey`, short dash (ADR 0033; Grey 192 vanishes on Grey210) | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
 | entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue |
 | `#id` (show_ids) | `label` | — | — | not exported | Debug only |
 | Bar group tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `n Φd`, one per designation (D4) |
-| Hoop / crosstie tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `Tie Φd @ s mm`, `Crosstie Φd @ s mm` |
-| Cover note | `tag` | — | — | `TAG` | `Cover c mm` |
+| Hoop / crosstie tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `Tie Φd @ s mm`, `Crosstie Φd @ s mm`, `×n` for several |
+| Cover note | `tag` | — | — | `TAG` | `Cover c mm`, with a leader |
 | Overall dimensions | `dimension` | `0.10mm S-Blue`, filled 30° arrows | — | `DIMENSION` | Arial Narrow 2.5 mm, Transparent (ADR-006 default linear) |
 | View title | `view-title` | underline `0.30mm S-Blue` | — | `VIEW-TITLE` | Display font 3.5 mm: `SECTION {label}`, `PLAN`, `FRONT ELEVATION` … |
-| Scale line | `view-title` | — | — | `VIEW-TITLE` | Working font 2.0 mm: `SCALE 1:{n}` when a plot scale is set |
+| Scale line | `view-title` | — | — | `VIEW-TITLE` | Working font 2.0 mm: `SCALE 1:{n}` on an annotated plan of a section; n is the scale the 5 px per paper mm mapping implies |
 | Scale bar | `scale-bar` | `0.10mm S-Blue` | — | `SCALE-BAR` | Text `{n} mm` |
 | Empty draft | `label` | — | — | — | `Empty drawing`, centred, 50 % |
 | Highlight | `highlight` | `#c64a1a`, 2.5 px | 35 % | never | Agent review aid |
@@ -483,12 +483,34 @@ ADR 0031 "Implementation stages".
 - Tests: the 19 goldens in `tests/fixtures/render/` regenerated; `tests/test_render_style.py`
   checks every style name is an ADR-005 / ADR-010 name and every layer has a style.
 
-### D4 — Section annotation
+### D4 — Section annotation (implemented)
 
-- `render/annotate.py`: bar-group tags, hoop and crosstie tags, cover note, overall
-  dimensions, view title and scale line, `Ø → Φ`.
-- Hook ticks for hoops and crossties from `hooks`.
-- Tests: the four fixtures in `tests/fixtures/section_draft/` render to golden SVGs.
+- `render/annotate.py`, derived at render time from the document and the drawables: no
+  op, no log entry, no change to the section-draft export. Only a `top` view with a
+  concrete face drawn is annotated.
+- Tags in one column right of the concrete, ordered by their target top to bottom, a
+  16 px pitch apart, each with a leader (0.10 mm pen) and a 1 px dot on its target:
+  - bars, one tag per designation: `n Φd` (`32 Φ16`);
+  - hoops and crossties, one tag per designation and spacing: `Tie Φd @ s mm`,
+    `Crosstie Φd @ s mm`, with `×n` when the tag stands for several;
+  - wall-leg web steel: `Φd @ s mm, n curtains`;
+  - cover: `Cover c mm`.
+- Overall dimensions of the concrete's box, below and left of it: 0.10 mm lines, filled
+  30° arrows, Arial Narrow 2.5 mm, whole millimetres.
+- The legend adds `SCALE 1:n` under the title's rule, where n is the scale the 5 px per
+  paper mm mapping implies.
+- `render_svg(annotate=True)` reserves room for the notes (`SectionNotes.padding_px`) and
+  centres the section in what is left. Below 120 px of room it draws the bare section.
+  `annotate` is on the agent `render` tool, the MCP schema, `/api/render.svg`
+  (`annotate=false`) and the CLI (`--no-annotate`).
+- SVG only: the 3-D canvas draws no tags (§3.2 asks for none there).
+- Not built yet: hook ticks for hoops and crossties from `hooks`. They belong with the
+  hoop geometry and need their own overlap rules.
+- Tests: `tests/test_render_annotate.py`. It has annotated goldens for the pier and the
+  four `section_draft` fixtures, and checks that tags clear each other, the concrete and
+  the frame, the office tag text, the flag on every surface, that nothing is stored, and
+  that only plans of sections are annotated. The bare section goldens render with
+  `annotate=False` and are unchanged.
 
 ### D5 — DXF (needs its own ADR)
 
