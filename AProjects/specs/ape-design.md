@@ -398,8 +398,8 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 | `WallLeg` axis | `wall-axis` | `0.10mm H-Dark Grey` | — | `WALL-AXIS` | Intent line; thickness is shown by the face |
 | `WallLeg.horizontal` | `tag` | — | — | `TAG` | `Φd @ s mm, {curtains} curtains` beside the leg |
 | `Bar` | `bar` | edge `0.10mm S-Blue` | disc at `diameter_mm`, Blue | `BAR` | True scale; never below 0.6 mm on paper |
-| `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (planned, not built in D4) |
-| `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick per `hooks` (planned, not built in D4) |
+| `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (implemented, SVG only) |
+| `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick of 6 d<sub>h</sub> per `hooks` (implemented, SVG only) |
 | `CoverGuide` | `cover` | `0.10mm H-Dark Grey`, short dash (ADR 0033; Grey 192 vanishes on Grey210) | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
 | entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue |
 | `#id` (show_ids) | `label` | — | — | not exported | Debug only |
@@ -516,8 +516,17 @@ ADR 0031 "Implementation stages".
   `annotate` is on the agent `render` tool, the MCP schema, `/api/render.svg`
   (`annotate=false`) and the CLI (`--no-annotate`).
 - SVG only: the 3-D canvas draws no tags (§3.2 asks for none there).
-- Not built yet: hook ticks for hoops and crossties from `hooks`. They belong with the
-  hoop geometry and need their own overlap rules.
+- Hook ticks (after D4, `render/section.py`): extra open paths on the hoop or crosstie
+  drawable, after its ring or tie, so they draw in its layer group with its pen. A hoop's
+  closing corner is its first bar: both tails turn 135° from their legs (one arriving
+  along the last hull edge, one leaving along the first), tangent to the tie circle
+  (d<sub>b</sub> + d<sub>h</sub>) / 2 on either side of the bar, 6 d<sub>h</sub> into
+  the core. A crosstie's `hooks` reads `<at bar a>-<at bar b>`, each tail turning that
+  angle from the tie, 6 d<sub>h</sub> long. A 90° tail truly runs down the bar's far
+  face, on top of the hoop leg, so it draws on the core side, square to the tie where
+  the tie meets the bar's tie circle. Ticks lie inside the concrete, so they need no overlap rule of
+  their own; the annotation uses only `paths[0]` as a hoop's ring. SVG only: the 3-D
+  canvas draws none yet. Tests: `tests/test_render_hooks.py`.
 - Tests: `tests/test_render_annotate.py`. It has annotated goldens for the pier and the
   four `section_draft` fixtures, and checks that tags clear each other, the concrete and
   the frame (at 1200 × 500 and at the default 800 × 600), that each annotated drawing is
