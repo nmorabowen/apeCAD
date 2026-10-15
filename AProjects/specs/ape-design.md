@@ -1,6 +1,6 @@
 # Spec — APE design system for apeCAD
 
-**Status:** Accepted (2026-10-14). **ADR:** [0031](../adrs/0031-ape-design-system.md).
+**Status:** Accepted (2026-10-14). **ADRs:** [0031](../adrs/0031-ape-design-system.md), [0033](../adrs/0033-ape-drawing-style-errata.md) (drawing-style errata).
 **Mockup:** [`design/ape-design-mockup.html`](../design/ape-design-mockup.html), published at
 <https://claude.ai/artifact/8o96Ef5efK79HYXGuWBDbj> (private to the owner until shared).
 
@@ -37,12 +37,12 @@ Text roles meet 4.5 : 1; stroke-only roles meet 3 : 1.
 | `--accent-text` | `#28679c` | `#3d8fce` | steel, darkened 10 % | Accent used as small text on `surface-1` | 5.1 / 5.1 |
 | `--signal` | `#c64a1a` | `#e2703a` | apeCAD vest (lifted on dark) | Snap marker, crossing window, trim discard, refusals | 4.1 / 5.6 |
 | `--signal-text` | `#b0441a` | `#e2703a` | vest, darkened | Refusal text on `surface-0/1` | 4.9 / 5.6 |
-| `--canvas` | `#f7f6f3` | `#1c2127` | paper / ink | 3-D view background (default preset) | — |
-| `--grid-major` | `#d8d5cd` | `#2c333c` | `--line` / current dark line | Major grid | — |
-| `--grid-minor` | `#e7e4dd` | `#232a33` | between paper and line | Minor grid dots or lines | — |
+| `--canvas` | `#ffffff` | `#1c2127` | white, like the SVG render (owner, 2026-10-14) / ink | 3-D view background (the theme's default preset; the chrome keeps paper) | — |
+| `--grid-major` | `#cfcfcf` | `#2c333c` | neutral grey for white / current dark line | Major grid | 1.6 / — |
+| `--grid-minor` | `#e2e2e2` | `#232a33` | neutral grey for white | Minor grid dots or lines | 1.3 / — |
 | `--ink-edge` | `#14181d` | `#c9d1da` | carbon / light slate | Sketch curves and solid edges on the canvas | — |
 | `--ink-rebar` | `#000077` | `#8c9cf0` | ADR-004 annotation blue / lifted | Section bars, hoops, crossties, tags on the canvas | 15.3 / 6.9 |
-| `--fill-concrete` | `#d2d2d2` | `#3a4048` | ADR-010 Grey210 / dark equivalent | Concrete face fill on the canvas | — |
+| `--fill-concrete` | `#b4b4b4` | `#3a4048` | drawn at 60 % so the grid shows through: renders ADR-010 Grey210 on white / dark equivalent | Concrete face fill on the canvas | — |
 | `--ghost` | `#2f74ad` | `#6cb3ff` | steel / current ghost | Rubber-band previews, keep half of trim | — / 8.1 |
 | `--pick` | `= --accent` | `= --accent` | | Selected entity colour in 3-D | |
 | `--hover` | `#3d8fce` | `#6aa8e8` | steel-bright / current hover | Preselection | |
@@ -60,7 +60,7 @@ Retired raw values and their role:
 | trim keep `0x7dce7d`, discard `0xff6b6b` (`ghosts.js`) | keep `--ghost` solid, discard `--signal` dashed |
 | `EDGE_COLOR 0x111111` (`draw.js`), pref `curve #111111` (`prefs.js`) | `--ink-edge` (pref stays, default from theme) |
 | cube face `#1d2229`, `#2c333c`, `#e8edf2` (`viewcube.js`) | `--surface-1`, `--line`, `--text` |
-| `scene.background 0xe4e9ee` (`viewport.js`), presets `g2/g5/g6` (`prefs.js`) | `--canvas`; presets `paper`, `mist` (`#e4e9ee`, kept), `carbon` |
+| `scene.background 0xe4e9ee` (`viewport.js`), presets `g2/g5/g6` (`prefs.js`) | `--canvas` (theme default: white in light, ink in dark); presets `paper` (`#f7f6f3`), `mist` (`#e4e9ee`, kept), `carbon` |
 
 ### 1.2 Type
 
@@ -363,7 +363,7 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 
 ## 3. Drawing output style
 
-### 3.1 Pens, ink, fills, type (the `render/style.py` data)
+### 3.1 Pens, ink, fills, type (the `render/style.py` data, ADR 0033)
 
 | Token | Value | Source |
 |---|---|---|
@@ -385,22 +385,22 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 
 ### 3.2 Entity → drawing style
 
-`Role` is what `scene.py` attaches to a drawable; `render/style.py` resolves it.
+`Role` is what `scene.py` attaches to a drawable (`Drawable.layer`); `render/style.py` resolves it: `SECTION_STYLE` for the section roles, `SKETCH_STYLE` for the rest ([ADR 0033](../adrs/0033-ape-drawing-style-errata.md)). The canvas twin is `static/js/section.js` `SECTION_STYLE`, reading the canvas roles of §1.1.
 
 | Entity (kind) | Role | Line style | Fill | Layer (DXF) | Notes |
 |---|---|---|---|---|---|
 | `Point` | `point` | — | disc 0.5 mm, Black | `POINT` | Bar points are drawn by the bar, not as points |
 | `Line`, `Polyline` (sketch, frame axis) | `sketch` | `0.30mm S-Black` | — | `SKETCH` | Frame axes are intent, not structure edges |
 | `Circle`, `Arc`, `Ellipse`, `Bezier` | `sketch` | `0.30mm S-Black` | — | `SKETCH` | |
-| `Face` (3-D, not section) | `face` | boundary as its lines | none | `FACE` | The 15 % blue tint goes |
-| `Box`, `Solid` edges | `solid-edge` | `0.20mm S-Black` | — | `SOLID-EDGE` | Projection; no hidden-line removal |
+| `Face` (3-D, not section) | `face` | `0.20mm S-Black` outline | none | `FACE` | The 15 % blue tint goes; projection weight (ADR 0033) |
+| `Box`, `Solid` edges | `solid` | `0.20mm S-Black` | — | `SOLID-EDGE` | Projection; no hidden-line removal |
 | `ConcreteFace` | `concrete-cut` | `0.40mm S-Black` | `Solid - Grey210 - Transparent` | `CONCRETE-CUT`, fill on `CONCRETE-FILL` | Section is a cut (ADR-005 D2) |
 | `WallLeg` axis | `wall-axis` | `0.10mm H-Dark Grey` | — | `WALL-AXIS` | Intent line; thickness is shown by the face |
 | `WallLeg.horizontal` | `tag` | — | — | `TAG` | `Φd @ s mm, {curtains} curtains` beside the leg |
 | `Bar` | `bar` | edge `0.10mm S-Blue` | disc at `diameter_mm`, Blue | `BAR` | True scale; never below 0.6 mm on paper |
 | `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (D4) |
 | `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick per `hooks` (D4) |
-| `CoverGuide` | `cover-guide` | `0.10mm H-Grey` | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
+| `CoverGuide` | `cover` | `0.10mm H-Dark Grey`, short dash (ADR 0033; Grey 192 vanishes on Grey210) | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
 | entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue |
 | `#id` (show_ids) | `label` | — | — | not exported | Debug only |
 | Bar group tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `n Φd`, one per designation (D4) |
@@ -415,14 +415,13 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 
 ### 3.3 View-title vocabulary
 
+The views `render_svg` offers (`render/api.py` `VIEW_NAMES`); a new view adds its row here and in `render/style.py` `VIEW_TITLES`.
+
 | `view.name` (identifier, unchanged) | Title on the drawing |
 |---|---|
 | `top` | PLAN |
-| `bottom` | BOTTOM VIEW |
 | `front` | FRONT ELEVATION |
-| `back` | BACK ELEVATION |
 | `right` | RIGHT ELEVATION |
-| `left` | LEFT ELEVATION |
 | `iso` | ISOMETRIC |
 | section (z = 0 with section entities) | SECTION {face label, or none} |
 
@@ -465,16 +464,24 @@ ADR 0031 "Implementation stages".
 - Tests: `tests/js/strings.test.mjs` asserts no entry matches `/—|–|\.\.\.|…|!|\?|\bOK\b|\byou\b|\bwe\b|\bplease\b/i`
   (menu labels ending in `…` are exempt by key prefix `menu.`).
 
-### D3 — Render style
+### D3 — Render style (implemented)
 
-- `render/style.py`: `PENS`, `COLORS`, `FILLS`, `FONTS`, `ROLES: dict[Role, Style]`
-  (frozen dataclasses, pure data, pyright strict).
-- `scene.py`: `Drawable.layer` widens to the roles in §3.2 (section roles arrive with C1).
-- `svg.py`: one `<g class="{role}">` per role in a fixed paint order (fills, cut, projection,
-  sketch, rebar, annotation, highlight); widths from `style.screen_px`; texts with the
-  working font; titles from §3.3; `data-*` attributes unchanged.
-- Tests: golden SVG per view in `tests/fixtures/render/`; a test that every `Role` has a
-  `Style` and every style name is an ADR-005 name.
+- `render/style.py` (#32's table, extended; ADR 0033): `pen_px(mm)`, the ink and font
+  constants, `LayerStyle` with its ADR-005 `line_style`, ADR-010 `fill_name` and DXF
+  `layer_name`, `SECTION_STYLE` (concrete, cover, leg, hoop, crosstie, bar),
+  `SKETCH_STYLE` (face, solid, edge, point), `VIEW_TITLES`.
+- `drawable.py` / `scene.py`: boxes and solids move from `edge` to a `solid` layer.
+- `svg.py`: one group per layer in a fixed paint order (faces, section layers, solids,
+  sketch edges, points, highlight, text, legend); widths from `pen_px`; labels in the
+  working font, blue; the view title in the display font with a 0.30 mm rule; the empty
+  placeholder `Empty drawing`; `data-*` attributes unchanged.
+- Canvas: the light values of `--fill-concrete`, `--ink-concrete`, `--ink-section-guide`
+  and `--ink-rebar` in `css/app.css` become `#b4b4b4` (Grey210 once drawn at 60 % on white),
+  `#000000`, `#808080`, `#000077`; carbon keeps the D1 lifted values. The light theme's
+  default canvas is white like the SVG render, with a `#cfcfcf` / `#e2e2e2` grid (owner,
+  2026-10-14); the chrome stays APE paper.
+- Tests: the 19 goldens in `tests/fixtures/render/` regenerated; `tests/test_render_style.py`
+  checks every style name is an ADR-005 / ADR-010 name and every layer has a style.
 
 ### D4 — Section annotation
 

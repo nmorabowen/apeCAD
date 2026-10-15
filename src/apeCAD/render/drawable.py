@@ -7,7 +7,9 @@ from typing import Literal
 
 from apeCAD.render.views import Vec3
 
-Layer = Literal["face", "edge", "point", "concrete", "cover", "leg", "hoop", "crosstie", "bar"]
+Layer = Literal[
+    "face", "solid", "edge", "point", "concrete", "cover", "leg", "hoop", "crosstie", "bar"
+]
 SECTION_LAYERS: tuple[Layer, ...] = ("concrete", "cover", "leg", "hoop", "crosstie", "bar")
 Path3 = tuple[tuple[Vec3, ...], bool]  # points, closed
 

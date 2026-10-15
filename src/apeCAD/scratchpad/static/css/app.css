@@ -59,19 +59,20 @@
   --w-rail: 40px;
   --radius: 2px;
 
-  /* canvas, default preset of the light theme: paper */
-  --canvas: #f7f6f3;
-  --grid-major: #d8d5cd;
-  --grid-minor: #e7e4dd;
+  /* canvas, default preset of the light theme: white like the SVG render (owner,
+     2026-10-14); the chrome keeps APE paper */
+  --canvas: #ffffff;
+  --grid-major: #cfcfcf;
+  --grid-minor: #e2e2e2;
   --ink-edge: #14181d;
   --pick: #2f74ad;
   --hover: #3d8fce;
   --snap: #c64a1a;
   --ghost: #2f74ad;
-  --fill-concrete: #c8ccd1;
-  --ink-concrete: #1f2933;
-  --ink-section-guide: #7b8794;
-  --ink-rebar: #1f2933;
+  --fill-concrete: #b4b4b4; /* at 60 % on white renders Grey210 (#d2d2d2) */
+  --ink-concrete: #000000;
+  --ink-section-guide: #808080;
+  --ink-rebar: #000077;
   --light-sky: #f4f7fb;
   --light-ground: #6e757c;
   --light-ground-flat: #c5cad0;
@@ -158,10 +159,10 @@
   --hover: #3d8fce;
   --snap: #c64a1a;
   --ghost: #2f74ad;
-  --fill-concrete: #c8ccd1;
-  --ink-concrete: #1f2933;
-  --ink-section-guide: #7b8794;
-  --ink-rebar: #1f2933;
+  --fill-concrete: #b4b4b4; /* at 60 % on white renders Grey210 (#d2d2d2) */
+  --ink-concrete: #000000;
+  --ink-section-guide: #808080;
+  --ink-rebar: #000077;
   --light-sky: #f4f7fb;
   --light-ground: #6e757c;
   --light-ground-flat: #c5cad0;

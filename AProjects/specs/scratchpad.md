@@ -29,7 +29,7 @@ chrome roles per theme (light paper, dark carbon) and canvas roles on `#stage` p
 preset (paper, mist, carbon). `js/theme.js` sets `data-theme` / `data-canvas` and reads the
 canvas roles into `INK` for three.js; no other module writes a colour. The section table in
 `js/section.js` reads `--fill-concrete`, `--ink-concrete`, `--ink-section-guide` and
-`--ink-rebar`, so a section stays legible on carbon; stage D3 sets their APE drawing values. The UI face is Archivo Narrow, served from
+`--ink-rebar`: APE drawing ink on light canvases (ADR 0031 §3, ADR 0033), lifted on carbon. The UI face is Archivo Narrow, served from
 `static/fonts/` with its OFL licence. The server serves `/css/<name>.css` and
 `/fonts/<name>.woff2` beside `/js/<name>.js`.
 

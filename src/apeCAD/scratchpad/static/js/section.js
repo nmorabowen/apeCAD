@@ -12,8 +12,9 @@ import { INK } from "./theme.js";
 
 // Colours come from the active canvas (css/app.css --fill-concrete, --ink-concrete,
 // --ink-section-guide, --ink-rebar via INK), so the section reads on paper and on carbon.
-// The light values are #32's neutral ink; D3 sets the APE drawing ink. Dash patterns are in
-// mm on the section plane.
+// Light canvases use the APE drawing ink of render/style.py (ADR 0031 §3): Grey210 cut,
+// black edge, Dark Grey guides, rebar in (0, 0, 119); carbon lifts them. Dash patterns are
+// in mm on the section plane.
 export const SECTION_STYLE = {
   concrete: { get fill() { return INK.concreteFill; }, opacity: 0.6, get edge() { return INK.concreteEdge; } },
   cover: { get color() { return INK.sectionGuide; }, dash: [60, 40] },
@@ -107,10 +108,13 @@ export function sectionShape(kind, item) {
 
 const vec = (p, lift = 0) => new THREE.Vector3(p.x_mm, p.y_mm, (p.z_mm || 0) + lift);
 
+// Lines and bars sit in three.js's transparent pass (opacity 1), so renderOrder draws them
+// over the translucent concrete fill; in the opaque pass the fill would wash them out.
 function lineMaterial(color, entityId) {
   return new THREE.LineBasicMaterial({
     color: selectionTints(entityId) ? INK.pick : color,
     depthTest: false,
+    transparent: true,
   });
 }
 
@@ -167,6 +171,7 @@ function addBar(group, bar) {
       color: selectionTints(bar.entity_id) ? INK.pick : SECTION_STYLE.bar.color,
       side: THREE.DoubleSide,
       depthTest: false,
+      transparent: true,
     }),
   );
   disc.position.copy(vec(centre));

@@ -148,7 +148,7 @@ def _box(box: Box) -> Drawable:
     edges = [(a, a | bit) for bit in (1, 2, 4) for a in range(8) if not a & bit]
     paths = tuple(((corners[a], corners[b]), False) for a, b in edges)
     center = (ox + sx / 2.0, oy + sy / 2.0, oz + sz / 2.0)
-    return Drawable(box.entity_id, "edge", paths, center, box.label)
+    return Drawable(box.entity_id, "solid", paths, center, box.label)
 
 
 def _solid(entities: Mapping[EntityId, Entity], solid: Solid) -> Drawable:
@@ -174,4 +174,4 @@ def _solid(entities: Mapping[EntityId, Entity], solid: Solid) -> Drawable:
             if isinstance(loop, Face):
                 pts.extend(_all_xyz(entities, loop.point_ids) or [])
         anchor = _mean(pts) if pts else None
-    return Drawable(solid.entity_id, "edge", tuple(paths), anchor, solid.label)
+    return Drawable(solid.entity_id, "solid", tuple(paths), anchor, solid.label)
