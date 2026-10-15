@@ -51,7 +51,7 @@
 </g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
 <g class="tag"><path d="M550.55 180.75 L481.75 186.25" fill="none"/><circle cx="550.55" cy="180.75" r="1" stroke="none"/><text x="475.75" y="189.75" stroke="none" font-size="10" text-anchor="end">10 Φ20</text></g>
-<g class="tag"><path d="M548.95 160.75 L481.75 200.25" fill="none"/><circle cx="548.95" cy="160.75" r="1" stroke="none"/><text x="475.75" y="203.75" stroke="none" font-size="10" text-anchor="end">Tie Φ12 @ 100 mm</text></g>
+<g class="tag"><path d="M548.95 160.75 L481.75 200.25" fill="none"/><circle cx="548.95" cy="160.75" r="1" stroke="none"/><text x="475.75" y="203.75" stroke="none" font-size="10" text-anchor="end">BE-web: Tie Φ12 @ 100 mm</text></g>
 <g class="tag"><path d="M561.25 220.75 L481.75 214.25" fill="none"/><circle cx="561.25" cy="220.75" r="1" stroke="none"/><text x="475.75" y="217.75" stroke="none" font-size="10" text-anchor="end">Crosstie Φ12 @ 100 mm ×3</text></g>
 <g class="tag"><path d="M561.25 200.75 L718.25 193.25" fill="none"/><circle cx="561.25" cy="200.75" r="1" stroke="none"/><text x="724.25" y="196.75" stroke="none" font-size="10">Φ12 @ 250 mm, 2 curtains</text></g>
 <g class="tag"><path d="M693.75 323.25 L718.25 207.25" fill="none"/><circle cx="693.75" cy="323.25" r="1" stroke="none"/><text x="724.25" y="210.75" stroke="none" font-size="10">Cover 25 mm</text></g>
@@ -59,8 +59,6 @@
 <g class="dimension" data-dim="depth"><path d="M543.25 50.75 L518.25 50.75 M543.25 350.75 L518.25 350.75 M522.25 50.75 L522.25 350.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(522.25 50.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(522.25 350.75) rotate(-90)"/><text transform="translate(519.25 125.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">3000</text></g>
 </g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
-<text x="633.75" y="195.75" data-for="13">C1</text>
-<text x="566.25" y="195.75" data-for="38">BE-web</text>
 </g>
 <g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
 <path d="M12 484 L12 488 L212 488 L212 484" fill="none"/>

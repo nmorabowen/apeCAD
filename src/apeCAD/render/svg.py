@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 from apeCAD.entities import EntityId
 from apeCAD.render.annotate import Layout, notes_svg, scale_note
 from apeCAD.render.drawable import SECTION_LAYERS, Drawable, Path3
+from apeCAD.render.labels import CHAR_PX, TEXT_GAP_PX, LabelText, obstacles, place_labels
 from apeCAD.render.style import (
     ANNOTATION_PEN_PX,
     BACKGROUND,
@@ -33,8 +34,6 @@ from apeCAD.render.views import Vec2, View
 ACCENT = HIGHLIGHT
 FONT = f'font-family="{WORKING_FONT}" font-size="{TEXT_PX:g}"'
 FONT_PX = TEXT_PX
-CHAR_PX = 6.6  # generous for Arial Narrow at 10 px, to keep labels inside the frame
-TEXT_GAP_PX = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,7 +120,7 @@ def write_svg(
     )
     out.append("</g>")
     if layout is not None:
-        out.extend(notes_svg(layout, viewport.to_px, num))
+        out.extend(notes_svg(layout, viewport.to_px, num, clean_text))
     marked = [d for d in items if d.entity_id in highlight]
     if marked:
         out.append(
@@ -133,14 +132,18 @@ def write_svg(
             out.append(_group(d, view, viewport, "data-highlight", body))
         out.append("</g>")
     out.append(f'<g class="text" {FONT} fill="{BLUE}">')
-    out.extend(_texts(items, view, viewport, text))
+    title = _title(view, items)
+    if layout is None:
+        out.extend(_texts(items, view, viewport, text))
+    else:
+        out.extend(_placed_texts(items, view, viewport, text, layout, title))
     if not items:
         out.append(
             f'<text x="{num(w / 2.0)}" y="{num(h / 2.0)}" text-anchor="middle" '
             f'fill-opacity="0.5">{EMPTY_TEXT}</text>'
         )
     out.append("</g>")
-    out.extend(_legend(view, viewport, _title(view, items), layout))
+    out.extend(_legend(view, viewport, title, layout))
     out.append("</svg>")
     return "\n".join(out) + "\n"
 
@@ -254,6 +257,37 @@ def _texts(items: list[Drawable], view: View, viewport: Viewport, text: TextOpti
     return out
 
 
+def _placed_texts(
+    items: list[Drawable], view: View, viewport: Viewport, text: TextOptions, layout: Layout,
+    title: str,
+) -> list[str]:
+    """An annotated plan: labels the notes already print are left out, the rest placed
+    clear of the annotation and the drawing (`render/labels.py`)."""
+    wanted: list[LabelText] = []
+    for d in items:
+        if d.anchor is None:
+            continue
+        parts: list[str] = []
+        if text.labels and d.label and d.entity_id not in layout.notes.named:
+            parts.append(d.label)
+        if text.show_ids:
+            parts.append(f"#{d.entity_id}")
+        if parts:
+            anchor = viewport.to_px(view.project(d.anchor))
+            wanted.append(LabelText(d.entity_id, " ".join(parts), anchor))
+    if not wanted:
+        return []
+    blocked = obstacles(layout, view, viewport.to_px, items, legend_box(viewport, title))
+    out: list[str] = []
+    for p in place_labels(wanted, blocked, viewport.width, viewport.height):
+        anchor = ' text-anchor="end"' if p.end else ""
+        out.append(
+            f'<text x="{num(p.x)}" y="{num(p.y)}"{anchor} data-for="{p.entity_id}">'
+            f"{clean_text(p.words)}</text>"
+        )
+    return out
+
+
 def _text_place(x: float, y: float, chars: int, viewport: Viewport) -> str:
     """Up and right of the anchor, flipped left or down where it would leave the frame."""
     ty = y - TEXT_GAP_PX if y - TEXT_GAP_PX >= FONT_PX else y + TEXT_GAP_PX + FONT_PX
@@ -279,6 +313,13 @@ def _title(view: View, items: list[Drawable]) -> str:
         label = concrete[0].label
         return f"{SECTION_TITLE} {label}" if label else SECTION_TITLE
     return VIEW_TITLES.get(view.name, view.name.upper())
+
+
+def legend_box(viewport: Viewport, title: str) -> tuple[float, float, float, float]:
+    """What an annotated plan's legend covers, px: title, rule, scale note and scale bar."""
+    x1 = 12.0 + scale_bar_mm(viewport) * viewport.scale
+    right = max(12.0 + 0.55 * TITLE_PX * len(title), x1 + 6.0 + 8 * CHAR_PX)
+    return 0.0, viewport.height - 40.0 - TITLE_PX, right, float(viewport.height)
 
 
 def _legend(view: View, viewport: Viewport, title: str, layout: Layout | None) -> list[str]:

@@ -53,16 +53,14 @@
 <g data-id="6"><circle cx="485.1" cy="289.92" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
-<g class="tag"><path d="M628.62 212.03 L574.45 123.92 L574.45 100.42" fill="none"/><circle cx="628.62" cy="212.03" r="1" stroke="none"/><text x="580.45" y="103.92" stroke="none" font-size="10">26 Φ16</text></g>
-<g class="tag"><path d="M742.68 144.67 L574.45 123.92 L574.45 114.42" fill="none"/><circle cx="742.68" cy="144.67" r="1" stroke="none"/><text x="580.45" y="117.92" stroke="none" font-size="10">Tie Φ10 @ 150 mm</text></g>
-<g class="tag"><path d="M718.68 169.5 L686.05 123.92 L686.05 100.42" fill="none"/><circle cx="718.68" cy="169.5" r="1" stroke="none"/><text x="692.05" y="103.92" stroke="none" font-size="10">Φ10 @ 200 mm, 2 curtains</text></g>
-<g class="tag"><path d="M712.05 161.78 L686.05 123.92 L686.05 114.42" fill="none"/><circle cx="712.05" cy="161.78" r="1" stroke="none"/><text x="692.05" y="117.92" stroke="none" font-size="10">Cover 25 mm</text></g>
+<g class="tag"><path d="M628.62 212.03 L563.25 123.92 L563.25 100.42" fill="none"/><circle cx="628.62" cy="212.03" r="1" stroke="none"/><text x="569.25" y="103.92" stroke="none" font-size="10">26 Φ16</text></g>
+<g class="tag"><path d="M742.68 144.67 L563.25 123.92 L563.25 114.42" fill="none"/><circle cx="742.68" cy="144.67" r="1" stroke="none"/><text x="569.25" y="117.92" stroke="none" font-size="10">H1: Tie Φ10 @ 150 mm</text></g>
+<g class="tag"><path d="M718.68 169.5 L697.25 123.92 L697.25 100.42" fill="none"/><circle cx="718.68" cy="169.5" r="1" stroke="none"/><text x="703.25" y="103.92" stroke="none" font-size="10">Φ10 @ 200 mm, 2 curtains</text></g>
+<g class="tag"><path d="M712.05 161.78 L697.25 123.92 L697.25 114.42" fill="none"/><circle cx="712.05" cy="161.78" r="1" stroke="none"/><text x="703.25" y="117.92" stroke="none" font-size="10">Cover 25 mm</text></g>
 <g class="dimension" data-dim="width"><path d="M485.1 314.58 L485.1 339.58 M757.4 314.58 L757.4 339.58 M485.1 335.58 L757.4 335.58" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(485.1 335.58) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(757.4 335.58) rotate(180)"/><text x="621.25" y="332.58" text-anchor="middle" stroke="none" font-size="12.5">2723</text></g>
 <g class="dimension" data-dim="depth"><path d="M482.1 139.92 L457.1 139.92 M482.1 311.58 L457.1 311.58 M461.1 139.92 L461.1 311.58" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(461.1 139.92) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(461.1 311.58) rotate(-90)"/><text transform="translate(458.1 225.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">1717</text></g>
 </g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
-<text x="626.25" y="220.75" data-for="7">W-incl</text>
-<text x="626.25" y="220.75" data-for="62">H1</text>
 </g>
 <g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
 <path d="M12 484 L12 488 L212 488 L212 484" fill="none"/>

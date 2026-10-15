@@ -401,10 +401,10 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 | `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (implemented, SVG only) |
 | `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick of 6 d<sub>h</sub> per `hooks` (implemented, SVG only) |
 | `CoverGuide` | `cover` | `0.10mm H-Dark Grey`, short dash (ADR 0033; Grey 192 vanishes on Grey210) | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
-| entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue |
+| entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue; on an annotated plan, placed clear of the annotation (D4) |
 | `#id` (show_ids) | `label` | — | — | not exported | Debug only |
 | Bar group tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `n Φd`, one per designation (D4) |
-| Hoop / crosstie tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `Tie Φd @ s mm`, `Crosstie Φd @ s mm`, `×n` for several |
+| Hoop / crosstie tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `Tie Φd @ s mm` (`{label}: Tie Φd @ s mm` for a labelled hoop), `Crosstie Φd @ s mm`, `×n` for several |
 | Cover note | `tag` | — | — | `TAG` | `Cover c mm`, with a leader |
 | Overall dimensions | `dimension` | `0.10mm S-Blue`, filled 30° arrows | — | `DIMENSION` | Arial Narrow 2.5 mm, Transparent (ADR-006 default linear) |
 | View title | `view-title` | underline `0.30mm S-Blue` | — | `VIEW-TITLE` | Display font 3.5 mm: `SECTION {label}`, `PLAN`, `FRONT ELEVATION` … |
@@ -500,7 +500,8 @@ ADR 0031 "Implementation stages".
 - **Tags by group,** each group a stack beside what it labels, with leaders (0.10 mm pen,
   a 1 px dot on the target nearest the stack):
   - each hoop: the bars inside its ring, one tag per designation (`6 Φ16`), then
-    `Tie Φd @ s mm`, then the crossties inside it (`Crosstie Φd @ s mm`, `×n` for several);
+    `Tie Φd @ s mm` (headed by the hoop's label when labels are on: `BE1: Tie Φ10 @ 100 mm`),
+    then the crossties inside it (`Crosstie Φd @ s mm`, `×n` for several);
   - the bars and crossties in no hoop (the web);
   - the whole section: wall-leg web steel `Φd @ s mm, n curtains` and `Cover c mm`.
 
@@ -509,6 +510,17 @@ ADR 0031 "Implementation stages".
   each group; a deeper one stacks left or right. Stacks on one side are pushed apart
   along it; when a side overflows, one stack spills to the opposite side. Stacks never
   cross the concrete, the dimensions, the legend or the frame.
+- **Entity labels** (`labels=true`, `render/labels.py`). The notes already print two
+  labels, so neither is drawn again: the face's is in the title (`SECTION C1`), and each
+  hoop's heads its tie tag. Every other label (a bar, crosstie, leg or point) and every
+  `#id` tries spots around its anchor, nearest first: up-right (the bare drawing's spot),
+  up-left, down-right, down-left, then the same four farther out, in 7 px rings. It takes
+  the first spot that stays in the frame and keeps 2 px clear of the tags, the leaders, the
+  dimension lines and text, the legend, the labels already placed, the concrete outline,
+  and the reinforcement drawn inside it (hoops, crossties, legs, cover ring, bar discs).
+  When none is clear, the reinforcement gives way first; when still none is, the label
+  takes the bare drawing's spot. A label carries no leader, so a crowded one can sit a few
+  rings from its entity. A bare drawing (`annotate=false`) places labels as before.
 - **Overall dimensions** of the concrete's box, below and left of it: 0.10 mm lines,
   filled 30° arrows, whole millimetres.
 - `render_svg(annotate=True)` uses the layout's scale and centre. With a `window`, or
@@ -530,8 +542,12 @@ ADR 0031 "Implementation stages".
 - Tests: `tests/test_render_annotate.py`. It has annotated goldens for the pier and the
   four `section_draft` fixtures, and checks that tags clear each other, the concrete and
   the frame (at 1200 × 500 and at the default 800 × 600), that each annotated drawing is
-  at a standard scale, that the pier's tags sit beside their group, the office tag text, the flag on every surface, that nothing is stored, and
-  that only plans of sections are annotated. The bare section goldens render with
+  at a standard scale, that the pier's tags sit beside their group, the office tag text,
+  the flag on every surface, that nothing is stored, and that only plans of sections are
+  annotated. With extra labels on bars, a crosstie and a leg, labels clear each other, the
+  tags, the dimension text, the concrete outline and the frame in all five cases at both
+  sizes; face and hoop labels are not drawn twice, and `labels=false` drops the tie-tag
+  prefix. The bare section goldens render with
   `annotate=False` and are unchanged.
 
 ### D5 — DXF (ADR 0034, Proposed)

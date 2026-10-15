@@ -16,19 +16,21 @@ import pytest
 
 from _section_fixtures import BUILDERS
 from apeCAD.document import Document
+from apeCAD.entities import Bar, ConcreteFace, Crosstie, Hoop, WallLeg
 from apeCAD.render import render_svg
 from apeCAD.render.annotate import (
     STANDARD_SCALES,
     TAG_CHAR_PX,
     Layout,
     ToPx,
-    _crosses,  # pyright: ignore[reportPrivateUsage]
+    crosses,
     dimension_text_boxes,
     leaders,
     plan_layout,
     section_notes,
 )
 from apeCAD.render.api import _bounds  # pyright: ignore[reportPrivateUsage]
+from apeCAD.render.labels import text_box
 from apeCAD.render.query import render_from_query
 from apeCAD.render.scene import drawables, entity_map
 from apeCAD.render.style import TEXT_PX
@@ -75,7 +77,7 @@ def _concrete_box(root: ET.Element) -> Box:
 def _layout(doc: Document, width: int, height: int) -> Layout:
     entities = entity_map(doc)
     items = drawables(entities, set(entities), None)
-    notes = section_notes(VIEWS["top"], entities, items)
+    notes = section_notes(VIEWS["top"], entities, items, labels=True)  # as render_svg
     bounds = _bounds(VIEWS["top"], items)
     assert notes is not None and bounds is not None
     layout = plan_layout(notes, bounds, width, height, 0.05)
@@ -121,7 +123,7 @@ def test_tags_clear_each_other_the_concrete_and_the_frame(
     for box in dimension_text_boxes(layout.notes, to_px, leaders(layout)):
         for line in leaders(layout):
             for a, b in zip(line, line[1:], strict=False):
-                assert not _crosses(box, a, b), "a leader crosses a dimension text"
+                assert not crosses(box, a, b), "a leader crosses a dimension text"
         for text, tag in tags:
             assert not _overlap(box, tag), text
 
@@ -130,10 +132,11 @@ def test_pier_tags_sit_beside_the_group_they_label() -> None:
     root = _render(pier())
     tags = _tag_boxes(root)
     texts = [text for text, _ in tags]
-    assert texts.count("6 Φ16") == 2 and texts.count("Tie Φ10 @ 100 mm") == 2  # one per end
+    assert texts.count("6 Φ16") == 2  # one per end, each tie tag headed by its hoop's label
+    assert {"BE-left: Tie Φ10 @ 100 mm", "BE-right: Tie Φ10 @ 100 mm"} <= set(texts)
     assert {"20 Φ16", "Cover 25 mm", "Φ10 @ 200 mm, 2 curtains"} <= set(texts)
     assert not any("Ø" in text for text in texts), "the drawing prints Φ"
-    ties = sorted(box[0] for text, box in tags if text.startswith("Tie "))
+    ties = sorted(box[0] for text, box in tags if ": Tie " in text)
     concrete = _concrete_box(root)
     third = (concrete[2] - concrete[0]) / 3.0
     assert ties[0] < concrete[0] + third and ties[1] > concrete[2] - third
@@ -190,3 +193,81 @@ def test_only_a_plan_of_a_section_is_annotated() -> None:
     assert 'class="annotation"' not in render_svg(Document(), view="top").svg
     tiny = render_svg(doc, view="top", width=200, height=120).svg
     assert 'class="annotation"' not in tiny, "too small to annotate legibly"
+
+
+def _labelled(name: str) -> Document:
+    """The fixture with a label on more kinds of entity than the face and the hoops: the
+    first and last bar, the first crosstie and the first wall leg."""
+    doc = CASES[name]()
+    entities = entity_map(doc)
+    bars = [e for e in entities.values() if isinstance(e, Bar)]
+    extra = [bars[0], bars[-1]]
+    extra += [e for e in entities.values() if isinstance(e, Crosstie)][:1]
+    extra += [e for e in entities.values() if isinstance(e, WallLeg)][:1]
+    for i, entity in enumerate(extra):
+        doc.set_label(entity.entity_id, f"L-{i + 1}")
+    return doc
+
+
+def _labels(root: ET.Element) -> list[tuple[str, Box]]:
+    out: list[tuple[str, Box]] = []
+    for t in root.iter(f"{SVG_NS}text"):
+        if t.get("data-for") and t.text:
+            x, y = float(t.get("x", "0")), float(t.get("y", "0"))
+            out.append((t.text, text_box(x, y, t.get("text-anchor") == "end", len(t.text))))
+    return out
+
+
+def _outline(root: ET.Element) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+    segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for g in _group(root, "concrete"):
+        for path in g.iter(f"{SVG_NS}path"):
+            pts = [(float(x), float(y))
+                   for x, y in re.findall(r"[ML](-?[\d.]+) (-?[\d.]+)", path.get("d", ""))]
+            segments += list(zip(pts, pts[1:] + pts[:1], strict=True))
+    return segments
+
+
+@pytest.mark.parametrize(("width", "height"), [(1200, 500), (800, 600)])
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_labels_clear_tags_dimensions_and_the_outline(name: str, width: int, height: int) -> None:
+    doc = _labelled(name)
+    root = _render(doc, width, height)
+    labels = _labels(root)
+    assert {text for text, _ in labels} >= {"L-1", "L-2"}, labels
+    tags = _tag_boxes(root)
+    layout = _layout(doc, width, height)
+    dims = dimension_text_boxes(layout.notes, _to_px(layout, width, height), leaders(layout))
+    outline = _outline(root)
+    for (a_text, a), (b_text, b) in itertools.combinations(labels, 2):
+        assert not _overlap(a, b), (a_text, b_text)
+    for text, box in labels:
+        assert box[0] >= 0.0 and box[2] <= width and box[1] >= 0.0 and box[3] <= height, text
+        for tag_text, tag in tags:
+            assert not _overlap(box, tag), (text, tag_text)
+        for dim in dims:
+            assert not _overlap(box, dim), (text, "dimension text")
+        for a, b in outline:
+            assert not crosses(box, a, b), (text, "concrete outline")
+
+
+@pytest.mark.parametrize("name", sorted(CASES))
+def test_face_and_hoop_labels_are_not_drawn_twice(name: str) -> None:
+    doc = CASES[name]()
+    entities = entity_map(doc)
+    root = _render(doc)
+    drawn = {int(t.get("data-for", "0")) for t in root.iter(f"{SVG_NS}text") if t.get("data-for")}
+    named = {e.entity_id for e in entities.values() if isinstance(e, (ConcreteFace, Hoop))}
+    assert not drawn & named, "the title names the face; tie tags name the hoops"
+    texts = {text for text, _ in _tag_boxes(root)}
+    for hoop in (e for e in entities.values() if isinstance(e, Hoop)):
+        assert any(text.startswith(f"{hoop.label}: Tie ") for text in texts), hoop.label
+    bare = ET.fromstring(render_svg(doc, view="top", annotate=False).svg)
+    assert {int(t.get("data-for", "0")) for t in bare.iter(f"{SVG_NS}text")
+            if t.get("data-for")} >= named, "a bare drawing keeps every label"
+    plain = {text for text, _ in _tag_boxes(_render_no_labels(doc))}
+    assert not any(": Tie " in text for text in plain), "labels=false drops the prefix"
+
+
+def _render_no_labels(doc: Document) -> ET.Element:
+    return ET.fromstring(render_svg(doc, view="top", labels=False).svg)

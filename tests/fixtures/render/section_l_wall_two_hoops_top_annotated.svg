@@ -51,16 +51,13 @@
 <g class="tag"><path d="M711.25 100.75 L552.05 84.75 L552.05 61.25" fill="none"/><circle cx="711.25" cy="100.75" r="1" stroke="none"/><text x="558.05" y="64.75" stroke="none" font-size="10">Φ10 @ 200 mm, 2 curtains</text></g>
 <g class="tag"><path d="M702.92 102.42 L552.05 84.75 L552.05 75.25" fill="none"/><circle cx="702.92" cy="102.42" r="1" stroke="none"/><text x="558.05" y="78.75" stroke="none" font-size="10">Cover 25 mm</text></g>
 <g class="tag"><path d="M704.12 103.62 L708.45 84.75 L708.45 61.25" fill="none"/><circle cx="704.12" cy="103.62" r="1" stroke="none"/><text x="714.45" y="64.75" stroke="none" font-size="10">8 Φ16</text></g>
-<g class="tag"><path d="M704.12 102.75 L708.45 84.75 L708.45 75.25" fill="none"/><circle cx="704.12" cy="102.75" r="1" stroke="none"/><text x="714.45" y="78.75" stroke="none" font-size="10">Tie Φ10 @ 100 mm</text></g>
-<g class="tag"><path d="M524.12 297.88 L494.45 357.25 L494.45 371.75" fill="none"/><circle cx="524.12" cy="297.88" r="1" stroke="none"/><text x="500.45" y="375.25" stroke="none" font-size="10">8 Φ16</text></g>
-<g class="tag"><path d="M523.84 298.71 L494.45 357.25 L494.45 385.75" fill="none"/><circle cx="523.84" cy="298.71" r="1" stroke="none"/><text x="500.45" y="389.25" stroke="none" font-size="10">Tie Φ10 @ 100 mm</text></g>
+<g class="tag"><path d="M704.12 102.75 L708.45 84.75 L708.45 75.25" fill="none"/><circle cx="704.12" cy="102.75" r="1" stroke="none"/><text x="714.45" y="78.75" stroke="none" font-size="10">BE2: Tie Φ10 @ 100 mm</text></g>
+<g class="tag"><path d="M524.12 297.88 L480.45 357.25 L480.45 371.75" fill="none"/><circle cx="524.12" cy="297.88" r="1" stroke="none"/><text x="486.45" y="375.25" stroke="none" font-size="10">8 Φ16</text></g>
+<g class="tag"><path d="M523.73 298.66 L480.45 357.25 L480.45 385.75" fill="none"/><circle cx="523.73" cy="298.66" r="1" stroke="none"/><text x="486.45" y="389.25" stroke="none" font-size="10">BE1: Tie Φ10 @ 100 mm</text></g>
 <g class="dimension" data-dim="width"><path d="M521.25 303.75 L521.25 328.75 M721.25 303.75 L721.25 328.75 M521.25 324.75 L721.25 324.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(521.25 324.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(721.25 324.75) rotate(180)"/><text x="621.25" y="321.75" text-anchor="middle" stroke="none" font-size="12.5">3000</text></g>
 <g class="dimension" data-dim="depth"><path d="M518.25 100.75 L493.25 100.75 M518.25 300.75 L493.25 300.75 M497.25 100.75 L497.25 300.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(497.25 100.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(497.25 300.75) rotate(-90)"/><text transform="translate(494.25 200.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">3000</text></g>
 </g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
-<text x="652.92" y="222.42" data-for="10">L1</text>
-<text x="546.25" y="285.75" data-for="30">BE1</text>
-<text x="716.25" y="115.75" data-for="47">BE2</text>
 </g>
 <g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
 <path d="M12 484 L12 488 L145.33 488 L145.33 484" fill="none"/>
