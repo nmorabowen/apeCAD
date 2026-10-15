@@ -220,8 +220,9 @@ export async function commitWithEnter() {
       updateGhost(S.lastPointer);
       return;
     }
+    // The finishers clear S.pending, so test the kind once (an `if` per kind read null).
     if (S.pending.kind === "height") await finishBox(S.lastPointer);
-    if (S.pending.kind === "extrude") await finishExtrude(S.lastPointer);
+    else if (S.pending.kind === "extrude") await finishExtrude(S.lastPointer);
   } catch (error) {
     refuse(error);
     S.pending = null;
