@@ -7,7 +7,9 @@ crossties inside it; the web bars; the whole-section notes), the overall dimensi
 scale note under the view title. Text and arrowheads have a fixed paper size (ADR-007:
 2.0 mm notes, ADR-006: 2.5 mm dimensions) at 5 px per paper mm. Tags keep the office
 structure in English and millimetres: `18 Φ16`, `Tie Φ10 @ 100 mm`. The document spells
-designations `Ø`; the drawing prints `Φ` (spec §3.4), here and nowhere else.
+designations `Ø`; the drawing prints `Φ` (spec §3.4), here and nowhere else. A hoop's label
+heads its tie tag (`BE1: Tie Φ10 @ 100 mm`) and the face's is in the title, so neither is
+drawn again as an entity label (`SectionNotes.named`; `render/labels.py` places the rest).
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Literal
-from xml.sax.saxutils import escape
 
 from apeCAD.entities import Bar, CoverGuide, Crosstie, Entity, EntityId, Hoop, WallLeg
 from apeCAD.render.drawable import Drawable
@@ -70,6 +71,7 @@ class SectionNotes:
 
     box_mm: tuple[Vec2, Vec2]
     groups: tuple[Group, ...]
+    named: frozenset[EntityId] = frozenset()  # entities whose label the notes already print
 
     @property
     def tags(self) -> tuple[Tag, ...]:
@@ -94,9 +96,10 @@ def _dim(value: float) -> str:
 
 
 def section_notes(
-    view: View, entities: Mapping[EntityId, Entity], items: list[Drawable]
+    view: View, entities: Mapping[EntityId, Entity], items: list[Drawable], labels: bool = False
 ) -> SectionNotes | None:
-    """Notes for a plan of a section, or None (another view, or no concrete drawn)."""
+    """Notes for a plan of a section, or None (another view, or no concrete drawn). With
+    `labels`, a hoop's label heads its tie tag."""
     if view.name != "top":
         return None
     concrete = [d for d in items if d.layer == "concrete"]
@@ -108,6 +111,7 @@ def section_notes(
     bars = [(d, e) for d in items if isinstance(e := entities.get(d.entity_id), Bar)]
     ties = [(d, e) for d in items if isinstance(e := entities.get(d.entity_id), Crosstie)]
     used: set[EntityId] = set()
+    named = {concrete[0].entity_id}  # the view title is SECTION plus this face's label
     groups: list[Group] = []
     for d in items:
         hoop = entities.get(d.entity_id)
@@ -121,6 +125,9 @@ def section_notes(
         used.update(b.entity_id for _, b in in_bars)
         used.update(t.entity_id for _, t in in_ties)
         tie_text = f"Tie {phi(hoop.designation)} @ {_mm(hoop.spacing_mm)} mm"
+        if labels and hoop.label:
+            tie_text = f"{hoop.label}: {tie_text}"
+            named.add(hoop.entity_id)
         tags = [*_bar_tags(view, in_bars), Tag(tie_text, tuple(ring)), *_tie_tags(view, in_ties)]
         groups.append(Group(tuple(tags), _box_centre(ring)))
     web_bars = [(bd, b) for bd, b in bars if b.entity_id not in used]
@@ -133,7 +140,8 @@ def section_notes(
     whole = _section_tags(view, entities, items)
     if whole:
         groups.append(Group(tuple(whole), ((u0 + u1) / 2.0, (v0 + v1) / 2.0)))
-    return SectionNotes(((u0, v0), (u1, v1)), tuple(_merged(g) for g in groups))
+    merged = tuple(_merged(g) for g in groups)
+    return SectionNotes(((u0, v0), (u1, v1)), merged, frozenset(named))
 
 
 def _merged(group: Group) -> Group:
@@ -413,8 +421,9 @@ def _stack(side: Side, group: Group, start: float, to_px: ToPx, box: Box) -> lis
 # ---- SVG --------------------------------------------------------------------------------
 
 
-def notes_svg(layout: Layout, to_px: ToPx, num: Num) -> list[str]:
-    """Tags with leaders, then the overall dimensions, all in annotation blue."""
+def notes_svg(layout: Layout, to_px: ToPx, num: Num, clean: Callable[[str], str]) -> list[str]:
+    """Tags with leaders, then the overall dimensions, all in annotation blue. `clean`
+    escapes text content (a tie tag may carry a hoop's label)."""
     out = [
         f'<g class="annotation" font-family="{WORKING_FONT}" fill="{BLUE}" stroke="{BLUE}" '
         f'stroke-width="{ANNOTATION_PEN_PX:g}">'
@@ -429,7 +438,7 @@ def notes_svg(layout: Layout, to_px: ToPx, num: Num) -> list[str]:
             'fill="none"/>'
             f'<circle cx="{num(tx)}" cy="{num(ty)}" r="1" stroke="none"/>'
             f'<text x="{num(p.x)}" y="{num(p.y)}" stroke="none" font-size="{TEXT_PX:g}"{anchor}>'
-            f"{escape(p.tag.text)}</text></g>"
+            f"{clean(p.tag.text)}</text></g>"
         )
     out.extend(_dimensions(layout.notes, to_px, num, leaders(layout)))
     out.append("</g>")
@@ -468,12 +477,12 @@ _SLIDE = (0.5, 0.25, 0.75, 0.15, 0.85)
 def _first_clear(boxes: list[Box], lines: list[list[Vec2]]) -> Box:
     segments = [(a, b) for line in lines for a, b in zip(line, line[1:], strict=False)]
     for box in boxes:
-        if not any(_crosses(box, a, b) for a, b in segments):
+        if not any(crosses(box, a, b) for a, b in segments):
             return box
     return boxes[0]
 
 
-def _crosses(box: Box, a: Vec2, b: Vec2) -> bool:
+def crosses(box: Box, a: Vec2, b: Vec2) -> bool:
     """Does segment a-b touch the box? Clipped against it (Liang-Barsky)."""
     x0, y0, x1, y1 = box
     t0, t1 = 0.0, 1.0
@@ -491,6 +500,22 @@ def _crosses(box: Box, a: Vec2, b: Vec2) -> bool:
         if t0 > t1:
             return False
     return True
+
+
+def dimension_lines(notes: SectionNotes, to_px: ToPx) -> list[list[Vec2]]:
+    """The two dimension lines and their extension lines, as px polylines."""
+    (u0, v0), (u1, v1) = notes.box_mm
+    x0, y1 = to_px((u0, v0))
+    x1, y0 = to_px((u1, v1))
+    dy, dx = y1 + DIM_OFFSET_PX, x0 - DIM_OFFSET_PX
+    return [
+        [(x0, y1 + EXT_GAP_PX), (x0, dy + EXT_OVER_PX)],
+        [(x1, y1 + EXT_GAP_PX), (x1, dy + EXT_OVER_PX)],
+        [(x0, dy), (x1, dy)],
+        [(x0 - EXT_GAP_PX, y0), (dx - EXT_OVER_PX, y0)],
+        [(x0 - EXT_GAP_PX, y1), (dx - EXT_OVER_PX, y1)],
+        [(dx, y0), (dx, y1)],
+    ]
 
 
 def _dimensions(

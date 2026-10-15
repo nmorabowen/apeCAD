@@ -86,6 +86,9 @@ def test_pier_draws_every_section_entity() -> None:
     assert not dots & {str(bar.point_id) for bar in doc.bars()}
     assert len(dots) == 6  # the four outline corners and the two leg ends
     labels = {t.text for t in root.iter(f"{SVG_NS}text") if t.get("data-for")}
+    assert labels == set()  # annotated: the title names the face, the tie tags the hoops
+    bare = ET.fromstring(render_svg(doc, view="top", annotate=False).svg)
+    labels = {t.text for t in bare.iter(f"{SVG_NS}text") if t.get("data-for")}
     assert labels == {"pier", "BE-left", "BE-right"}
 
 
@@ -164,9 +167,10 @@ def test_section_label_is_escaped() -> None:
     doc = pier()
     hoop = doc.entity_by_label("BE-right")
     doc.set_label(hoop.entity_id, 'BE <2> & "end"')
-    svg = render_svg(doc, view="top").svg
-    assert "BE &lt;2&gt; &amp; &quot;end&quot;" in svg
-    ET.fromstring(svg)
+    for annotate in (False, True):  # an entity label, then the head of a tie tag
+        svg = render_svg(doc, view="top", annotate=annotate).svg
+        assert "BE &lt;2&gt; &amp; &quot;end&quot;" in svg
+        ET.fromstring(svg)
 
 
 def test_section_ids_highlight_and_limit_the_drawing() -> None:

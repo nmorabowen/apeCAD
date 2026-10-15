@@ -60,20 +60,17 @@
 <g data-id="7"><circle cx="1121.25" cy="225.75" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
-<g class="tag"><path d="M135.58 190.08 L153.54 159.75 L153.54 136.25" fill="none"/><circle cx="135.58" cy="190.08" r="1" stroke="none"/><text x="159.54" y="139.75" stroke="none" font-size="10">6 Φ16</text></g>
-<g class="tag"><path d="M135.58 185.75 L153.54 159.75 L153.54 150.25" fill="none"/><circle cx="135.58" cy="185.75" r="1" stroke="none"/><text x="159.54" y="153.75" stroke="none" font-size="10">Tie Φ10 @ 100 mm</text></g>
+<g class="tag"><path d="M135.58 190.08 L128.34 159.75 L128.34 136.25" fill="none"/><circle cx="135.58" cy="190.08" r="1" stroke="none"/><text x="134.34" y="139.75" stroke="none" font-size="10">6 Φ16</text></g>
+<g class="tag"><path d="M134.84 185.81 L128.34 159.75 L128.34 150.25" fill="none"/><circle cx="134.84" cy="185.81" r="1" stroke="none"/><text x="134.34" y="153.75" stroke="none" font-size="10">BE-left: Tie Φ10 @ 100 mm</text></g>
 <g class="tag"><path d="M588.87 190.08 L602.45 159.75 L602.45 150.25" fill="none"/><circle cx="588.87" cy="190.08" r="1" stroke="none"/><text x="608.45" y="153.75" stroke="none" font-size="10">20 Φ16</text></g>
 <g class="tag"><path d="M621.25 225.75 L658.05 159.75 L658.05 136.25" fill="none"/><circle cx="621.25" cy="225.75" r="1" stroke="none"/><text x="664.05" y="139.75" stroke="none" font-size="10">Φ10 @ 200 mm, 2 curtains</text></g>
 <g class="tag"><path d="M621.25 184.08 L658.05 159.75 L658.05 150.25" fill="none"/><circle cx="621.25" cy="184.08" r="1" stroke="none"/><text x="664.05" y="153.75" stroke="none" font-size="10">Cover 25 mm</text></g>
-<g class="tag"><path d="M977.41 190.08 L995.36 159.75 L995.36 136.25" fill="none"/><circle cx="977.41" cy="190.08" r="1" stroke="none"/><text x="1001.36" y="139.75" stroke="none" font-size="10">6 Φ16</text></g>
-<g class="tag"><path d="M977.41 185.75 L995.36 159.75 L995.36 150.25" fill="none"/><circle cx="977.41" cy="185.75" r="1" stroke="none"/><text x="1001.36" y="153.75" stroke="none" font-size="10">Tie Φ10 @ 100 mm</text></g>
+<g class="tag"><path d="M977.41 190.08 L967.36 159.75 L967.36 136.25" fill="none"/><circle cx="977.41" cy="190.08" r="1" stroke="none"/><text x="973.36" y="139.75" stroke="none" font-size="10">6 Φ16</text></g>
+<g class="tag"><path d="M976.35 185.88 L967.36 159.75 L967.36 150.25" fill="none"/><circle cx="976.35" cy="185.88" r="1" stroke="none"/><text x="973.36" y="153.75" stroke="none" font-size="10">BE-right: Tie Φ10 @ 100 mm</text></g>
 <g class="dimension" data-dim="width"><path d="M121.25 278.75 L121.25 303.75 M1121.25 278.75 L1121.25 303.75 M121.25 299.75 L1121.25 299.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(121.25 299.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(1121.25 299.75) rotate(180)"/><text x="621.25" y="296.75" text-anchor="middle" stroke="none" font-size="12.5">3000</text></g>
 <g class="dimension" data-dim="depth"><path d="M118.25 175.75 L93.25 175.75 M118.25 275.75 L93.25 275.75 M97.25 175.75 L97.25 275.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(97.25 175.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(97.25 275.75) rotate(-90)"/><text transform="translate(94.25 225.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">300</text></g>
 </g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
-<text x="626.25" y="220.75" data-for="5">pier</text>
-<text x="205.34" y="220.75" data-for="74">BE-left</text>
-<text x="1047.16" y="220.75" data-for="75">BE-right</text>
 </g>
 <g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
 <path d="M12 484 L12 488 L178.67 488 L178.67 484" fill="none"/>

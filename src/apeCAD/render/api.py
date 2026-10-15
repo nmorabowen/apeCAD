@@ -83,7 +83,9 @@ def render_svg(
     chosen = _choose_view(view, entities, draw_ids)
     coarse = drawables(entities, draw_ids, None)
     bounds = _window_bounds(chosen, window) if window is not None else _bounds(chosen, coarse)
-    notes = section_notes(chosen, entities, coarse) if annotate and window is None else None
+    notes = (
+        section_notes(chosen, entities, coarse, labels) if annotate and window is None else None
+    )
     layout = (
         plan_layout(notes, bounds, width_px, height_px, margin_frac)
         if notes is not None and bounds is not None
