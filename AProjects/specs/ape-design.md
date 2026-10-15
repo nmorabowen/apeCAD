@@ -37,12 +37,12 @@ Text roles meet 4.5 : 1; stroke-only roles meet 3 : 1.
 | `--accent-text` | `#28679c` | `#3d8fce` | steel, darkened 10 % | Accent used as small text on `surface-1` | 5.1 / 5.1 |
 | `--signal` | `#c64a1a` | `#e2703a` | apeCAD vest (lifted on dark) | Snap marker, crossing window, trim discard, refusals | 4.1 / 5.6 |
 | `--signal-text` | `#b0441a` | `#e2703a` | vest, darkened | Refusal text on `surface-0/1` | 4.9 / 5.6 |
-| `--canvas` | `#f7f6f3` | `#1c2127` | paper / ink | 3-D view background (default preset) | — |
-| `--grid-major` | `#d8d5cd` | `#2c333c` | `--line` / current dark line | Major grid | — |
-| `--grid-minor` | `#e7e4dd` | `#232a33` | between paper and line | Minor grid dots or lines | — |
+| `--canvas` | `#ffffff` | `#1c2127` | white, like the SVG render (owner, 2026-10-14) / ink | 3-D view background (the theme's default preset; the chrome keeps paper) | — |
+| `--grid-major` | `#cfcfcf` | `#2c333c` | neutral grey for white / current dark line | Major grid | 1.6 / — |
+| `--grid-minor` | `#e2e2e2` | `#232a33` | neutral grey for white | Minor grid dots or lines | 1.3 / — |
 | `--ink-edge` | `#14181d` | `#c9d1da` | carbon / light slate | Sketch curves and solid edges on the canvas | — |
 | `--ink-rebar` | `#000077` | `#8c9cf0` | ADR-004 annotation blue / lifted | Section bars, hoops, crossties, tags on the canvas | 15.3 / 6.9 |
-| `--fill-concrete` | `#d2d2d2` | `#3a4048` | ADR-010 Grey210 / dark equivalent | Concrete face fill on the canvas | — |
+| `--fill-concrete` | `#b4b4b4` | `#3a4048` | drawn at 60 % so the grid shows through: renders ADR-010 Grey210 on white / dark equivalent | Concrete face fill on the canvas | — |
 | `--ghost` | `#2f74ad` | `#6cb3ff` | steel / current ghost | Rubber-band previews, keep half of trim | — / 8.1 |
 | `--pick` | `= --accent` | `= --accent` | | Selected entity colour in 3-D | |
 | `--hover` | `#3d8fce` | `#6aa8e8` | steel-bright / current hover | Preselection | |
@@ -60,7 +60,7 @@ Retired raw values and their role:
 | trim keep `0x7dce7d`, discard `0xff6b6b` (`ghosts.js`) | keep `--ghost` solid, discard `--signal` dashed |
 | `EDGE_COLOR 0x111111` (`draw.js`), pref `curve #111111` (`prefs.js`) | `--ink-edge` (pref stays, default from theme) |
 | cube face `#1d2229`, `#2c333c`, `#e8edf2` (`viewcube.js`) | `--surface-1`, `--line`, `--text` |
-| `scene.background 0xe4e9ee` (`viewport.js`), presets `g2/g5/g6` (`prefs.js`) | `--canvas`; presets `paper`, `mist` (`#e4e9ee`, kept), `carbon` |
+| `scene.background 0xe4e9ee` (`viewport.js`), presets `g2/g5/g6` (`prefs.js`) | `--canvas` (theme default: white in light, ink in dark); presets `paper` (`#f7f6f3`), `mist` (`#e4e9ee`, kept), `carbon` |
 
 ### 1.2 Type
 
@@ -476,8 +476,10 @@ ADR 0031 "Implementation stages".
   working font, blue; the view title in the display font with a 0.30 mm rule; the empty
   placeholder `Empty drawing`; `data-*` attributes unchanged.
 - Canvas: the light values of `--fill-concrete`, `--ink-concrete`, `--ink-section-guide`
-  and `--ink-rebar` in `css/app.css` become `#d2d2d2`, `#000000`, `#808080`, `#000077`;
-  carbon keeps the D1 lifted values.
+  and `--ink-rebar` in `css/app.css` become `#b4b4b4` (Grey210 once drawn at 60 % on white),
+  `#000000`, `#808080`, `#000077`; carbon keeps the D1 lifted values. The light theme's
+  default canvas is white like the SVG render, with a `#cfcfcf` / `#e2e2e2` grid (owner,
+  2026-10-14); the chrome stays APE paper.
 - Tests: the 19 goldens in `tests/fixtures/render/` regenerated; `tests/test_render_style.py`
   checks every style name is an ADR-005 / ADR-010 name and every layer has a style.
 
