@@ -114,6 +114,13 @@ export function brepChildren(row) {
   return brepChildrenLocal(row);
 }
 
+// The outliner rows under `kids`: a nested Vertex row (a corner, a bar's point) shows only
+// under the Point filter, as a bar's dot does on the canvas. Loose points are roots, not
+// kids, so they always show. The B-rep itself (brepChildren, picking) is unchanged.
+export function outlinerChildren(kids, filter) {
+  return filter === "point" ? kids : kids.filter((row) => row.kind !== "Point");
+}
+
 export function collectNested(row, nested) {
   for (const child of brepChildren(row)) {
     nested.add(child.id);
