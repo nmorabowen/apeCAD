@@ -113,7 +113,7 @@ def section_notes(
         hoop = entities.get(d.entity_id)
         if not isinstance(hoop, Hoop):
             continue
-        ring = [view.project(p) for path, _ in d.paths for p in path]
+        ring = [view.project(p) for p in d.paths[0][0]]  # the ring, not its hook ticks
         in_bars = [(bd, b) for bd, b in bars if b.entity_id not in used
                    and _inside(_centre(view, bd), ring)]
         in_ties = [(td, t) for td, t in ties if t.entity_id not in used

@@ -108,7 +108,7 @@ def test_hoop_wraps_its_bars_by_bar_radius_plus_half_the_tie() -> None:
     root = ET.fromstring(result.svg)
     hoop = doc.entity_by_label("BE-left")
     group = next(g for g in _layer(root, "hoop") if g.get("data-id") == str(hoop.entity_id))
-    ring = _path_points(group)
+    ring = _path_points(group[:1])  # the ring; its hook ticks follow
     scale = result.scale_px_per_mm
     wrapped = [_bar_xy(doc, bar) for bar in doc.bars() if _bar_xy(doc, bar)[0] <= 600.0]
     centres = [_px(result.extents_mm, scale, xy) for xy in wrapped]
@@ -124,7 +124,7 @@ def _px(extents: dict[str, list[float]], scale: float, xy: tuple[float, float]) 
     return (xy[0] - u0) * scale, (v1 - xy[1]) * scale
 
 
-def _path_points(group: ET.Element) -> list[tuple[float, float]]:
+def _path_points(group: ET.Element | list[ET.Element]) -> list[tuple[float, float]]:
     data = " ".join(p.get("d", "") for p in group)
     pairs = re.findall(r"[ML](-?[\d.]+) (-?[\d.]+)", data)
     return [(float(x), float(y)) for x, y in pairs]
