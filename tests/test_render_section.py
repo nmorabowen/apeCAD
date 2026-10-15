@@ -63,13 +63,15 @@ def _layer(root: ET.Element, name: str) -> list[ET.Element]:
 
 
 def test_pier_golden_top() -> None:
-    result = render_svg(pier(), view="top")
+    result = render_svg(pier(), view="top", annotate=False)
     ET.fromstring(result.svg)
     _check_golden("section_pier_top", result.svg)
 
 
 def test_rect_boundary_hoops_golden_top() -> None:
-    result = render_svg(rect_boundary_hoops(), view="top", width=1200, height=300)
+    result = render_svg(
+        rect_boundary_hoops(), view="top", width=1200, height=300, annotate=False
+    )
     ET.fromstring(result.svg)
     _check_golden("section_rect_boundary_hoops_top", result.svg)
 

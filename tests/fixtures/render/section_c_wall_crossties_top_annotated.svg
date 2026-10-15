@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" data-view="top">
+<rect width="1200" height="500" fill="#ffffff"/>
+<g class="faces" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="concrete" fill="#d2d2d2" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="13"><path d="M696.25 50.75 L546.25 50.75 L546.25 350.75 L696.25 350.75 L696.25 320.75 L576.25 320.75 L576.25 80.75 L696.25 80.75 Z"/></g>
+</g>
+<g class="cover" fill="none" stroke="#808080" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2">
+<g data-id="17"><path d="M693.75 53.25 L548.75 53.25 L548.75 348.25 L693.75 348.25 L693.75 323.25 L573.75 323.25 L573.75 78.25 L693.75 78.25 Z"/></g>
+</g>
+<g class="leg" fill="none" stroke="#808080" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3">
+<g data-id="14"><path d="M696.25 65.75 L561.25 65.75"/></g>
+<g data-id="15"><path d="M561.25 65.75 L561.25 335.75"/></g>
+<g data-id="16"><path d="M561.25 335.75 L696.25 335.75"/></g>
+</g>
+<g class="hoop" fill="none" stroke="#000077" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="38"><path d="M548.95 240.75 L548.98 241.06 L549.07 241.36 L549.22 241.64 L549.42 241.88 L549.66 242.08 L549.94 242.23 L550.24 242.32 L550.55 242.35 L571.95 242.35 L572.26 242.32 L572.56 242.23 L572.84 242.08 L573.08 241.88 L573.28 241.64 L573.43 241.36 L573.52 241.06 L573.55 240.75 L573.55 160.75 L573.52 160.44 L573.43 160.14 L573.28 159.86 L573.08 159.62 L572.84 159.42 L572.56 159.27 L572.26 159.18 L571.95 159.15 L550.55 159.15 L550.24 159.18 L549.94 159.27 L549.66 159.42 L549.42 159.62 L549.22 159.86 L549.07 160.14 L548.98 160.44 L548.95 160.75 Z"/></g>
+</g>
+<g class="crosstie" fill="none" stroke="#000077" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="39"><path d="M550.55 220.75 L571.95 220.75"/></g>
+<g data-id="40"><path d="M550.55 200.75 L571.95 200.75"/></g>
+<g data-id="41"><path d="M550.55 180.75 L571.95 180.75"/></g>
+</g>
+<g class="bar" fill="#000077" stroke="#000077" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="19"><circle cx="550.55" cy="240.75" r="1.5"/></g>
+<g data-id="21"><circle cx="550.55" cy="220.75" r="1.5"/></g>
+<g data-id="23"><circle cx="550.55" cy="200.75" r="1.5"/></g>
+<g data-id="25"><circle cx="550.55" cy="180.75" r="1.5"/></g>
+<g data-id="27"><circle cx="550.55" cy="160.75" r="1.5"/></g>
+<g data-id="29"><circle cx="571.95" cy="240.75" r="1.5"/></g>
+<g data-id="31"><circle cx="571.95" cy="220.75" r="1.5"/></g>
+<g data-id="33"><circle cx="571.95" cy="200.75" r="1.5"/></g>
+<g data-id="35"><circle cx="571.95" cy="180.75" r="1.5"/></g>
+<g data-id="37"><circle cx="571.95" cy="160.75" r="1.5"/></g>
+</g>
+<g class="edges" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="points" fill="#000000">
+<g data-id="1"><circle cx="696.25" cy="65.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="2"><circle cx="561.25" cy="65.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="3"><circle cx="561.25" cy="335.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="4"><circle cx="696.25" cy="335.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="5"><circle cx="696.25" cy="50.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="6"><circle cx="546.25" cy="50.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="7"><circle cx="546.25" cy="350.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="8"><circle cx="696.25" cy="350.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="9"><circle cx="696.25" cy="320.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="10"><circle cx="576.25" cy="320.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="11"><circle cx="576.25" cy="80.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="12"><circle cx="696.25" cy="80.75" r="1.25" fill="#000000" stroke="none"/></g>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="tag"><path d="M550.55 180.75 L481.75 186.25" fill="none"/><circle cx="550.55" cy="180.75" r="1" stroke="none"/><text x="475.75" y="189.75" stroke="none" font-size="10" text-anchor="end">10 Φ20</text></g>
+<g class="tag"><path d="M548.95 160.75 L481.75 200.25" fill="none"/><circle cx="548.95" cy="160.75" r="1" stroke="none"/><text x="475.75" y="203.75" stroke="none" font-size="10" text-anchor="end">Tie Φ12 @ 100 mm</text></g>
+<g class="tag"><path d="M561.25 220.75 L481.75 214.25" fill="none"/><circle cx="561.25" cy="220.75" r="1" stroke="none"/><text x="475.75" y="217.75" stroke="none" font-size="10" text-anchor="end">Crosstie Φ12 @ 100 mm ×3</text></g>
+<g class="tag"><path d="M561.25 200.75 L718.25 193.25" fill="none"/><circle cx="561.25" cy="200.75" r="1" stroke="none"/><text x="724.25" y="196.75" stroke="none" font-size="10">Φ12 @ 250 mm, 2 curtains</text></g>
+<g class="tag"><path d="M693.75 323.25 L718.25 207.25" fill="none"/><circle cx="693.75" cy="323.25" r="1" stroke="none"/><text x="724.25" y="210.75" stroke="none" font-size="10">Cover 25 mm</text></g>
+<g class="dimension" data-dim="width"><path d="M546.25 353.75 L546.25 378.75 M696.25 353.75 L696.25 378.75 M546.25 374.75 L696.25 374.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(546.25 374.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(696.25 374.75) rotate(180)"/><text x="621.25" y="371.75" text-anchor="middle" stroke="none" font-size="12.5">1500</text></g>
+<g class="dimension" data-dim="depth"><path d="M543.25 50.75 L518.25 50.75 M543.25 350.75 L518.25 350.75 M522.25 50.75 L522.25 350.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(522.25 50.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(522.25 350.75) rotate(-90)"/><text transform="translate(519.25 125.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">3000</text></g>
+</g>
+<g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
+<text x="633.75" y="195.75" data-for="13">C1</text>
+<text x="566.25" y="195.75" data-for="38">BE-web</text>
+</g>
+<g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
+<path d="M12 484 L12 488 L212 488 L212 484" fill="none"/>
+<text x="218" y="488" stroke="none">2000 mm</text>
+<text class="view-title" x="12" y="460" stroke="none" font-family="Bahnschrift SemiBold Condensed, Bahnschrift, Saira SemiCondensed, Archivo Narrow, sans-serif" font-size="17.5" font-weight="600" data-view="top">SECTION C1</text>
+<path class="view-title-rule" d="M12 463 L108.25 463" fill="none" stroke-width="1.5"/>
+<text class="scale-note" x="12" y="475" stroke="none">SCALE 1:50</text>
+</g>
+</svg>

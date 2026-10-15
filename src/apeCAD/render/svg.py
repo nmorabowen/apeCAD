@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
 from apeCAD.entities import EntityId
+from apeCAD.render.annotate import Layout, notes_svg, scale_note
 from apeCAD.render.drawable import SECTION_LAYERS, Drawable, Path3
 from apeCAD.render.style import (
     ANNOTATION_PEN_PX,
@@ -90,6 +91,7 @@ def write_svg(
     items: list[Drawable],
     highlight: set[EntityId],
     text: TextOptions,
+    layout: Layout | None = None,
 ) -> str:
     w, h = viewport.width, viewport.height
     out = [
@@ -118,6 +120,8 @@ def write_svg(
         _group(d, view, viewport, "data-id", _dot_body(POINT_RADIUS_PX, point_ink)) for d in points
     )
     out.append("</g>")
+    if layout is not None:
+        out.extend(notes_svg(layout, viewport.to_px, num))
     marked = [d for d in items if d.entity_id in highlight]
     if marked:
         out.append(
@@ -136,7 +140,7 @@ def write_svg(
             f'fill-opacity="0.5">{EMPTY_TEXT}</text>'
         )
     out.append("</g>")
-    out.extend(_legend(view, viewport, _title(view, items)))
+    out.extend(_legend(view, viewport, _title(view, items), layout))
     out.append("</svg>")
     return "\n".join(out) + "\n"
 
@@ -277,16 +281,23 @@ def _title(view: View, items: list[Drawable]) -> str:
     return VIEW_TITLES.get(view.name, view.name.upper())
 
 
-def _legend(view: View, viewport: Viewport, title: str) -> list[str]:
+def _legend(view: View, viewport: Viewport, title: str, layout: Layout | None) -> list[str]:
     """Scale bar (0.10 mm pen, working font) under the view title (display font, 3.5 mm,
     0.30 mm rule), bottom left, all in annotation blue (ADR-004, ADR-007, ADR-009)."""
     length = scale_bar_mm(viewport)
     x0 = 12.0
     y0 = viewport.height - 12.0
     x1 = x0 + length * viewport.scale
-    title_y = y0 - 14.0  # clear of the scale bar's ticks and label
+    # Annotated sections add a scale note between the title's rule and the scale bar.
+    title_y = y0 - (28.0 if layout else 14.0)  # clear of the scale bar's ticks and label
     rule_y = title_y + 3.0
     rule_x1 = x0 + 0.55 * TITLE_PX * len(title)  # under the title only
+    note = (
+        [f'<text class="scale-note" x="{num(x0)}" y="{num(rule_y + 12.0)}" stroke="none">'
+         f"{scale_note(layout.scale_n)}</text>"]
+        if layout
+        else []
+    )
     return [
         f'<g class="legend" {FONT} fill="{BLUE}" stroke="{BLUE}" '
         f'stroke-width="{ANNOTATION_PEN_PX:g}">',
@@ -298,5 +309,6 @@ def _legend(view: View, viewport: Viewport, title: str) -> list[str]:
         f'data-view="{view.name}">{clean_text(title)}</text>',
         f'<path class="view-title-rule" d="M{num(x0)} {num(rule_y)} L{num(rule_x1)} {num(rule_y)}" '
         f'fill="none" stroke-width="{TITLE_RULE_PX:g}"/>',
+        *note,
         "</g>",
     ]

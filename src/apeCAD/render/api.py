@@ -9,6 +9,7 @@ from pathlib import Path
 
 from apeCAD.document import Document
 from apeCAD.entities import Box, EntityId, Solid
+from apeCAD.render.annotate import plan_layout, section_notes
 from apeCAD.render.scene import Drawable, closure, drawables, entity_map
 from apeCAD.render.svg import TextOptions, Viewport, write_svg
 from apeCAD.render.views import VIEW_NAMES, VIEWS, Vec2, Vec3, View, ViewName
@@ -53,12 +54,16 @@ def render_svg(
     window: tuple[Sequence[float], Sequence[float]] | None = None,
     save_to: str | None = None,
     root: Path | None = None,
+    annotate: bool = True,
 ) -> RenderResult:
     """Orthographic wireframe SVG of the draft (spec agent-surface-mcp §4 `render`).
 
     `width`/`height` clamp to 64–2048 px and `margin` to 0–0.4 of the larger extent.
     `ids` limits drawing (and the fit) to those entities and what they are built from.
     `save_to` is relative to `root` and must resolve under it.
+    `annotate` draws a plan of a section at a standard scale with tags, overall dimensions
+    and a scale note (spec ape-design §4 D4); they are drawn, never stored. Off, with a
+    `window`, or when no standard scale leaves room, the bare drawing is fitted as before.
     """
     width_px = _clamp_size("width", width)
     height_px = _clamp_size("height", height)
@@ -78,9 +83,18 @@ def render_svg(
     chosen = _choose_view(view, entities, draw_ids)
     coarse = drawables(entities, draw_ids, None)
     bounds = _window_bounds(chosen, window) if window is not None else _bounds(chosen, coarse)
-    viewport = _fit(bounds, width_px, height_px, margin_frac)
+    notes = section_notes(chosen, entities, coarse) if annotate and window is None else None
+    layout = (
+        plan_layout(notes, bounds, width_px, height_px, margin_frac)
+        if notes is not None and bounds is not None
+        else None
+    )
+    if layout is None:  # bare drawing, fitted; also when no standard scale leaves room
+        viewport = _fit(bounds, width_px, height_px, margin_frac)
+    else:  # exactly the standard scale the layout chose
+        viewport = Viewport(width_px, height_px, layout.scale_px_per_mm, layout.centre_mm)
     items = drawables(entities, draw_ids, CHORD_ERROR_PX / viewport.scale)
-    svg = write_svg(chosen, viewport, items, marked, TextOptions(labels, show_ids))
+    svg = write_svg(chosen, viewport, items, marked, TextOptions(labels, show_ids), layout)
     path = None if save_to is None else _save(svg, save_to, root)
     low, high = viewport.extents_mm()
     return RenderResult(

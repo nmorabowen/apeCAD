@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" data-view="top">
+<rect width="1200" height="500" fill="#ffffff"/>
+<g class="faces" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="concrete" fill="#d2d2d2" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="7"><path d="M121.25 282.75 L1121.25 282.75 L1121.25 182.75 L121.25 182.75 Z"/></g>
+</g>
+<g class="cover" fill="none" stroke="#808080" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2">
+<g data-id="9"><path d="M129.58 274.42 L1112.92 274.42 L1112.92 191.08 L129.58 191.08 Z"/></g>
+</g>
+<g class="leg" fill="none" stroke="#808080" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 3">
+<g data-id="8"><path d="M121.25 232.75 L1121.25 232.75"/></g>
+</g>
+<g class="hoop" fill="none" stroke="#000077" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="46"><path d="M131.25 268.42 L131.33 269.26 L131.58 270.07 L131.98 270.82 L132.52 271.48 L133.18 272.02 L133.93 272.42 L134.74 272.67 L135.58 272.75 L306.92 272.75 L307.76 272.67 L308.57 272.42 L309.32 272.02 L309.98 271.48 L310.52 270.82 L310.92 270.07 L311.17 269.26 L311.25 268.42 L311.25 197.08 L311.17 196.24 L310.92 195.43 L310.52 194.68 L309.98 194.02 L309.32 193.48 L308.57 193.08 L307.76 192.83 L306.92 192.75 L135.58 192.75 L134.74 192.83 L133.93 193.08 L133.18 193.48 L132.52 194.02 L131.98 194.68 L131.58 195.43 L131.33 196.24 L131.25 197.08 Z"/></g>
+<g data-id="85"><path d="M931.25 268.42 L931.33 269.26 L931.58 270.07 L931.98 270.82 L932.52 271.48 L933.18 272.02 L933.93 272.42 L934.74 272.67 L935.58 272.75 L1106.92 272.75 L1107.76 272.67 L1108.57 272.42 L1109.32 272.02 L1109.98 271.48 L1110.52 270.82 L1110.92 270.07 L1111.17 269.26 L1111.25 268.42 L1111.25 197.08 L1111.17 196.24 L1110.92 195.43 L1110.52 194.68 L1109.98 194.02 L1109.32 193.48 L1108.57 193.08 L1107.76 192.83 L1106.92 192.75 L935.58 192.75 L934.74 192.83 L933.93 193.08 L933.18 193.48 L932.52 194.02 L931.98 194.68 L931.58 195.43 L931.33 196.24 L931.25 197.08 Z"/></g>
+</g>
+<g class="crosstie" fill="none" stroke="#000077" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="47"><path d="M192.69 268.42 L192.69 197.08"/></g>
+<g data-id="48"><path d="M249.81 268.42 L249.81 197.08"/></g>
+<g data-id="86"><path d="M992.69 268.42 L992.69 197.08"/></g>
+<g data-id="87"><path d="M1049.81 268.42 L1049.81 197.08"/></g>
+</g>
+<g class="bar" fill="#000077" stroke="#000077" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="11"><circle cx="135.58" cy="268.42" r="2.67"/></g>
+<g data-id="13"><circle cx="164.14" cy="268.42" r="2.67"/></g>
+<g data-id="15"><circle cx="192.69" cy="268.42" r="2.67"/></g>
+<g data-id="17"><circle cx="221.25" cy="268.42" r="2.67"/></g>
+<g data-id="19"><circle cx="249.81" cy="268.42" r="2.67"/></g>
+<g data-id="21"><circle cx="278.36" cy="268.42" r="2.67"/></g>
+<g data-id="23"><circle cx="306.92" cy="268.42" r="2.67"/></g>
+<g data-id="25"><circle cx="306.92" cy="244.64" r="2.67"/></g>
+<g data-id="27"><circle cx="306.92" cy="220.86" r="2.67"/></g>
+<g data-id="29"><circle cx="306.92" cy="197.08" r="2.67"/></g>
+<g data-id="31"><circle cx="278.36" cy="197.08" r="2.67"/></g>
+<g data-id="33"><circle cx="249.81" cy="197.08" r="2.67"/></g>
+<g data-id="35"><circle cx="221.25" cy="197.08" r="2.67"/></g>
+<g data-id="37"><circle cx="192.69" cy="197.08" r="2.67"/></g>
+<g data-id="39"><circle cx="164.14" cy="197.08" r="2.67"/></g>
+<g data-id="41"><circle cx="135.58" cy="197.08" r="2.67"/></g>
+<g data-id="43"><circle cx="135.58" cy="220.86" r="2.67"/></g>
+<g data-id="45"><circle cx="135.58" cy="244.64" r="2.67"/></g>
+<g data-id="50"><circle cx="935.58" cy="268.42" r="2.67"/></g>
+<g data-id="52"><circle cx="964.14" cy="268.42" r="2.67"/></g>
+<g data-id="54"><circle cx="992.69" cy="268.42" r="2.67"/></g>
+<g data-id="56"><circle cx="1021.25" cy="268.42" r="2.67"/></g>
+<g data-id="58"><circle cx="1049.81" cy="268.42" r="2.67"/></g>
+<g data-id="60"><circle cx="1078.36" cy="268.42" r="2.67"/></g>
+<g data-id="62"><circle cx="1106.92" cy="268.42" r="2.67"/></g>
+<g data-id="64"><circle cx="1106.92" cy="244.64" r="2.67"/></g>
+<g data-id="66"><circle cx="1106.92" cy="220.86" r="2.67"/></g>
+<g data-id="68"><circle cx="1106.92" cy="197.08" r="2.67"/></g>
+<g data-id="70"><circle cx="1078.36" cy="197.08" r="2.67"/></g>
+<g data-id="72"><circle cx="1049.81" cy="197.08" r="2.67"/></g>
+<g data-id="74"><circle cx="1021.25" cy="197.08" r="2.67"/></g>
+<g data-id="76"><circle cx="992.69" cy="197.08" r="2.67"/></g>
+<g data-id="78"><circle cx="964.14" cy="197.08" r="2.67"/></g>
+<g data-id="80"><circle cx="935.58" cy="197.08" r="2.67"/></g>
+<g data-id="82"><circle cx="935.58" cy="220.86" r="2.67"/></g>
+<g data-id="84"><circle cx="935.58" cy="244.64" r="2.67"/></g>
+<g data-id="89"><circle cx="364.11" cy="272.42" r="2"/></g>
+<g data-id="91"><circle cx="449.82" cy="272.42" r="2"/></g>
+<g data-id="93"><circle cx="535.54" cy="272.42" r="2"/></g>
+<g data-id="95"><circle cx="621.25" cy="272.42" r="2"/></g>
+<g data-id="97"><circle cx="706.96" cy="272.42" r="2"/></g>
+<g data-id="99"><circle cx="792.68" cy="272.42" r="2"/></g>
+<g data-id="101"><circle cx="878.39" cy="272.42" r="2"/></g>
+<g data-id="103"><circle cx="364.11" cy="193.08" r="2"/></g>
+<g data-id="105"><circle cx="449.82" cy="193.08" r="2"/></g>
+<g data-id="107"><circle cx="535.54" cy="193.08" r="2"/></g>
+<g data-id="109"><circle cx="621.25" cy="193.08" r="2"/></g>
+<g data-id="111"><circle cx="706.96" cy="193.08" r="2"/></g>
+<g data-id="113"><circle cx="792.68" cy="193.08" r="2"/></g>
+<g data-id="115"><circle cx="878.39" cy="193.08" r="2"/></g>
+</g>
+<g class="edges" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="points" fill="#000000">
+<g data-id="1"><circle cx="121.25" cy="232.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="2"><circle cx="1121.25" cy="232.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="3"><circle cx="121.25" cy="282.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="4"><circle cx="1121.25" cy="282.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="5"><circle cx="1121.25" cy="182.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="6"><circle cx="121.25" cy="182.75" r="1.25" fill="#000000" stroke="none"/></g>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="tag"><path d="M164.14 197.08 L152.05 166.75 L152.05 129.25" fill="none"/><circle cx="164.14" cy="197.08" r="1" stroke="none"/><text x="158.05" y="132.75" stroke="none" font-size="10">18 Φ16</text></g>
+<g class="tag"><path d="M135.58 192.75 L152.05 166.75 L152.05 143.25" fill="none"/><circle cx="135.58" cy="192.75" r="1" stroke="none"/><text x="158.05" y="146.75" stroke="none" font-size="10">Tie Φ10 @ 100 mm</text></g>
+<g class="tag"><path d="M192.69 232.75 L152.05 166.75 L152.05 157.25" fill="none"/><circle cx="192.69" cy="232.75" r="1" stroke="none"/><text x="158.05" y="160.75" stroke="none" font-size="10">Crosstie Φ10 @ 100 mm ×2</text></g>
+<g class="tag"><path d="M621.25 193.08 L602.45 166.75 L602.45 157.25" fill="none"/><circle cx="621.25" cy="193.08" r="1" stroke="none"/><text x="608.45" y="160.75" stroke="none" font-size="10">14 Φ12</text></g>
+<g class="tag"><path d="M621.25 232.75 L658.05 166.75 L658.05 143.25" fill="none"/><circle cx="621.25" cy="232.75" r="1" stroke="none"/><text x="664.05" y="146.75" stroke="none" font-size="10">Φ12 @ 250 mm, 2 curtains</text></g>
+<g class="tag"><path d="M621.25 191.08 L658.05 166.75 L658.05 157.25" fill="none"/><circle cx="621.25" cy="191.08" r="1" stroke="none"/><text x="664.05" y="160.75" stroke="none" font-size="10">Cover 25 mm</text></g>
+<g class="tag"><path d="M964.14 197.08 L952.05 166.75 L952.05 129.25" fill="none"/><circle cx="964.14" cy="197.08" r="1" stroke="none"/><text x="958.05" y="132.75" stroke="none" font-size="10">18 Φ16</text></g>
+<g class="tag"><path d="M935.58 192.75 L952.05 166.75 L952.05 143.25" fill="none"/><circle cx="935.58" cy="192.75" r="1" stroke="none"/><text x="958.05" y="146.75" stroke="none" font-size="10">Tie Φ10 @ 100 mm</text></g>
+<g class="tag"><path d="M992.69 232.75 L952.05 166.75 L952.05 157.25" fill="none"/><circle cx="992.69" cy="232.75" r="1" stroke="none"/><text x="958.05" y="160.75" stroke="none" font-size="10">Crosstie Φ10 @ 100 mm ×2</text></g>
+<g class="dimension" data-dim="width"><path d="M121.25 285.75 L121.25 310.75 M1121.25 285.75 L1121.25 310.75 M121.25 306.75 L1121.25 306.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(121.25 306.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(1121.25 306.75) rotate(180)"/><text x="621.25" y="303.75" text-anchor="middle" stroke="none" font-size="12.5">3000</text></g>
+<g class="dimension" data-dim="depth"><path d="M118.25 182.75 L93.25 182.75 M118.25 282.75 L93.25 282.75 M97.25 182.75 L97.25 282.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(97.25 182.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(97.25 282.75) rotate(-90)"/><text transform="translate(94.25 232.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">300</text></g>
+</g>
+<g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
+<text x="626.25" y="227.75" data-for="7">rect_300x3000</text>
+<text x="226.25" y="227.75" data-for="46">C1</text>
+<text x="1026.25" y="227.75" data-for="85">C2</text>
+</g>
+<g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
+<path d="M12 484 L12 488 L178.67 488 L178.67 484" fill="none"/>
+<text x="184.67" y="488" stroke="none">500 mm</text>
+<text class="view-title" x="12" y="460" stroke="none" font-family="Bahnschrift SemiBold Condensed, Bahnschrift, Saira SemiCondensed, Archivo Narrow, sans-serif" font-size="17.5" font-weight="600" data-view="top">SECTION rect_300x3000</text>
+<path class="view-title-rule" d="M12 463 L214.12 463" fill="none" stroke-width="1.5"/>
+<text class="scale-note" x="12" y="475" stroke="none">SCALE 1:15</text>
+</g>
+</svg>

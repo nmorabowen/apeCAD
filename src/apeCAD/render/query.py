@@ -9,7 +9,7 @@ from apeCAD.render.api import RenderArgumentError, RenderResult, render_svg
 
 QUERY_KEYS = frozenset(
     {"view", "width", "height", "margin", "ids", "highlight", "labels", "show_ids", "window",
-     "format"}
+     "format", "annotate"}
 )
 _TRUE = ("1", "true", "yes")
 _FALSE = ("0", "false", "no")
@@ -45,6 +45,7 @@ def render_from_query(document: Document, query: str) -> RenderResult:
         labels=_bool("labels", single.get("labels", "true")),
         show_ids=_bool("show_ids", single.get("show_ids", "false")),
         window=window,
+        annotate=_bool("annotate", single.get("annotate", "true")),
     )
 
 
