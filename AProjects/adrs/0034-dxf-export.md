@@ -1,6 +1,6 @@
 # ADR 0034 — DXF export of the drawing (stage D5)
 
-**Status:** Proposed (2026-10-14)
+**Status:** Accepted (2026-10-21). Proposed 2026-10-14; accepted by the owner on 2026-10-21.
 
 Stage D5 of [ADR 0031](0031-ape-design-system.md), which named DXF a new output surface that
 needs its own ADR. Builds on [ADR 0028](0028-agent-surface-mcp.md) (one catalog, thin
