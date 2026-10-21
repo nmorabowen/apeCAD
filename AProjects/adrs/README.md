@@ -43,7 +43,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0031](0031-ape-design-system.md) | The APE design system: UI tokens, UI voice and drawing output style | Accepted |
 | [0032](0032-exact-collinear-bar-layouts.md) | Bar layouts snap to a lattice so inclined rows stay exactly collinear | Accepted |
 | [0033](0033-ape-drawing-style-errata.md) | APE drawing style errata: cover guide ink and projection weights | Accepted |
-| [0034](0034-dxf-export.md) | DXF export of the drawing (stage D5): ezdxf behind an optional extra, office layers | Proposed |
+| [0034](0034-dxf-export.md) | DXF export of the drawing (stage D5): ezdxf behind an optional extra, office layers | Accepted |
 
 ## Template
 

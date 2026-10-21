@@ -550,7 +550,7 @@ ADR 0031 "Implementation stages".
   prefix. The bare section goldens render with
   `annotate=False` and are unchanged.
 
-### D5 — DXF (ADR 0034, Proposed)
+### D5 — DXF (ADR 0034, Accepted 2026-10-21; not built yet)
 
 Decided in [ADR 0034](../adrs/0034-dxf-export.md), which replaces the stdlib writer first
 sketched here:
