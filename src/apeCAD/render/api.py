@@ -73,12 +73,12 @@ def render_svg(
     draw_ids = (
         set(entities)
         if ids is None
-        else closure(_known_ids("ids", ids, entities), children)
+        else closure(known_ids("ids", ids, entities), children)
     )
     marked: set[EntityId] = (
         set()
         if highlight is None
-        else closure(_known_ids("highlight", highlight, entities), children) & draw_ids
+        else closure(known_ids("highlight", highlight, entities), children) & draw_ids
     )
     chosen = _choose_view(view, entities, draw_ids)
     coarse = drawables(entities, draw_ids, None)
@@ -97,7 +97,7 @@ def render_svg(
         viewport = Viewport(width_px, height_px, layout.scale_px_per_mm, layout.centre_mm)
     items = drawables(entities, draw_ids, CHORD_ERROR_PX / viewport.scale)
     svg = write_svg(chosen, viewport, items, marked, TextOptions(labels, show_ids), layout)
-    path = None if save_to is None else _save(svg, save_to, root)
+    path = None if save_to is None else save_text(svg, save_to, root)
     low, high = viewport.extents_mm()
     return RenderResult(
         svg=svg,
@@ -123,7 +123,7 @@ def _clamp_margin(value: object) -> float:
     return max(0.0, min(MAX_MARGIN, float(value)))
 
 
-def _known_ids(
+def known_ids(
     name: str, ids: Sequence[object], entities: Mapping[EntityId, object]
 ) -> list[EntityId]:
     out: list[EntityId] = []
@@ -210,7 +210,8 @@ def _fit(bounds: Bounds, width: int, height: int, margin: float) -> Viewport:
     return Viewport(width, height, scale, ((u0 + u1) / 2.0, (v0 + v1) / 2.0))
 
 
-def _save(svg: str, save_to: str, root: Path | None) -> str:
+def save_text(text: str, save_to: str, root: Path | None) -> str:
+    """Write `text` to `save_to` under `root`: the SVG here, the DXF in `render/dxf.py`."""
     if root is None:
         raise RenderArgumentError("save_to needs a root folder")
     base = root.resolve()
@@ -218,5 +219,5 @@ def _save(svg: str, save_to: str, root: Path | None) -> str:
     if target == base or not target.is_relative_to(base):
         raise RenderArgumentError(f"save_to {save_to!r} must resolve to a file under the root")
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(svg, encoding="utf-8", newline="\n")
+    target.write_text(text, encoding="utf-8", newline="\n")
     return str(target)

@@ -87,7 +87,8 @@ SECTION_STYLE: dict[str, LayerStyle] = {
     "cover": _line(0.10, "H", "Dark Grey", DARK_GREY, "COVER-GUIDE", dash=COVER_DASH),
     "leg": _line(0.10, "H", "Dark Grey", DARK_GREY, "WALL-AXIS"),
     "hoop": _line(0.30, "S", "Blue", BLUE, "HOOP"),
-    "crosstie": _line(0.20, "S", "Blue", BLUE, "HOOP"),
+    # Its own DXF layer: its pen (0.20) differs from the hoop's, and ByLayer holds one weight.
+    "crosstie": _line(0.20, "S", "Blue", BLUE, "CROSSTIE"),
     "bar": LayerStyle(
         fill=BLUE,
         stroke=BLUE,

@@ -132,7 +132,7 @@ def write_svg(
             out.append(_group(d, view, viewport, "data-highlight", body))
         out.append("</g>")
     out.append(f'<g class="text" {FONT} fill="{BLUE}">')
-    title = _title(view, items)
+    title = view_title(view, items)
     if layout is None:
         out.extend(_texts(items, view, viewport, text))
     else:
@@ -306,7 +306,7 @@ def scale_bar_mm(viewport: Viewport) -> float:
     return power / 2.0
 
 
-def _title(view: View, items: list[Drawable]) -> str:
+def view_title(view: View, items: list[Drawable]) -> str:
     """English view title (spec §3.3); a plan of a section is SECTION plus the face label."""
     concrete = [d for d in items if d.layer == "concrete"]
     if view.name == "top" and concrete:
@@ -322,19 +322,30 @@ def legend_box(viewport: Viewport, title: str) -> tuple[float, float, float, flo
     return 0.0, viewport.height - 40.0 - TITLE_PX, right, float(viewport.height)
 
 
+def legend_geometry(
+    height: float, title: str, annotated: bool
+) -> tuple[float, float, float, float, float, float]:
+    """The legend's px positions, bottom left: x0, the scale bar's y, the title baseline,
+    its rule's y and right end, and the scale note's baseline. The DXF writer reuses it."""
+    x0 = 12.0
+    y0 = height - 12.0
+    # Annotated sections add a scale note between the title's rule and the scale bar.
+    title_y = y0 - (28.0 if annotated else 14.0)  # clear of the scale bar's ticks and label
+    rule_y = title_y + 3.0
+    rule_x1 = x0 + 0.55 * TITLE_PX * len(title)  # under the title only
+    return x0, y0, title_y, rule_y, rule_x1, rule_y + 12.0
+
+
 def _legend(view: View, viewport: Viewport, title: str, layout: Layout | None) -> list[str]:
     """Scale bar (0.10 mm pen, working font) under the view title (display font, 3.5 mm,
     0.30 mm rule), bottom left, all in annotation blue (ADR-004, ADR-007, ADR-009)."""
     length = scale_bar_mm(viewport)
-    x0 = 12.0
-    y0 = viewport.height - 12.0
+    x0, y0, title_y, rule_y, rule_x1, note_y = legend_geometry(
+        viewport.height, title, layout is not None
+    )
     x1 = x0 + length * viewport.scale
-    # Annotated sections add a scale note between the title's rule and the scale bar.
-    title_y = y0 - (28.0 if layout else 14.0)  # clear of the scale bar's ticks and label
-    rule_y = title_y + 3.0
-    rule_x1 = x0 + 0.55 * TITLE_PX * len(title)  # under the title only
     note = (
-        [f'<text class="scale-note" x="{num(x0)}" y="{num(rule_y + 12.0)}" stroke="none">'
+        [f'<text class="scale-note" x="{num(x0)}" y="{num(note_y)}" stroke="none">'
          f"{scale_note(layout.scale_n)}</text>"]
         if layout
         else []

@@ -24,7 +24,7 @@ from apeCAD.document import Document
 from apeCAD.errors import DETACHED, STALE, DocumentError, OpArgumentError
 from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import RenderArgumentError
-from apeCAD.render.query import render_from_query
+from apeCAD.render.query import export_from_query, render_from_query
 from apeCAD.scratchpad.payload import scene_payload
 from apeCAD.scratchpad.transport import handle as transport_handle
 from apeCAD.scratchpad.transport import refusal as transport_refusal
@@ -139,6 +139,8 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             self._send_json(200, self.server.identity_payload())
         elif path == "/api/render.svg":
             self._render_svg(query)
+        elif path == "/api/export.dxf":
+            self._export_dxf(query)
         elif path == "/api/ops":
             self._list_ops(query)
         elif path == "/api/inspect":
@@ -274,6 +276,16 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": str(exc), "code": exc.code})
             return
         self._send_bytes(200, result.svg.encode("utf-8"), "image/svg+xml; charset=utf-8")
+
+    def _export_dxf(self, query: str) -> None:
+        """ADR 0034. 501 `UNAVAILABLE` without the dxf extra; 400 for a bad parameter."""
+        try:
+            result = export_from_query(self.server.document, query)
+        except RenderArgumentError as exc:
+            status = 501 if exc.code == "UNAVAILABLE" else 400
+            self._send_json(status, {"error": str(exc), "code": exc.code})
+            return
+        self._send_bytes(200, result.dxf.encode("utf-8"), "image/vnd.dxf; charset=utf-8")
 
     def _read_json_object(self, *, allow_empty: bool = False) -> dict[str, object]:
         length = int(self.headers.get("Content-Length", "0"))

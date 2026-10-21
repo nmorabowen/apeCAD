@@ -31,6 +31,7 @@ from apeCAD.catalog import Applied
 from apeCAD.errors import INVALID_ARGUMENT, UNAVAILABLE, DocumentError
 from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import render_svg
+from apeCAD.render.dxf import export_dxf as _export_dxf
 from apeCAD.section_draft import section_draft
 
 RENDER_DEFAULTS: dict[str, object] = {
@@ -195,6 +196,45 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
             "extents_mm": result.extents_mm,
             "entities": result.entities,
             "svg": result.svg,
+        }
+        if result.path is not None:
+            fields["path"] = result.path
+        return _ok(session, fields)
+
+    return guarded(lambda: session.revision, body)
+
+
+EXPORT_DXF_DEFAULTS: dict[str, object] = {
+    "view": "top",
+    "ids": None,
+    "annotate": True,
+    "save_to": None,
+}
+
+
+def export_dxf(session: Session, *, root: Path | None = None, **params: object) -> Envelope:
+    """DXF of the draft (ADR 0034): the envelope plus `dxf`, or `path` with `save_to`.
+
+    Needs the `dxf` extra; without it `UNAVAILABLE`, never another format.
+    """
+
+    def body() -> Envelope:
+        only_keys("export_dxf", params, set(EXPORT_DXF_DEFAULTS))
+        values = {**EXPORT_DXF_DEFAULTS, **params}
+        result = _export_dxf(
+            session.document,
+            view=opt_str("view", values["view"]),
+            ids=opt_int_list("ids", values["ids"]),
+            annotate=as_bool("annotate", values["annotate"]),
+            save_to=opt_str("save_to", values["save_to"]),
+            root=root,
+        )
+        fields: dict[str, object] = {
+            "view": result.view,
+            "entities": result.entities,
+            "layers": list(result.layers),
+            "scale": result.scale,
+            "dxf": result.dxf,
         }
         if result.path is not None:
             fields["path"] = result.path

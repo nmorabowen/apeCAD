@@ -1,4 +1,5 @@
-"""`GET /api/render.svg` query string → `render_svg` (spec agent-surface-mcp §6, svg only)."""
+"""Query strings → renders: `GET /api/render.svg` → `render_svg` (spec agent-surface-mcp §6)
+and `GET /api/export.dxf` → `export_dxf` (ADR 0034)."""
 
 from __future__ import annotations
 
@@ -6,6 +7,7 @@ from urllib.parse import parse_qs
 
 from apeCAD.document import Document
 from apeCAD.render.api import RenderArgumentError, RenderResult, render_svg
+from apeCAD.render.dxf import DxfResult, export_dxf
 
 QUERY_KEYS = frozenset(
     {"view", "width", "height", "margin", "ids", "highlight", "labels", "show_ids", "window",
@@ -47,6 +49,33 @@ def render_from_query(document: Document, query: str) -> RenderResult:
         window=window,
         annotate=_bool("annotate", single.get("annotate", "true")),
     )
+
+
+DXF_QUERY_KEYS = frozenset({"view", "ids", "annotate"})
+
+
+def export_from_query(document: Document, query: str) -> DxfResult:
+    """`GET /api/export.dxf`, e.g. `view=top&ids=1,2&annotate=false` (ADR 0034)."""
+    single = _single(query, DXF_QUERY_KEYS)
+    return export_dxf(
+        document,
+        view=single.get("view", "top"),
+        ids=_ints("ids", single["ids"]) if "ids" in single else None,
+        annotate=_bool("annotate", single.get("annotate", "true")),
+    )
+
+
+def _single(query: str, keys: frozenset[str]) -> dict[str, str]:
+    params = parse_qs(query, keep_blank_values=True, strict_parsing=False)
+    unknown = sorted(set(params) - keys)
+    if unknown:
+        raise RenderArgumentError(f"unknown parameter(s): {', '.join(unknown)}")
+    single: dict[str, str] = {}
+    for key, values in params.items():
+        if len(values) != 1:
+            raise RenderArgumentError(f"{key} given more than once")
+        single[key] = values[0]
+    return single
 
 
 def _int(name: str, raw: str) -> int:
