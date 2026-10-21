@@ -27,9 +27,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: pyproject.toml
-      # With the mcp extra, so the MCP adapter tests run and pyright sees the SDK's types.
+      # With the mcp and dxf extras, so the MCP adapter and DXF export tests run and pyright
+      # sees both packages.
       - name: Install
-        run: python -m pip install -e ".[dev,mcp]"
+        run: python -m pip install -e ".[dev,mcp,dxf]"
       - name: pytest
         run: python -m pytest -q
       - name: ruff check
@@ -38,7 +39,8 @@ jobs:
         run: pyright
 
   core:
-    # The core package without extras: it imports, and the MCP tests skip cleanly.
+    # The core package without extras: it imports, the MCP and DXF tests skip cleanly, and
+    # tests/test_dxf_unavailable.py checks ezdxf stays out of `import apeCAD`.
     name: core without extras (py3.11)
     runs-on: ubuntu-latest
     steps:

@@ -9,7 +9,8 @@ drawing the human sees. Stdlib `urllib` only.
   or restarted (another pid, answered 409) is `DETACHED`, with no revision.
 - No fallback: `new_document`, `open_document` and `save_document` fail `INVALID_ARGUMENT`,
   and this module never creates a local document to edit.
-- `render` draws a snapshot read with `get_document`, so `save_to` resolves under the agent's
+- `render` and `export_dxf` draw a snapshot read with `get_document`, so `save_to` resolves
+  under the agent's
   root (`--root`, else the scratchpad's root, else the cwd), as in local mode.
 """
 
@@ -18,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 from urllib.error import HTTPError, URLError
@@ -162,6 +164,17 @@ class AttachTools:
 
     def render(self, document: object, **params: object) -> Envelope:
         """Render a snapshot of the scratchpad's document, at the scratchpad's revision."""
+        return self._on_snapshot(document, lambda s, root: tools.render(s, root=root, **params))
+
+    def export_dxf(self, document: object, **params: object) -> Envelope:
+        """DXF of a snapshot of the scratchpad's document (ADR 0034), like `render`."""
+        return self._on_snapshot(
+            document, lambda s, root: tools.export_dxf(s, root=root, **params)
+        )
+
+    def _on_snapshot(
+        self, document: object, call: Callable[[Session, Path], Envelope]
+    ) -> Envelope:
         snapshot = self.get_document(document)
         raw = snapshot.get("document")
         revision = snapshot.get("revision")
@@ -173,7 +186,7 @@ class AttachTools:
             message = f"the scratchpad's document did not replay here: {exc}"
             return failure(REFUSED, message, revision if isinstance(revision, int) else None)
         root = self.root if self.root is not None else Path.cwd()
-        envelope = tools.render(Session(copy), root=root, **params)
+        envelope = call(Session(copy), root)
         envelope["revision"] = revision
         return envelope
 

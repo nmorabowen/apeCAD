@@ -50,6 +50,7 @@ class ToolSet(Protocol):
     def inspect(self, document: object) -> Envelope: ...
     def query_entities(self, document: object, **filters: object) -> Envelope: ...
     def render(self, document: object, **params: object) -> Envelope: ...
+    def export_dxf(self, document: object, **params: object) -> Envelope: ...
     def get_document(self, document: object) -> Envelope: ...
     def get_section_draft(self, document: object) -> Envelope: ...
 
@@ -215,6 +216,22 @@ TOOLS: dict[str, McpTool] = {
                 "save_to": {"type": ["string", "null"]},
             },
             lambda t, a: t.render(a["document"], **_rest(a)),
+            ("document",),
+        ),
+        _tool(
+            "export_dxf",
+            "Export the plan as DXF (R2013, 1:1 mm) on the office layers, weights and colours, "
+            "with section tags and dimensions when annotate is on. The DXF is the text "
+            "content; the result carries the layers, the entity count and the scale. Needs "
+            "the dxf extra, else UNAVAILABLE.",
+            {
+                "document": _DOCUMENT,
+                "view": {"enum": ["top", None]},
+                "ids": _IDS,
+                "annotate": {"type": "boolean"},
+                "save_to": {"type": ["string", "null"]},
+            },
+            lambda t, a: t.export_dxf(a["document"], **_rest(a)),
             ("document",),
         ),
         _tool(

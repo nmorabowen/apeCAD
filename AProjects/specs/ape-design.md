@@ -550,15 +550,48 @@ ADR 0031 "Implementation stages".
   prefix. The bare section goldens render with
   `annotate=False` and are unchanged.
 
-### D5 — DXF (ADR 0034, Accepted 2026-10-21; not built yet)
+### D5 — DXF (ADR 0034; implemented)
 
-Decided in [ADR 0034](../adrs/0034-dxf-export.md), which replaces the stdlib writer first
-sketched here:
-- `render/dxf.py` uses ezdxf, behind an optional `apeCAD[dxf]` extra.
-- Output is AC1027 (R2013), model space at 1:1 mm.
-- Layers come from `render/style.py` `layer_name`, with ByLayer weight and colour; crossties
-  get their own `CROSSTIE` layer.
-- Annotation is native `MTEXT` and `DIMENSION` in the ADR-006 and ADR-007 style names, placed
-  by the D4 layout.
-- Surfaces: an `export_dxf` agent and MCP tool, `GET /api/export.dxf`, and the CLI
-  `export-dxf`.
+As [ADR 0034](../adrs/0034-dxf-export.md) decides, in `render/dxf.py`:
+- **ezdxf behind the optional `apeCAD[dxf]` extra**, imported only inside `export_dxf`.
+  Without it every surface answers `UNAVAILABLE`, and `import apeCAD` never imports ezdxf.
+  `tests/test_dxf_unavailable.py` runs in the core CI job and checks both.
+- **AC1027 (R2013), model space at 1:1 mm, plan only.** Units are `$INSUNITS` 4 and
+  `$MEASUREMENT` 1.
+- **Layers** come from `render/style.py` `layer_name` plus `CONCRETE-FILL`, `TAG`,
+  `DIMENSION` and `VIEW-TITLE`:
+  - ByLayer ADR-005 lineweight (0.10/0.20/0.30/0.40/0.50 → 9/20/30/40/50) and colour (Black
+    ACI 7, Dark Grey ACI 8, Grey ACI 9; Blue and Grey210 true colour);
+  - linetype `HIDDEN` (2.0 mm dash, 1.0 mm gap, `$LTSCALE` = n) for `H-`;
+  - the style name in the layer description.
+  - Crossties are on `CROSSTIE`.
+- **Entities:**
+  - concrete: `LWPOLYLINE` plus a ByLayer solid `HATCH` on `CONCRETE-FILL`;
+  - bars: `CIRCLE` plus a solid `HATCH`;
+  - circles, arcs and ellipses in a horizontal plane: native `CIRCLE`, `ARC`, `ELLIPSE`;
+  - anything else: `LWPOLYLINE` when flat, a 3-D `POLYLINE` otherwise.
+
+  No entity overrides its layer's colour or weight.
+- **Annotation** (`annotate`, default on, plans of sections):
+  - The D4 `plan_layout` runs at the SVG's default 800 x 600 frame with the same labels,
+    so tags, leaders and dimension text land where that render puts them.
+  - Tags are `MTEXT` in `Note - 2.0mm ArialNarrow Transparent` at 2.0 mm × n.
+  - Overall dimensions are native `DIMENSION` in `Arrow - 2.5mm ArialNarrow Transparent`
+    with `dimscale` = n.
+  - The title is set in `Title - Bahnschrift SemiBold Condensed` at 3.5 mm × n, with its
+    rule and `SCALE 1:n`.
+- **Surfaces:**
+  - the agent tool `export_dxf` (local and attach modes);
+  - the MCP `export_dxf`, whose DXF is the text block;
+  - `GET /api/export.dxf` (501 `UNAVAILABLE` without the extra);
+  - the CLI `export-dxf`.
+- **Tests** (`tests/test_dxf.py`): each section fixture and a box, read back with ezdxf.
+  - version, units and an ezdxf `audit()` with no errors and no fixes;
+  - entity counts per layer equal the drawables (no section entity dropped);
+  - native curves;
+  - the layer table's weights, colours, linetypes and descriptions;
+  - MTEXT tag texts equal the SVG's, the DIMENSION measurements, the style names and
+    `dimscale`;
+  - `ids`, the view refusal, and every surface.
+- **Not built:** entity labels (`labels`) other than those the tags carry, and goldens
+  (ezdxf writes fresh GUIDs and timestamps, so the bytes differ run to run).

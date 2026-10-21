@@ -38,6 +38,11 @@ dev = [
 mcp = [
     "mcp>=2.3,<3",
 ]
+# DXF export, `export_dxf` (ADR 0034, stage D5). ezdxf writes the R2000+ structure
+# (handles, tables, objects) that office CAD needs; core stays dependency-free.
+dxf = [
+    "ezdxf>=1.3,<2",
+]
 
 [project.urls]
 "Homepage" = "https://nmorabowen.github.io/apeCAD/"

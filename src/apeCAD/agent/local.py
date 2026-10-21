@@ -107,6 +107,10 @@ class LocalTools:
         root = self.root if self.root is not None else Path.cwd()
         return self._with(document, lambda s: tools.render(s, root=root, **params))
 
+    def export_dxf(self, document: object, **params: object) -> Envelope:
+        root = self.root if self.root is not None else Path.cwd()
+        return self._with(document, lambda s: tools.export_dxf(s, root=root, **params))
+
     def get_document(self, document: object) -> Envelope:
         return self._with(document, tools.get_document)
 

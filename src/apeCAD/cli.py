@@ -172,6 +172,33 @@ def cmd_render(args: argparse.Namespace) -> Envelope:
     return _with_file(args.file, call)
 
 
+def cmd_export_dxf(args: argparse.Namespace) -> Envelope:
+    """DXF of FILE (ADR 0034). With `-o`, the DXF goes to that file; without, it is the
+    envelope's `dxf`."""
+    params: dict[str, object] = {"annotate": not args.no_annotate}
+    if args.ids is not None:
+        params["ids"] = _ints("--ids", args.ids)
+
+    def call(tools: LocalTools, document: str) -> Envelope:
+        exported = tools.export_dxf(document, **params)
+        dxf = exported.get("dxf")
+        if args.output is None or exported.get("ok") is not True or not isinstance(dxf, str):
+            return exported
+        target = Path(args.output)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(dxf, encoding="utf-8")
+        except OSError as exc:
+            revision = exported.get("revision")
+            message = f"cannot write {target}: {exc}"
+            return failure(IO_ERROR, message, revision if isinstance(revision, int) else None)
+        result = {key: value for key, value in exported.items() if key != "dxf"}
+        result["path"] = str(target.resolve())
+        return result
+
+    return _with_file(args.file, call)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m apeCAD.cli",
@@ -231,6 +258,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     render.add_argument("--show-ids", action="store_true")
     render.set_defaults(run=cmd_render)
+
+    export = sub.add_parser("export-dxf", help="write FILE's plan as DXF (export_dxf, ADR 0034)")
+    export.add_argument("file", metavar="FILE")
+    export.add_argument("-o", "--output", metavar="OUT.dxf", help="write the DXF here")
+    export.add_argument("--ids", help="export only these comma-separated ids")
+    export.add_argument(
+        "--no-annotate", action="store_true",
+        help="no tags, dimensions or title on a plan of a section",
+    )
+    export.set_defaults(run=cmd_export_dxf)
     return parser
 
 

@@ -268,6 +268,24 @@ right and v up. The function behind it is `apeCAD.render.render_svg`.
 Result for `png`: MCP content `[{type: "image", mimeType: "image/png", data: <base64>}]` plus
 the same envelope.
 
+### `export_dxf`
+
+The plan as DXF ([ADR 0034](../adrs/0034-dxf-export.md), stage D5 of ADR 0031). Needs the
+`dxf` extra (`pip install apeCAD[dxf]`); without it, `UNAVAILABLE`, never another format.
+
+| Param | Type | Default | Limits |
+|---|---|---|---|
+| `document` | string | | |
+| `view` | `"top"` | `"top"` | the plan only; anything else is `INVALID_ARGUMENT` |
+| `ids` | array of int \| null | null | export only these and what they are built from |
+| `annotate` | bool | true | on a plan of a section: MTEXT tags, native DIMENSION and the title, at the D4 standard scale and positions of the default 800 x 600 render |
+| `save_to` | string \| null | null | relative to the root; must resolve under it |
+
+Result: MCP content `[{type: "text", text: "<the DXF>"}]`, plus the envelope
+`{ok, revision, view, entities: N, layers: [...], scale: "1:n" | null, path?}`. The file is
+AC1027 (R2013) in millimetres (`$INSUNITS` 4), on the `render/style.py` layers with ByLayer
+ADR-005 weights and colours. The function behind it is `apeCAD.render.dxf.export_dxf`.
+
 ### `get_document`
 
 | Param | Type |
@@ -306,6 +324,7 @@ attached scratchpad.
 | `GET /api/inspect` | | `inspect` result |
 | `GET /api/entities` | query string mirrors `query_entities` (`kind`, `tag`, `label`, `ids=1,2`, `window=x0,y0,z0,x1,y1,z1`, `mode`, `detail`, `limit`, `cursor`) | `query_entities` result |
 | `GET /api/render.svg` | query mirrors `render` (svg only, no `save_to`): `ids=1,2`, `window=x0,y0,z0,x1,y1,z1`, booleans `true`/`false` | `image/svg+xml`; a bad parameter is 400 `{error, code: "INVALID_ARGUMENT"}` |
+| `GET /api/export.dxf` | query mirrors `export_dxf` (no `save_to`): `view=top`, `ids=1,2`, `annotate=false` | `image/vnd.dxf`; a bad parameter is 400 `INVALID_ARGUMENT`, a missing `dxf` extra 501 `UNAVAILABLE` |
 | `GET /api/document` | | `get_document` result |
 | `GET /api/section/draft` | | `get_section_draft` result (section stage C4) |
 | `GET /api/revision` | | `{revision}`; the browser polls it about once a second |
@@ -333,9 +352,11 @@ python -m apeCAD.cli query FILE [--kind K,K] [--tag T] [--label L] [--ids 1,2]
                      [--limit N] [--cursor C]
 python -m apeCAD.cli render FILE [-o OUT.svg] [--view top] [--size 800x600]
                      [--ids 1,2] [--highlight 3] [--window=...] [--no-labels] [--show-ids] [--no-annotate]
+python -m apeCAD.cli export-dxf FILE [-o OUT.dxf] [--ids 1,2] [--no-annotate]
 ```
 
-Without `-o`, `render` puts the SVG in the envelope's `svg` field. Each call is its own
+Without `-o`, `render` puts the SVG in the envelope's `svg` field, and `export-dxf` the DXF in
+its `dxf` field. Each call is its own
 process, so revisions start at 0 and `apply` reports 1. A file that is missing is `IO_ERROR`,
 one that does not replay is `REFUSED`, and a failed `apply` leaves the file unchanged.
 
