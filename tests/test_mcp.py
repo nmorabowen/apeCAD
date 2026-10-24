@@ -146,7 +146,8 @@ async def test_bad_arguments_are_a_jsonrpc_error() -> None:
     assert caught.value.code == -32602
 
 
-async def test_render_returns_the_svg_as_text() -> None:
+async def test_render_returns_the_svg_as_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "resvg_py", None)
     async with Client(build_server()) as client:
         doc = await _new_document(client)
         await client.call_tool(
@@ -169,6 +170,27 @@ async def test_render_returns_the_svg_as_text() -> None:
         png = await client.call_tool("render", {"document": doc, "format": "png"})
         assert png.is_error
         assert _structured(png)["error"]["code"] == "UNAVAILABLE"
+
+
+async def test_render_png_returns_image_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    import types as pytypes
+
+    from test_render import _fake_png  # pyright: ignore[reportPrivateUsage]
+
+    fake = pytypes.ModuleType("resvg_py")
+    fake.svg_to_bytes = _fake_png  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resvg_py", fake)
+    async with Client(build_server()) as client:
+        doc = await _new_document(client)
+        result = await client.call_tool(
+            "render", {"document": doc, "format": "png", "width": 320, "height": 200}
+        )
+        assert not result.is_error
+        assert result.content[0].type == "image"
+        assert result.content[0].mime_type == "image/png"
+        envelope = _structured(result)
+        assert "png" not in envelope and "svg" not in envelope
+        assert (envelope["width"], envelope["height"]) == (320, 200)
 
 
 def test_module_entry_point_serves_stdio() -> None:

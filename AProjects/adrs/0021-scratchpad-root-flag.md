@@ -1,6 +1,6 @@
 # ADR 0021 — Scratchpad CLI accepts `--root`
 
-**Status:** Proposed (2026-09-25)
+**Status:** Accepted (2026-09-25)
 
 Amends [ADR 0019](0019-instance-scratchpad-host.md): the instance root
 can come from a flag as well as from the environment.

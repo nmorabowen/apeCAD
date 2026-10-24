@@ -1,6 +1,6 @@
 # ADR 0022 — CI runs pytest, ruff check and pyright
 
-**Status:** Proposed (2026-10-09)
+**Status:** Accepted (2026-10-09)
 
 Answers the first open question of [ADR 0020](0020-agent-surface.md):
 "Should apeCAD get CI (pytest + ruff check + pyright) now that the

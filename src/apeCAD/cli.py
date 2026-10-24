@@ -13,6 +13,7 @@ Exit status: 0 ok; 1 a refusal or an environment error (`REFUSED`, `STALE`, `NOT
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import sys
 from collections.abc import Callable
@@ -132,10 +133,15 @@ def cmd_query(args: argparse.Namespace) -> Envelope:
 
 
 def cmd_render(args: argparse.Namespace) -> Envelope:
-    """SVG of FILE. With `-o`, the SVG goes to that file; without, it is the envelope's `svg`."""
+    """SVG or PNG of FILE. With `-o`, the image goes to that file; without, it is the
+    envelope's `svg` or base64 `png`."""
     params: dict[str, object] = {
         "labels": not args.no_labels, "show_ids": args.show_ids, "annotate": not args.no_annotate,
     }
+    if args.format is not None:
+        params["format"] = args.format
+    elif args.output is not None and Path(args.output).suffix.lower() == ".png":
+        params["format"] = "png"
     if args.view is not None:
         params["view"] = args.view
     if args.size is not None:
@@ -154,18 +160,27 @@ def cmd_render(args: argparse.Namespace) -> Envelope:
 
     def call(tools: LocalTools, document: str) -> Envelope:
         rendered = tools.render(document, **params)
+        if args.output is None or rendered.get("ok") is not True:
+            return rendered
         svg = rendered.get("svg")
-        if args.output is None or rendered.get("ok") is not True or not isinstance(svg, str):
+        png = rendered.get("png")
+        if not isinstance(svg, str) and not isinstance(png, str):
             return rendered
         target = Path(args.output)
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(svg, encoding="utf-8")
+            if isinstance(png, str):
+                target.write_bytes(base64.b64decode(png))
+                stripped = "png"
+            else:
+                assert isinstance(svg, str)
+                target.write_text(svg, encoding="utf-8")
+                stripped = "svg"
         except OSError as exc:
             revision = rendered.get("revision")
             message = f"cannot write {target}: {exc}"
             return failure(IO_ERROR, message, revision if isinstance(revision, int) else None)
-        result = {key: value for key, value in rendered.items() if key != "svg"}
+        result = {key: value for key, value in rendered.items() if key != stripped}
         result["path"] = str(target.resolve())
         return result
 
@@ -242,9 +257,10 @@ def build_parser() -> argparse.ArgumentParser:
     query.add_argument("--cursor")
     query.set_defaults(run=cmd_query)
 
-    render = sub.add_parser("render", help="draw FILE as SVG (render)")
+    render = sub.add_parser("render", help="draw FILE as SVG or PNG (render)")
     render.add_argument("file", metavar="FILE")
-    render.add_argument("-o", "--output", metavar="OUT.svg", help="write the SVG here")
+    render.add_argument("-o", "--output", metavar="OUT.svg", help="write the SVG or PNG here")
+    render.add_argument("--format", choices=("svg", "png"), help="svg (default) or png")
     render.add_argument("--view", choices=("top", "front", "right", "iso"))
     render.add_argument("--size", metavar="WxH", help="pixels, e.g. 800x600")
     render.add_argument("--margin", type=float)

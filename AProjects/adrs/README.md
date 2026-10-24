@@ -29,10 +29,10 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0017](0017-face-loop-lines.md) | Face loops write Line records | Accepted |
 | [0018](0018-brep-selection.md) | B-rep topology is the selection graph | Accepted |
 | [0019](0019-instance-scratchpad-host.md) | Scratchpad host is per-instance, not machine-global | Accepted |
-| [0020](0020-agent-surface.md) | AGENTS.md is the agent entry point | Proposed |
-| [0021](0021-scratchpad-root-flag.md) | Scratchpad CLI accepts `--root` | Proposed |
-| [0022](0022-ci-gates.md) | CI runs pytest, ruff check and pyright | Proposed |
-| [0023](0023-module-boundaries.md) | Module boundaries and a line budget | Proposed |
+| [0020](0020-agent-surface.md) | AGENTS.md is the agent entry point | Accepted |
+| [0021](0021-scratchpad-root-flag.md) | Scratchpad CLI accepts `--root` | Accepted |
+| [0022](0022-ci-gates.md) | CI runs pytest, ruff check and pyright | Accepted |
+| [0023](0023-module-boundaries.md) | Module boundaries and a line budget | Accepted |
 | [0024](0024-section-mode-rc-intent.md) | Section mode: RC section entities are drawing intent | Accepted |
 | [0025](0025-section-draft-contract.md) | The `apeCAD.section-draft` v1 contract | Accepted |
 | [0026](0026-section-transport-and-client.md) | Stateless op transport and a 2-D section client | Accepted |

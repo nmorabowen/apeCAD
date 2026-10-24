@@ -1,11 +1,13 @@
-"""`render_svg`: validate the spec §4 `render` parameters, fit the view, write the SVG."""
+"""`render_svg` and `render_png`: validate the spec §4 `render` parameters, fit the view, write."""
 
 from __future__ import annotations
 
+import importlib
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from apeCAD.document import Document
 from apeCAD.entities import Box, EntityId, Solid
@@ -27,6 +29,12 @@ class RenderArgumentError(ValueError):
     code = "INVALID_ARGUMENT"
 
 
+class PngUnavailableError(RenderArgumentError):
+    """The `png` extra is not installed. Agents see it as `UNAVAILABLE` (never a fallback)."""
+
+    code = "UNAVAILABLE"
+
+
 @dataclass(frozen=True, slots=True)
 class RenderResult:
     svg: str
@@ -35,6 +43,18 @@ class RenderResult:
     height: int
     scale_px_per_mm: float
     # The visible rectangle on the view plane, mm: {"min": [u, v], "max": [u, v]}.
+    extents_mm: dict[str, list[float]]
+    entities: int
+    path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PngResult:
+    png: bytes
+    view: ViewName
+    width: int
+    height: int
+    scale_px_per_mm: float
     extents_mm: dict[str, list[float]]
     entities: int
     path: str | None = None
@@ -210,8 +230,67 @@ def _fit(bounds: Bounds, width: int, height: int, margin: float) -> Viewport:
     return Viewport(width, height, scale, ((u0 + u1) / 2.0, (v0 + v1) / 2.0))
 
 
-def save_text(text: str, save_to: str, root: Path | None) -> str:
-    """Write `text` to `save_to` under `root`: the SVG here, the DXF in `render/dxf.py`."""
+def render_png(
+    document: Document,
+    *,
+    view: str | None = None,
+    width: int = 800,
+    height: int = 600,
+    margin: float = 0.05,
+    ids: Sequence[EntityId] | None = None,
+    highlight: Sequence[EntityId] | None = None,
+    labels: bool = True,
+    show_ids: bool = False,
+    window: tuple[Sequence[float], Sequence[float]] | None = None,
+    save_to: str | None = None,
+    root: Path | None = None,
+    annotate: bool = True,
+) -> PngResult:
+    """Orthographic wireframe PNG of the draft (spec agent-surface-mcp §4 `render`, stage S7).
+
+    Rasterizes the `render_svg` output with `resvg_py` from the optional `apeCAD[png]` extra.
+    Without the extra, raises `PngUnavailableError` (`UNAVAILABLE`), never falling back to SVG.
+    """
+    try:
+        resvg_py: Any = importlib.import_module("resvg_py")
+    except ImportError as exc:
+        raise PngUnavailableError(
+            "PNG output needs the png extra: pip install apeCAD[png]"
+        ) from exc
+    rendered = render_svg(
+        document,
+        view=view,
+        width=width,
+        height=height,
+        margin=margin,
+        ids=ids,
+        highlight=highlight,
+        labels=labels,
+        show_ids=show_ids,
+        window=window,
+        save_to=None,
+        root=root,
+        annotate=annotate,
+    )
+    png = bytes(
+        resvg_py.svg_to_bytes(
+            svg_string=rendered.svg, width=rendered.width, height=rendered.height
+        )
+    )
+    path = None if save_to is None else save_bytes(png, save_to, root)
+    return PngResult(
+        png=png,
+        view=rendered.view,
+        width=rendered.width,
+        height=rendered.height,
+        scale_px_per_mm=rendered.scale_px_per_mm,
+        extents_mm=rendered.extents_mm,
+        entities=rendered.entities,
+        path=path,
+    )
+
+
+def _resolve_save_to(save_to: str, root: Path | None) -> Path:
     if root is None:
         raise RenderArgumentError("save_to needs a root folder")
     base = root.resolve()
@@ -219,5 +298,19 @@ def save_text(text: str, save_to: str, root: Path | None) -> str:
     if target == base or not target.is_relative_to(base):
         raise RenderArgumentError(f"save_to {save_to!r} must resolve to a file under the root")
     target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def save_text(text: str, save_to: str, root: Path | None) -> str:
+    """Write `text` to `save_to` under `root`: the SVG here, the DXF in `render/dxf.py`."""
+    target = _resolve_save_to(save_to, root)
     target.write_text(text, encoding="utf-8", newline="\n")
     return str(target)
+
+
+def save_bytes(data: bytes, save_to: str, root: Path | None) -> str:
+    """Write `data` to `save_to` under `root` (PNG output, stage S7)."""
+    target = _resolve_save_to(save_to, root)
+    target.write_bytes(data)
+    return str(target)
+

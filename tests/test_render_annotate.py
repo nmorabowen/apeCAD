@@ -271,3 +271,11 @@ def test_face_and_hoop_labels_are_not_drawn_twice(name: str) -> None:
 
 def _render_no_labels(doc: Document) -> ET.Element:
     return ET.fromstring(render_svg(doc, view="top", labels=False).svg)
+
+
+def test_annotate_reexports_annotate_tags_symbols() -> None:
+    from apeCAD.render import annotate, annotate_tags
+
+    for name in annotate_tags.__all__:
+        assert getattr(annotate, name) is getattr(annotate_tags, name), name
+

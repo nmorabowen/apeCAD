@@ -195,8 +195,8 @@ TOOLS: dict[str, McpTool] = {
         ),
         _tool(
             "render",
-            "Draw the document as SVG (orthographic, mm). The SVG is the text content; "
-            "the result carries view, scale and extents.",
+            "Draw the document as SVG or PNG (orthographic, mm). The SVG text or PNG image is "
+            "the content block; the result carries view, scale and extents.",
             {
                 "document": _DOCUMENT,
                 "view": {"enum": ["top", "front", "right", "iso", None]},
