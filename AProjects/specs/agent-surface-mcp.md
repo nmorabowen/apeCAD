@@ -1,6 +1,6 @@
 # Spec — agent surface: op catalog, MCP server, render and query tools
 
-**Status:** Proposed (2026-10-10)
+**Status:** Implemented (2026-10-14)
 **ADRs:** 0006, 0019, 0023, 0026, 0027, 0028
 
 What agents call to draw with apeCAD, and the order to build it in. ADR 0028 holds the

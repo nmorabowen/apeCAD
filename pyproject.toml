@@ -64,7 +64,6 @@ where = ["src"]
     "static/fonts/*",
     "static/section/*",
     "static/vendor/three/build/*.js",
-    "static/vendor/three/examples/jsm/controls/*.js",
     "static/vendor/three/examples/jsm/lines/*.js",
 ]
 

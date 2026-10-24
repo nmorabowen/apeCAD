@@ -1,9 +1,9 @@
-// The main three.js viewport: renderer, scene, both cameras, orbit controls, lights, and the
+// The main three.js viewport: renderer, scene, both cameras, navigator controls, lights, and the
 // draft / ghost / preselect groups the rest of the client draws into. Objects only; camera
 // behaviour lives in camera.js.
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { disposeObject3D, wrapAutoDispose as _wrapAutoDispose } from "./geom.js";
+import { Navigator } from "./navigation.js";
 import { requestRender } from "./store.js";
 
 export { disposeObject3D };
@@ -34,7 +34,9 @@ export const orthoCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 10, 2_000_000
 orthoCam.up.copy(WORLD_UP);
 orthoCam.position.copy(persp.position);
 
-export const controls = new OrbitControls(orthoCam, canvas);
+export const controls = new Navigator(orthoCam, canvas, {
+  target: new THREE.Vector3(0, 0, 0),
+});
 controls.target.set(0, 0, 0);
 controls.mouseButtons.LEFT = -1;
 controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;

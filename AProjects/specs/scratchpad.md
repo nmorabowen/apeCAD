@@ -26,7 +26,7 @@ modules in `static/js/`, with a pure reducer + two-signature microtask reconcile
 Edges, curves, hoops, and crossties render as screen-space `LineSegments2` (`1.5 px` wire,
 `2.25 px` section outline, `3.0 px` rebar/selected) with a depth-exempt `SelectionHalo` and
 ear-clipping polygon triangulation ([ADR 0036](../adrs/0036-screen-space-lines-and-triangulation.md)).
-Camera navigation uses pure turntable math in `js/navigation.js` and a zero-WebGL 26-zone SVG
+Camera navigation uses pure turntable math in `js/nav-math.js` + `js/navigation.js` and a zero-WebGL 26-zone SVG
 ViewCube with compass ring and 90° roll buttons in `js/viewcube.js`
 ([ADR 0037](../adrs/0037-cad-turntable-and-svg-viewcube.md)). WCAG contrast and Viénot
 protanopia/deuteranopia CVD separation are enforced by automated gates

@@ -17,7 +17,7 @@ import { initPrefs } from "./js/prefs.js";
 import { refreshFrom } from "./js/render.js";
 import { bindSectionBar } from "./js/section-tools.js";
 import { hideMarquee } from "./js/selection.js";
-import { hitWorkplane } from "./js/snap.js";
+import { cursorPivot } from "./js/snap.js";
 import { S } from "./js/state.js";
 import { consumeRenderDirty, requestRender, setRenderWake } from "./js/store.js";
 import { bindViewCube, syncCube } from "./js/viewcube.js";
@@ -34,10 +34,8 @@ bindSectionBar();
 bindCanvas();
 bindCadNavigation({
   canvas,
-  camera,
   controls,
-  syncCameras,
-  hitWorkplane,
+  hitWorkplane: cursorPivot,
   hideMarquee,
 });
 bindKeys();
@@ -79,10 +77,25 @@ syncPrefsForm();
 applyViz();
 refreshToggles();
 requestRender();
-reload().catch((error) => refuse(error));
-startRevisionPoll({
-  fetchJson: api,
-  current: () => S.sceneState,
-  apply: refreshFrom,
-  busy: () => Boolean(S.pending),
-});
+const _wantCapture = new URLSearchParams(window.location.search).get("capture") === "1";
+if (_wantCapture) {
+  updateCameraMatrices();
+  document.documentElement.dataset.apecadStill = window.__apecadCaptureStill();
+}
+await reload()
+  .then(() => {
+    if (_wantCapture) {
+      tickViewAnim(true);
+      updateCameraMatrices();
+      document.documentElement.dataset.apecadStill = window.__apecadCaptureStill();
+    }
+  })
+  .catch((error) => refuse(error));
+if (!_wantCapture) {
+  startRevisionPoll({
+    fetchJson: api,
+    current: () => S.sceneState,
+    apply: refreshFrom,
+    busy: () => Boolean(S.pending),
+  });
+}

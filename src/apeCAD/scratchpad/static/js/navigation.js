@@ -1,262 +1,333 @@
-// Z-up zero-roll CAD turntable math, cursor-pivot orbit, zoom-to-cursor, pan-keep-point,
-// frustum dock offset, and pointer-capture cleanup (ADR 0037). Ported from
-// apeGmshViewer/src/renderer/navigation.ts. Pure math functions have zero external imports
-// so they run in both the browser and Node unit tests.
+// Native cursor-pivot Z-up CAD turntable Navigator and pointer-capture cleanup (ADR 0037).
+// Pure math helpers live in nav-math.js and are re-exported here for callers and unit tests.
 
+import {
+  DEFAULT_WORLD_UP,
+  createVec3,
+  headingBasis,
+  orbitAroundCursor,
+  panKeepPoint,
+  toVec3,
+  vAdd,
+  vLen,
+  vScale,
+  vSub,
+  writeVec3,
+  zoomAtCursor,
+} from "./nav-math.js";
 import { S } from "./state.js";
 import { requestRender } from "./store.js";
 
-const DEFAULT_WORLD_UP = { x: 0, y: 0, z: 1 };
-const FALLBACK_RIGHT = { x: 1, y: 0, z: 0 };
+export * from "./nav-math.js";
 
-function toVec3(v, fallback = DEFAULT_WORLD_UP) {
-  if (!v) return { ...fallback };
-  if (Array.isArray(v)) return { x: Number(v[0]) || 0, y: Number(v[1]) || 0, z: Number(v[2]) || 0 };
-  if (typeof v.x_mm === "number") return { x: v.x_mm, y: v.y_mm, z: v.z_mm || 0 };
-  return { x: Number(v.x) || 0, y: Number(v.y) || 0, z: Number(v.z) || 0 };
-}
+// Native cursor-pivot Z-up CAD turntable Navigator (ADR 0037).
+export class Navigator {
+  constructor(object = null, domElement = null, options = {}) {
+    this.object = object;
+    this.domElement = domElement;
+    this.enabled = options.enabled ?? true;
+    this.target =
+      options.target ||
+      (object?.position && typeof object.position.clone === "function"
+        ? object.position.clone().set(0, 0, 0)
+        : createVec3(0, 0, 0));
+    this.minDistance = options.minDistance ?? 10;
+    this.maxDistance = options.maxDistance ?? 2_000_000;
+    this.minPolarAngle = options.minPolarAngle ?? 0.04;
+    this.maxPolarAngle = options.maxPolarAngle ?? Math.PI - 0.04;
+    this.rotateSpeed = options.rotateSpeed ?? 0.0075;
+    this.mouseButtons = { LEFT: -1, MIDDLE: 0, RIGHT: 2, ...(options.mouseButtons || {}) };
+    this.getPivot = typeof options.getPivot === "function" ? options.getPivot : null;
 
-function vLen(a) {
-  return Math.hypot(a.x, a.y, a.z);
-}
+    this._listeners = new Map();
+    this._state = "none";
+    this._pointerId = null;
+    this._lastX = 0;
+    this._lastY = 0;
+    this._pivot = null;
 
-function vNorm(a, fallback = DEFAULT_WORLD_UP) {
-  const len = vLen(a);
-  if (len < 1e-12) return { ...fallback };
-  return { x: a.x / len, y: a.y / len, z: a.z / len };
-}
+    this._onPointerDown = (ev) => this._handlePointerDown(ev);
+    this._onPointerMove = (ev) => this._handlePointerMove(ev);
+    this._onPointerUp = (ev) => this._endGesture(ev);
+    this._onPointerCancel = (ev) => this._endGesture(ev);
+    this._onWheel = (ev) => this._handleWheel(ev);
+    this._onContextMenu = (ev) => {
+      if (typeof ev?.preventDefault === "function") ev.preventDefault();
+    };
 
-function vSub(a, b) {
-  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
-}
-
-function vAdd(a, b) {
-  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
-}
-
-function vScale(a, s) {
-  return { x: a.x * s, y: a.y * s, z: a.z * s };
-}
-
-export function vDot(a, b) {
-  return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-
-export function vCross(a, b) {
-  return {
-    x: a.y * b.z - a.z * b.y,
-    y: a.z * b.x - a.x * b.z,
-    z: a.x * b.y - a.y * b.x,
-  };
-}
-
-// Rodrigues rotation of vector `v` around unit `axis` by `angleRad`.
-export function rotateAroundAxis(v, axis, angleRad) {
-  if (Math.abs(angleRad) < 1e-12) return { ...v };
-  const k = vNorm(axis);
-  const cos = Math.cos(angleRad);
-  const sin = Math.sin(angleRad);
-  const cross = vCross(k, v);
-  const dot = vDot(k, v);
-  return {
-    x: v.x * cos + cross.x * sin + k.x * dot * (1 - cos),
-    y: v.y * cos + cross.y * sin + k.y * dot * (1 - cos),
-    z: v.z * cos + cross.z * sin + k.z * dot * (1 - cos),
-  };
-}
-
-// Orthonormal Z-up camera basis { right, up, forward } with strictly zero roll (right.z === 0
-// whenever forward is not collinear with worldUp).
-export function headingBasis(forwardInput, worldUpInput = DEFAULT_WORLD_UP) {
-  const worldUp = vNorm(toVec3(worldUpInput), DEFAULT_WORLD_UP);
-  let forward = toVec3(forwardInput, { x: -1, y: 1, z: -1 });
-  if (vLen(forward) < 1e-12) forward = { x: -1, y: 1, z: -1 };
-  forward = vNorm(forward);
-
-  const rawRight = vCross(forward, worldUp);
-  const right = vLen(rawRight) < 1e-4 ? { ...FALLBACK_RIGHT } : vNorm(rawRight);
-  const up = vNorm(vCross(right, forward), DEFAULT_WORLD_UP);
-  return { right, up, forward };
-}
-
-// Orbit `eye` and `target` around an arbitrary 3-D world `pivot` point using Z-up turntable
-// yaw (around +Z) and camera-right pitch (clamped off the +-Z poles by `poleMarginRad`),
-// keeping `pivot` stationary on screen (ADR 0037).
-export function orbitAroundCursor({
-  eye,
-  target,
-  up = DEFAULT_WORLD_UP,
-  pivot = target,
-  yawDeltaRad = 0,
-  pitchDeltaRad = 0,
-  poleMarginRad = 0.04,
-}) {
-  const eyeV = toVec3(eye);
-  const targetV = toVec3(target);
-  const pivotV = toVec3(pivot ?? targetV);
-  const worldUp = vNorm(toVec3(up), DEFAULT_WORLD_UP);
-
-  const offset = vSub(eyeV, targetV);
-  const dist = Math.max(vLen(offset), 1e-3);
-  const dirFromTarget = vScale(offset, 1 / dist);
-
-  // Current polar angle phi in [0, PI] from +Z worldUp.
-  const cosPhi = Math.max(-1, Math.min(1, vDot(dirFromTarget, worldUp)));
-  const phi = Math.acos(cosPhi);
-  const clampedPhi = Math.max(
-    poleMarginRad,
-    Math.min(Math.PI - poleMarginRad, phi + pitchDeltaRad),
-  );
-  const actualPitch = clampedPhi - phi;
-
-  const { right } = headingBasis(vSub(targetV, eyeV), worldUp);
-  const eyePitched = rotateAroundAxis(vSub(eyeV, pivotV), right, actualPitch);
-  const targetPitched = rotateAroundAxis(vSub(targetV, pivotV), right, actualPitch);
-  const eyeYawed = rotateAroundAxis(eyePitched, worldUp, yawDeltaRad);
-  const targetYawed = rotateAroundAxis(targetPitched, worldUp, yawDeltaRad);
-
-  const nextEye = vAdd(pivotV, eyeYawed);
-  const nextTarget = vAdd(pivotV, targetYawed);
-  const basis = headingBasis(vSub(nextTarget, nextEye), worldUp);
-
-  return {
-    eye: nextEye,
-    target: nextTarget,
-    up: worldUp,
-    right: basis.right,
-    cameraUp: basis.up,
-  };
-}
-
-// Translate `eye` and `target` identically in the camera plane so a dragged world point stays
-// under the cursor.
-export function panKeepPoint({
-  eye,
-  target,
-  right,
-  up,
-  worldPerPixelX = 1,
-  worldPerPixelY = 1,
-  dxPx = 0,
-  dyPx = 0,
-}) {
-  const eyeV = toVec3(eye);
-  const targetV = toVec3(target);
-  const rightV = vNorm(toVec3(right), FALLBACK_RIGHT);
-  const upV = vNorm(toVec3(up), DEFAULT_WORLD_UP);
-  const shift = vAdd(
-    vScale(rightV, -dxPx * worldPerPixelX),
-    vScale(upV, dyPx * worldPerPixelY),
-  );
-  return {
-    eye: vAdd(eyeV, shift),
-    target: vAdd(targetV, shift),
-  };
-}
-
-// Zoom toward/away from a 3-D cursor `pivot` point so `pivot` remains at the same screen
-// coordinates before and after the wheel step (ADR 0037).
-export function zoomAtCursor({
-  eye,
-  target,
-  pivot = target,
-  zoomFactor = 1,
-  minDistance = 0.5,
-  maxDistance = 2_000_000,
-}) {
-  const eyeV = toVec3(eye);
-  const targetV = toVec3(target);
-  const pivotV = toVec3(pivot ?? targetV);
-  const viewVec = vSub(eyeV, targetV);
-  const dist = Math.max(vLen(viewVec), 1e-6);
-  const clampedFactor = Math.max(0.05, Math.min(20, Number(zoomFactor) || 1));
-  const nextDist = Math.max(minDistance, Math.min(maxDistance, dist * clampedFactor));
-  const scale = nextDist / dist;
-
-  // Homothety centered at `pivotV` with ratio `scale` keeps `pivotV` at the same NDC ray.
-  const nextEye = vAdd(pivotV, vScale(vSub(eyeV, pivotV), scale));
-  const nextTarget = vAdd(pivotV, vScale(vSub(targetV, pivotV), scale));
-  return {
-    eye: nextEye,
-    target: nextTarget,
-    distance: nextDist,
-    scale,
-  };
-}
-
-// Compute camera.setViewOffset parameters when a side dock overlaps the stage so [0, 0] NDC
-// coincides with the visual center of the unoccluded viewport (ADR 0037).
-export function viewOffsetForStage(stageRect, dockRect = null) {
-  const fullWidth = Math.max(1, Number(stageRect?.width) || 1);
-  const fullHeight = Math.max(1, Number(stageRect?.height) || 1);
-  if (!dockRect || !(dockRect.width > 0) || !(dockRect.height > 0)) {
-    return { fullWidth, fullHeight, offsetX: 0, offsetY: 0, width: fullWidth, height: fullHeight };
+    if (this.domElement && typeof this.domElement.addEventListener === "function") {
+      this.domElement.addEventListener("pointerdown", this._onPointerDown, false);
+      this.domElement.addEventListener("pointermove", this._onPointerMove, false);
+      this.domElement.addEventListener("pointerup", this._onPointerUp, false);
+      this.domElement.addEventListener("pointercancel", this._onPointerCancel, false);
+      this.domElement.addEventListener("lostpointercapture", this._onPointerCancel, false);
+      this.domElement.addEventListener("wheel", this._onWheel, { passive: false });
+      this.domElement.addEventListener("contextmenu", this._onContextMenu, false);
+    }
   }
-  const sLeft = Number(stageRect.left) || 0;
-  const sRight = sLeft + fullWidth;
-  const dLeft = Math.max(sLeft, Number(dockRect.left) || sRight);
-  const dRight = Math.min(sRight, (Number(dockRect.left) || 0) + (Number(dockRect.width) || 0));
-  const overlapRight = Math.max(0, dRight - dLeft);
-  if (overlapRight <= 0 || overlapRight >= fullWidth * 0.8) {
-    return { fullWidth, fullHeight, offsetX: 0, offsetY: 0, width: fullWidth, height: fullHeight };
+
+  _actionForButton(button) {
+    let code = -1;
+    if (button === 0) code = this.mouseButtons.LEFT ?? -1;
+    else if (button === 1) code = this.mouseButtons.MIDDLE ?? 0;
+    else if (button === 2) code = this.mouseButtons.RIGHT ?? 2;
+    if (code === 0 || code === "orbit" || code === "rotate") return "orbit";
+    if (code === 2 || code === "pan") return "pan";
+    return "none";
   }
-  return {
-    fullWidth,
-    fullHeight,
-    offsetX: overlapRight * 0.5,
-    offsetY: 0,
-    width: fullWidth,
-    height: fullHeight,
-  };
+
+  _resolvePivot(event) {
+    const tgt = toVec3(this.target, { x: 0, y: 0, z: 0 });
+    const eye = toVec3(this.object?.position, { x: 0, y: -1000, z: 0 });
+    if (typeof this.getPivot === "function") {
+      const hit = this.getPivot(event);
+      if (hit) {
+        const p = toVec3(hit, tgt);
+        const camDist = Math.max(vLen(vSub(eye, tgt)), 1);
+        if (vLen(vSub(p, tgt)) <= camDist * 6) return p;
+      }
+    }
+    const rect =
+      this.domElement && typeof this.domElement.getBoundingClientRect === "function"
+        ? this.domElement.getBoundingClientRect()
+        : null;
+    if (rect && rect.width > 0 && rect.height > 0 && Number.isFinite(event?.clientX) && Number.isFinite(event?.clientY)) {
+      const basis = headingBasis(vSub(tgt, eye), toVec3(this.object?.up, DEFAULT_WORLD_UP));
+      const { worldPerPixelX, worldPerPixelY } = this._worldPerPixel(eye, tgt);
+      const dxPx = event.clientX - (rect.left + rect.width * 0.5);
+      const dyPx = event.clientY - (rect.top + rect.height * 0.5);
+      return vAdd(tgt, vAdd(vScale(basis.right, dxPx * worldPerPixelX), vScale(basis.up, -dyPx * worldPerPixelY)));
+    }
+    return tgt;
+  }
+
+  _worldPerPixel(eye, target) {
+    const rect =
+      this.domElement && typeof this.domElement.getBoundingClientRect === "function"
+        ? this.domElement.getBoundingClientRect()
+        : null;
+    const clientW = Math.max(1, Number(rect?.width) || Number(this.domElement?.clientWidth) || 800);
+    const clientH = Math.max(1, Number(rect?.height) || Number(this.domElement?.clientHeight) || 600);
+    const cam = this.object || {};
+    const zoom = Math.max(Number(cam.zoom) || 1, 1e-6);
+    if (
+      !cam.isPerspectiveCamera &&
+      typeof cam.right === "number" &&
+      typeof cam.left === "number" &&
+      typeof cam.top === "number" &&
+      typeof cam.bottom === "number" &&
+      cam.right - cam.left > 2.01
+    ) {
+      return {
+        worldPerPixelX: (cam.right - cam.left) / (zoom * clientW),
+        worldPerPixelY: (cam.top - cam.bottom) / (zoom * clientH),
+      };
+    }
+    const dist = Math.max(vLen(vSub(eye, target)), 1);
+    const fovRad = ((Number(cam.fov) || 50) * Math.PI) / 180;
+    const wpp = (2 * dist * Math.tan(fovRad * 0.5)) / (zoom * clientH);
+    return { worldPerPixelX: wpp, worldPerPixelY: wpp };
+  }
+
+  _handlePointerDown(event) {
+    if (!this.enabled || !this.object || this._state !== "none") return;
+    const action = this._actionForButton(event.button);
+    if (action === "none") return;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    this._state = action;
+    this._pointerId = event.pointerId ?? null;
+    this._lastX = Number(event.clientX) || 0;
+    this._lastY = Number(event.clientY) || 0;
+    this._pivot =
+      action === "orbit" ? this._resolvePivot(event) : toVec3(this.target, { x: 0, y: 0, z: 0 });
+    if (this._pointerId !== null && typeof this.domElement?.setPointerCapture === "function") {
+      try {
+        this.domElement.setPointerCapture(this._pointerId);
+      } catch (_e) {
+        // Synthetic pointer events in unit tests may not have an active hardware pointer.
+      }
+    }
+    this.dispatchEvent({ type: "start" });
+  }
+
+  _handlePointerMove(event) {
+    if (!this.enabled || !this.object || this._state === "none") return;
+    if (this._pointerId !== null && event.pointerId != null && event.pointerId !== this._pointerId) {
+      return;
+    }
+    const clientX = Number(event.clientX) || 0;
+    const clientY = Number(event.clientY) || 0;
+    const dx = clientX - this._lastX;
+    const dy = clientY - this._lastY;
+    this._lastX = clientX;
+    this._lastY = clientY;
+    if (dx === 0 && dy === 0) return;
+
+    if (this._state === "orbit") {
+      const poleMarginRad = Math.max(
+        1e-4,
+        Math.min(this.minPolarAngle ?? 0.04, Math.PI - (this.maxPolarAngle ?? Math.PI - 0.04)),
+      );
+      const res = orbitAroundCursor({
+        eye: this.object.position,
+        target: this.target,
+        up: DEFAULT_WORLD_UP,
+        pivot: this._pivot || this.target,
+        yawDeltaRad: -dx * this.rotateSpeed,
+        pitchDeltaRad: -dy * this.rotateSpeed,
+        poleMarginRad,
+      });
+      writeVec3(this.object.position, res.eye);
+      if (this.object.up) writeVec3(this.object.up, res.up);
+      writeVec3(this.target, res.target);
+      if (typeof this.object.lookAt === "function") this.object.lookAt(this.target);
+      this.dispatchEvent({ type: "change" });
+      return;
+    }
+
+    if (this._state === "pan") {
+      const eye = toVec3(this.object.position, { x: 0, y: -1000, z: 0 });
+      const target = toVec3(this.target, { x: 0, y: 0, z: 0 });
+      const camUp = toVec3(this.object.up, DEFAULT_WORLD_UP);
+      const basis = headingBasis(vSub(target, eye), camUp);
+      const { worldPerPixelX, worldPerPixelY } = this._worldPerPixel(eye, target);
+      const res = panKeepPoint({
+        eye,
+        target,
+        right: basis.right,
+        up: basis.up,
+        worldPerPixelX,
+        worldPerPixelY,
+        dxPx: dx,
+        dyPx: dy,
+      });
+      writeVec3(this.object.position, res.eye);
+      writeVec3(this.target, res.target);
+      if (typeof this.object.lookAt === "function") this.object.lookAt(this.target);
+      this.dispatchEvent({ type: "change" });
+    }
+  }
+
+  _endGesture(event) {
+    if (this._state === "none") {
+      if (this.mouseButtons) this.mouseButtons.LEFT = -1;
+      return;
+    }
+    if (event && this._pointerId !== null && event.pointerId != null && event.pointerId !== this._pointerId) {
+      return;
+    }
+    const pid = this._pointerId;
+    this._state = "none";
+    this._pointerId = null;
+    this._pivot = null;
+    if (this.mouseButtons) this.mouseButtons.LEFT = -1;
+    if (pid !== null && typeof this.domElement?.releasePointerCapture === "function") {
+      try {
+        this.domElement.releasePointerCapture(pid);
+      } catch (_e) {
+        // Ignore if already released.
+      }
+    }
+    this.dispatchEvent({ type: "end" });
+  }
+
+  _handleWheel(event) {
+    if (!this.enabled || !this.object || event.ctrlKey) return;
+    const deltaY = Number(event.deltaY) || 0;
+    if (deltaY === 0) return;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    const zoomFactor = deltaY < 0 ? 0.9 : 1 / 0.9;
+    const pivot = this._resolvePivot(event);
+    const res = zoomAtCursor({
+      eye: this.object.position,
+      target: this.target,
+      pivot,
+      zoomFactor,
+      minDistance: this.minDistance,
+      maxDistance: this.maxDistance,
+    });
+    writeVec3(this.object.position, res.eye);
+    writeVec3(this.target, res.target);
+    if (typeof this.object.lookAt === "function") this.object.lookAt(this.target);
+    this.dispatchEvent({ type: "change" });
+  }
+
+  update() {
+    if (this.object && typeof this.object.lookAt === "function") {
+      this.object.lookAt(this.target);
+    }
+    return false;
+  }
+
+  addEventListener(type, listener) {
+    if (!type || typeof listener !== "function") return;
+    let set = this._listeners.get(type);
+    if (!set) {
+      set = new Set();
+      this._listeners.set(type, set);
+    }
+    set.add(listener);
+  }
+
+  removeEventListener(type, listener) {
+    const set = this._listeners.get(type);
+    if (set) set.delete(listener);
+  }
+
+  dispatchEvent(event) {
+    const type = typeof event === "string" ? event : event?.type;
+    if (!type) return;
+    const payload = typeof event === "string" ? { type, target: this } : { target: this, ...event };
+    const set = this._listeners.get(type);
+    if (!set) return;
+    for (const fn of [...set]) fn.call(this, payload);
+  }
+
+  dispose() {
+    this._endGesture();
+    if (this.domElement && typeof this.domElement.removeEventListener === "function") {
+      this.domElement.removeEventListener("pointerdown", this._onPointerDown, false);
+      this.domElement.removeEventListener("pointermove", this._onPointerMove, false);
+      this.domElement.removeEventListener("pointerup", this._onPointerUp, false);
+      this.domElement.removeEventListener("pointercancel", this._onPointerCancel, false);
+      this.domElement.removeEventListener("lostpointercapture", this._onPointerCancel, false);
+      this.domElement.removeEventListener("wheel", this._onWheel);
+      this.domElement.removeEventListener("contextmenu", this._onContextMenu, false);
+    }
+    this._listeners.clear();
+  }
 }
 
-// Attach wheel zoom-to-cursor and pointercancel / lostpointercapture cleanup to the viewport.
-export function bindCadNavigation({
-  canvas,
-  camera,
-  controls,
-  syncCameras,
-  hitWorkplane,
-  hideMarquee,
-}) {
+// Attach cursor-pivot lookup and pointercancel / lostpointercapture / blur cleanup to the viewport.
+export function bindCadNavigation({ canvas, controls, hitWorkplane, hideMarquee, win }) {
   if (!canvas) return;
+  if (controls && typeof hitWorkplane === "function") {
+    controls.getPivot = hitWorkplane;
+  }
 
-  const cancelActiveGesture = () => {
-    if (S.marqueeOrigin && typeof hideMarquee === "function") {
-      hideMarquee();
+  const cancelActiveGesture = (event) => {
+    const isForeignPointer =
+      event &&
+      event.type !== "blur" &&
+      controls &&
+      controls._state !== "none" &&
+      controls._pointerId !== null &&
+      event.pointerId != null &&
+      event.pointerId !== controls._pointerId;
+    if (isForeignPointer) return;
+    if (S.marqueeOrigin && typeof hideMarquee === "function") hideMarquee();
+    if (controls) {
+      if (controls.mouseButtons) controls.mouseButtons.LEFT = -1;
+      if (typeof controls._endGesture === "function") {
+        controls._endGesture(event?.type === "blur" ? undefined : event);
+      }
     }
     requestRender();
   };
   canvas.addEventListener("pointercancel", cancelActiveGesture);
   canvas.addEventListener("lostpointercapture", cancelActiveGesture);
-  window.addEventListener("blur", cancelActiveGesture);
-
-  canvas.addEventListener(
-    "wheel",
-    (event) => {
-      if (event.ctrlKey || !hitWorkplane || !controls || !camera) return;
-      const wp = hitWorkplane(event);
-      if (!wp) return;
-      const cam = camera();
-      const factor = event.deltaY < 0 ? 0.92 : 1.08;
-      const dist = Math.hypot(
-        cam.position.x - controls.target.x,
-        cam.position.y - controls.target.y,
-        cam.position.z - controls.target.z,
-      );
-      if (dist <= (controls.minDistance || 0.5) * 1.05 && factor < 1) return;
-      if (dist >= (controls.maxDistance || 2_000_000) * 0.95 && factor > 1) return;
-      const blend = event.deltaY < 0 ? 0.08 : -0.08;
-      const dx = (wp.x_mm - controls.target.x) * blend;
-      const dy = (wp.y_mm - controls.target.y) * blend;
-      if (Math.hypot(dx, dy) > 1e-2 && Math.hypot(dx, dy) < dist * 2) {
-        cam.position.x += dx;
-        cam.position.y += dy;
-        controls.target.x += dx;
-        controls.target.y += dy;
-        syncCameras();
-      }
-    },
-    { passive: true },
-  );
+  const winTarget = win ?? (typeof window !== "undefined" ? window : null);
+  if (winTarget && typeof winTarget.addEventListener === "function") {
+    winTarget.addEventListener("blur", cancelActiveGesture);
+  }
 }

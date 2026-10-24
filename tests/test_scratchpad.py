@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import base64
 import json
+import os
 import re
+import shutil
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 from threading import Thread
@@ -253,7 +257,6 @@ def test_vendor_three_is_served_and_confined(server: ScratchpadServer) -> None:
     for rel in (
         "build/three.module.min.js",
         "build/three.core.min.js",
-        "examples/jsm/controls/OrbitControls.js",
         "examples/jsm/lines/LineSegments2.js",
         "examples/jsm/lines/LineSegmentsGeometry.js",
         "examples/jsm/lines/LineMaterial.js",
@@ -263,7 +266,12 @@ def test_vendor_three_is_served_and_confined(server: ScratchpadServer) -> None:
             assert response.headers["Content-Type"].startswith("text/javascript")
             assert "immutable" in response.headers.get("Cache-Control", "")
             assert len(response.read()) > 100
-    for bad in ("/vendor/three/../server.py", "/vendor/three/missing.js", "/vendor/three/LICENSE"):
+    for bad in (
+        "/vendor/three/../server.py",
+        "/vendor/three/missing.js",
+        "/vendor/three/LICENSE",
+        "/vendor/three/examples/jsm/controls/OrbitControls.js",
+    ):
         with pytest.raises(HTTPError) as caught:
             urlopen(f"http://127.0.0.1:{port}{bad}")
         assert caught.value.code == 404
@@ -657,3 +665,69 @@ def test_render_svg_route_refuses_bad_parameters(server: ScratchpadServer) -> No
         assert content_type.startswith("application/json")
         payload = json.loads(body.decode("utf-8"))
         assert payload["code"] == "INVALID_ARGUMENT", query
+
+
+def _find_headless_browser() -> str | None:
+    for candidate in (
+        shutil.which("msedge"),
+        shutil.which("chromium"),
+        shutil.which("google-chrome"),
+        shutil.which("chrome"),
+        r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+    ):
+        if candidate and Path(candidate).is_file():
+            return str(candidate)
+    return None
+
+
+@pytest.mark.skipif(
+    os.environ.get("APECAD_HEADLESS_BROWSER") != "1",
+    reason="Opt-in local browser check (ADR 0022, ADR 0038); set APECAD_HEADLESS_BROWSER=1",
+)
+def test_headless_still_capture_returns_valid_png(
+    server: ScratchpadServer, tmp_path: Path
+) -> None:
+    browser = _find_headless_browser()
+    if browser is None:
+        pytest.skip("No local Chromium/Edge binary found for APECAD_HEADLESS_BROWSER=1")
+    server.document.add_box((0.0, 0.0, 0.0), (1000.0, 800.0, 500.0), label="blk")
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/?capture=1"
+    dom_out = tmp_path / "dom.html"
+    err_out = tmp_path / "stderr.log"
+    with dom_out.open("wb") as out_f, err_out.open("wb") as err_f:
+        proc = subprocess.Popen(
+            [
+                browser,
+                "--headless=new",
+                "--disable-gpu",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-extensions",
+                f"--user-data-dir={tmp_path / 'profile'}",
+                "--virtual-time-budget=2000",
+                "--dump-dom",
+                url,
+            ],
+            stdout=out_f,
+            stderr=err_f,
+        )
+        try:
+            proc.wait(timeout=20)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+    dom_text = dom_out.read_text(encoding="utf-8", errors="replace")
+    match = re.search(r'data-apecad-still="data:image/png;base64,([A-Za-z0-9+/=]+)"', dom_text)
+    assert match is not None, (
+        f"Still data URL not found in DOM dump: {err_out.read_text(errors='replace')[:400]}"
+    )
+    raw_png = base64.b64decode(match.group(1))
+    assert raw_png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(raw_png) > 200
+    assert "blk" in dom_text
+
+
+

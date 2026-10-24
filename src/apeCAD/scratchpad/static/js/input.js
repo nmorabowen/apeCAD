@@ -93,9 +93,12 @@ export function bindCanvas() {
     if (event.button === 1 || (event.button === 0 && event.altKey)) {
       releaseNamedViewForOrbit();
     }
-    if (event.button !== 0) return;
+    if (event.button !== 0 || event.altKey) {
+      pointerDown = null;
+      return;
+    }
     pointerDown = { x: event.clientX, y: event.clientY };
-    if (S.tool === "select" && !event.altKey) {
+    if (S.tool === "select") {
       S.marqueeOrigin = { x: event.clientX, y: event.clientY };
       canvas.setPointerCapture(event.pointerId);
     }
@@ -120,6 +123,14 @@ export function bindCanvas() {
     if (event.altKey || moved > 5) return;
     onClick(event);
   });
+  const resetPointerState = () => {
+    controls.mouseButtons.LEFT = -1;
+    pointerDown = null;
+    if (S.marqueeOrigin) hideMarquee();
+  };
+  canvas.addEventListener("pointercancel", resetPointerState);
+  canvas.addEventListener("lostpointercapture", resetPointerState);
+  window.addEventListener("blur", resetPointerState);
   canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
