@@ -57,7 +57,16 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "apeCAD" = ["py.typed"]
-"apeCAD.scratchpad" = ["static/*", "static/js/*", "static/css/*", "static/fonts/*"]
+"apeCAD.scratchpad" = [
+    "static/*",
+    "static/js/*",
+    "static/css/*",
+    "static/fonts/*",
+    "static/section/*",
+    "static/vendor/three/build/*.js",
+    "static/vendor/three/examples/jsm/controls/*.js",
+    "static/vendor/three/examples/jsm/lines/*.js",
+]
 
 [tool.pytest.ini_options]
 minversion = "8.0"

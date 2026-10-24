@@ -1,4 +1,4 @@
-// Cursor-to-workplane hits with node snap, grid snap, ORTHO, and typed lengths.
+// Cursor-to-workplane hits with node snap, cover-ring snap, grid snap, ORTHO, and typed lengths.
 import * as THREE from "three";
 import { S } from "./state.js";
 import { camera } from "./camera.js";
@@ -21,6 +21,46 @@ export function nearestPoint(xyz, tolerance = SNAP_APERTURE_MM) {
   return best;
 }
 
+export function nearestCoverSnap(xyz, tolerance = SNAP_APERTURE_MM) {
+  let best = null;
+  let bestDist = tolerance;
+  for (const guide of S.sceneState.cover_guides || []) {
+    for (const ring of [guide.bar_centre_ring_mm, guide.cover_ring_mm]) {
+      if (!ring) continue;
+      for (const [x, y] of ring) {
+        const dist = Math.hypot(x - xyz.x_mm, y - xyz.y_mm);
+        if (dist <= bestDist) {
+          best = { x_mm: x, y_mm: y, z_mm: 0, dist };
+          bestDist = dist;
+        }
+      }
+    }
+  }
+  if (best) return best;
+  let segDist = tolerance * 0.5;
+  for (const guide of S.sceneState.cover_guides || []) {
+    const ring = guide.bar_centre_ring_mm;
+    if (!ring || ring.length < 2) continue;
+    for (let i = 0; i < ring.length; i += 1) {
+      const [ax, ay] = ring[i];
+      const [bx, by] = ring[(i + 1) % ring.length];
+      const dx = bx - ax;
+      const dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      if (len2 < 1e-6) continue;
+      const u = Math.max(0, Math.min(1, ((xyz.x_mm - ax) * dx + (xyz.y_mm - ay) * dy) / len2));
+      const px = ax + u * dx;
+      const py = ay + u * dy;
+      const dist = Math.hypot(px - xyz.x_mm, py - xyz.y_mm);
+      if (dist <= segDist) {
+        best = { x_mm: px, y_mm: py, z_mm: 0, dist };
+        segDist = dist;
+      }
+    }
+  }
+  return best;
+}
+
 export function rawHit(event) {
   const raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(ndcFromEvent(event), camera());
@@ -35,6 +75,11 @@ export function applySnaps(raw) {
   if (!raw) return null;
   if (S.snapOn) {
     const node = nearestPoint(raw);
+    const coverPt = nearestCoverSnap(raw);
+    const nodeDist = node ? Math.hypot(node.x_mm - raw.x_mm, node.y_mm - raw.y_mm, node.z_mm - raw.z_mm) : Infinity;
+    if (coverPt && coverPt.dist <= nodeDist) {
+      return { x_mm: coverPt.x_mm, y_mm: coverPt.y_mm, z_mm: 0, snap: "node" };
+    }
     if (node) {
       return {
         x_mm: node.x_mm,

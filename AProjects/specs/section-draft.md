@@ -1,6 +1,6 @@
 # Spec — `apeCAD.section-draft` v1
 
-**Status:** Proposed (2026-10-09)
+**Status:** Implemented (2026-10-23)
 **ADRs:** 0006, 0023, 0024, 0025, 0026
 
 The one text of the section-draft contract (ADR 0025, plan decision P1). apeConcrete
@@ -107,21 +107,47 @@ spelling (`f"Ø{d:g}"`):
 US bars (`#3` to `#18`) are not in v1. Adding them is additive (rule: an optional field or
 value added keeps the version).
 
-## Seed (`apeCAD.section-seed` v1)
+## Seed (`apeCAD.section-seed` v1, stage C10)
 
-The same `section` block with list indices in place of ids, under
-`{"schema": "apeCAD.section-seed", "version": 1, "units": "mm", "section": {...}}`.
-apeConcrete writes it; apeCAD alone turns it into ops (plan stage C10). The field-level text is
-written when C10 starts, by amending this spec.
+The same `section` block with 0-based list indices in place of entity ids, under:
 
-## Writer and reader (stage C4)
+```json
+{
+  "schema": "apeCAD.section-seed",
+  "version": 1,
+  "units": "mm",
+  "frame": {"x": "right", "y": "up", "origin": "world"},
+  "section": {
+    "concrete_faces": [{"label": null, "material": "concrete", "role": "solid", "ring_mm": [[x, y], ...]}],
+    "wall_legs": [{"label": null, "start_mm": [x, y], "end_mm": [x, y], "thickness_mm": 300.0,
+                   "concrete_face_id": 0,
+                   "horizontal": {"designation": "Ø12", "spacing_mm": 250.0, "curtains": 2}}],
+    "bars": [{"label": null, "x_mm": x, "y_mm": y, "diameter_mm": 16.0, "designation": "Ø16"}],
+    "hoops": [{"label": null, "bar_ids": [0, 1, 2, 3], "diameter_mm": 10.0, "designation": "Ø10",
+               "spacing_mm": 100.0, "hooks": "135"}],
+    "crossties": [{"label": null, "bar_a_id": 0, "bar_b_id": 2, "diameter_mm": 10.0, "designation": "Ø10",
+                   "spacing_mm": 100.0, "hooks": "135-90"}],
+    "cover_guides": [{"face_id": 0, "cover_mm": 25.0, "tie_diameter_mm": 10.0, "bar_diameter_mm": 16.0}]
+  }
+}
+```
+
+- `concrete_face_id` in `wall_legs[]` and `face_id` in `cover_guides[]` are 0-based indices into `section.concrete_faces[]`.
+- `bar_ids` in `hoops[]` and `bar_a_id` / `bar_b_id` in `crossties[]` are 0-based indices into `section.bars[]`.
+- Items in `concrete_faces[]`, `wall_legs[]`, `bars[]`, `hoops[]`, `crossties[]`, and `cover_guides[]` omit their own `id` (or carry a 0-based index that `document_from_section_seed` ignores).
+- `document_from_section_seed(seed)` validates `schema == "apeCAD.section-seed"`, `version == 1`, `units == "mm"`, `frame` (when given), all 0-based cross-references, and `diameter_mm` against `designation` (rel 1e-9), then replays the section into a fresh `Document` (`AddSectionOutline`, `AddWallLeg`, `SetLegReinforcement`, `SetCover`, `AddBar`, `AddHoop`, `AddCrosstie`).
+- `section_seed(document)` projects a `Document` into `apeCAD.section-seed` v1, mapping entity ids to 0-based indices in entity-id order.
+- `apeCAD.scratchpad.transport.handle` accepts `action: "seed"` with `payload` set to a seed dict, and `action: "load"` also accepts `payload.schema == "apeCAD.section-seed"`.
+
+## Writer and reader (stages C4 & C10)
 
 Outside the hashed block, so the contract is unchanged.
 
 | Name | Home | Does |
 |---|---|---|
-| `DRAFT_SCHEMA`, `DRAFT_SCHEMA_VERSION`, `project_section(entities)`, `compare_sections` | `apeCAD/section/draft.py` | The block from the entities, and the P9 comparison. Takes entities, never the `Document` (the `section/` layering rule) |
-| `section_block(document)`, `section_draft(document, *, commit="auto")`, `document_from_draft(draft)` | `apeCAD/section_draft.py` | The same over a `Document`. It sits above `document.py`, and nothing below imports it (`tests/test_architecture.py`) |
+| `DRAFT_SCHEMA`, `DRAFT_SCHEMA_VERSION`, `project_section(entities)`, `compare_sections` | `apeCAD/section/draft.py` | The draft block from the entities, and the P9 comparison. Takes entities, never the `Document` (the `section/` layering rule) |
+| `SEED_SCHEMA`, `SEED_SCHEMA_VERSION`, `project_seed_section(entities)`, `require_seed_header` | `apeCAD/section/seed.py` (re-exported in `apeCAD/section/draft.py`) | The seed block and header validation (ADR 0025 Decision 8) |
+| `section_block(document)`, `section_draft(document, *, commit="auto")`, `document_from_draft(draft)`, `section_seed(document)`, `document_from_section_seed(seed)` | `apeCAD/section_draft.py` | The same over a `Document`. It sits above `document.py`, and nothing below imports it (`tests/test_architecture.py`) |
 | `get_section_draft` tool, `GET /api/section/draft` | `agent/tools.py`, `scratchpad/server.py` | `{ok, revision, draft}`, read-only |
 
 - Lists are in entity-id order. Rings are the stored ones, which the ops keep CCW (faces) and

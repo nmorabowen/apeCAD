@@ -1,6 +1,7 @@
 // Rubber-band previews (ghosts) for the active tool, and snap markers.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { requestRender } from "./store.js";
 import { activeLength, setCoords, sidesValue } from "./cmdline.js";
 import { addCurve, addFaceGraphic, addVolume } from "./draw.js";
 import {
@@ -14,6 +15,7 @@ import {
 import { isGridSnap } from "./grid.js";
 import { solveBreak, solveTrimOrExtend } from "./modify.js";
 import { pickEntity } from "./pick.js";
+import { updateSectionGhost } from "./section-ghosts.js";
 import {
   SNAP_APERTURE_MM,
   applyLength,
@@ -24,7 +26,7 @@ import {
   rawHit,
 } from "./snap.js";
 import { INK } from "./theme.js";
-import { ghosts } from "./viewport.js";
+import { disposeObject3D, ghosts } from "./viewport.js";
 
 function ghostLine(a, b) {
   ghostStroke(a, b, INK.ghost, true);
@@ -139,6 +141,8 @@ export function currentEnd(event) {
 }
 
 export function updateGhost(event) {
+  requestRender();
+  disposeObject3D(ghosts);
   ghosts.clear();
   S.ghostDims = [];
   if (!event) {
@@ -147,6 +151,10 @@ export function updateGhost(event) {
   }
   const hit = hitWorkplane(event);
   if (hit && (hit.snap === "node" || isGridSnap(hit.snap))) drawSnapMarker(hit, hit.snap);
+  if (updateSectionGhost(event, hit)) {
+    setCoords(hit);
+    return;
+  }
   if ((S.tool === "trim" || S.tool === "extend") && !S.pending) {
     const picked = pickEntity(event);
     const preview = picked ? solveTrimOrExtend(picked, hit, S.tool) : null;

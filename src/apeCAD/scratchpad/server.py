@@ -28,6 +28,8 @@ from apeCAD.render.query import export_from_query, render_from_query
 from apeCAD.scratchpad.payload import scene_payload
 from apeCAD.scratchpad.transport import handle as transport_handle
 from apeCAD.scratchpad.transport import refusal as transport_refusal
+from apeCAD.section.draft import DRAFT_SCHEMA, SEED_SCHEMA
+from apeCAD.section_draft import document_from_draft, document_from_section_seed
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_HOST = "127.0.0.1"
@@ -37,6 +39,7 @@ PORT_SPAN = 16
 _JS_MODULE = re.compile(r"/js/([a-z0-9_-]+\.js)")
 _STYLESHEET = re.compile(r"/css/([a-z0-9_-]+\.css)")
 _FONT = re.compile(r"/fonts/([A-Za-z0-9_-]+\.woff2)")
+_SECTION_ASSET = re.compile(r"/section/([a-z0-9_-]+\.(?:js|css))")
 
 
 def _port_in_use(host: str, port: int) -> bool:
@@ -101,6 +104,19 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         if parsed.path == "/app.js":
             self._send_file(STATIC_DIR / "app.js", "text/javascript; charset=utf-8")
             return
+        if parsed.path in ("/section", "/section/", "/section/index.html"):
+            self._send_file(STATIC_DIR / "section" / "index.html", "text/html; charset=utf-8")
+            return
+        sec_asset = _SECTION_ASSET.fullmatch(parsed.path)
+        if sec_asset is not None:
+            name = sec_asset.group(1)
+            mime = (
+                "text/css; charset=utf-8"
+                if name.endswith(".css")
+                else "text/javascript; charset=utf-8"
+            )
+            self._send_file(STATIC_DIR / "section" / name, mime)
+            return
         module = _JS_MODULE.fullmatch(parsed.path)
         if module is not None:
             self._send_file(STATIC_DIR / "js" / module.group(1), "text/javascript; charset=utf-8")
@@ -123,6 +139,16 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             name, mime = static_images[parsed.path]
             self._send_file(STATIC_DIR / name, mime)
             return
+        if parsed.path.startswith("/vendor/three/") and parsed.path.endswith(".js"):
+            vendor_root = (STATIC_DIR / "vendor" / "three").resolve()
+            candidate = (STATIC_DIR / parsed.path.lstrip("/")).resolve()
+            if candidate.is_relative_to(vendor_root) and candidate.is_file():
+                self._send_file(
+                    candidate,
+                    "text/javascript; charset=utf-8",
+                    cache_control="public, max-age=31536000, immutable",
+                )
+                return
         if parsed.path.startswith("/api/"):
             if self._detached():
                 return
@@ -215,7 +241,7 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         elif path == "/api/reset":
             session.replace(Document(), expect_revision=self._expect_revision())
         elif path == "/api/load":
-            session.replace(Document.from_dict(_document_body(self._read_json_object())))
+            session.replace(_load_document(self._read_json_object()))
         else:
             return False
         self._send_json(200, self._scene())
@@ -314,17 +340,30 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_file(self, path: Path, content_type: str) -> None:
+    def _send_file(
+        self,
+        path: Path,
+        content_type: str,
+        *,
+        cache_control: str = "no-store, max-age=0",
+    ) -> None:
         if not path.is_file():
             self._send_json(404, {"error": f"missing static file {path.name}"})
             return
-        self._send_bytes(200, path.read_bytes(), content_type)
+        self._send_bytes(200, path.read_bytes(), content_type, cache_control=cache_control)
 
-    def _send_bytes(self, status: int, body: bytes, content_type: str) -> None:
+    def _send_bytes(
+        self,
+        status: int,
+        body: bytes,
+        content_type: str,
+        *,
+        cache_control: str = "no-store, max-age=0",
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("Cache-Control", cache_control)
         self.end_headers()
         self.wfile.write(body)
 
@@ -364,6 +403,7 @@ def serve(
     open_browser: bool = True,
     port_span: int = 1,
     root: Path | None = None,
+    section: bool = False,
 ) -> ScratchpadServer:
     """Bind one scratchpad instance. Default port is preferred, not a machine lock.
 
@@ -378,7 +418,8 @@ def serve(
         root=_session_root() if root is None else root,
         port_span=port_span,
     )
-    url = f"http://{host}:{server.server_address[1]}"
+    suffix = "/section" if section else ""
+    url = f"http://{host}:{server.server_address[1]}{suffix}"
     print(f"apeCAD scratchpad at {url}", flush=True)
     if open_browser:
         webbrowser.open(url)
@@ -396,6 +437,9 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument(
+        "--section", action="store_true", help="open the 2-D section editor (/section)"
+    )
+    parser.add_argument(
         "--root",
         default=None,
         help="work-folder root that /api/identity reports "
@@ -410,9 +454,16 @@ def main(argv: list[str] | None = None) -> None:
             open_browser=not args.no_browser,
             port_span=PORT_SPAN,
             root=root,
+            section=args.section,
         )
     else:
-        server = serve(args.host, args.port, open_browser=not args.no_browser, root=root)
+        server = serve(
+            args.host,
+            args.port,
+            open_browser=not args.no_browser,
+            root=root,
+            section=args.section,
+        )
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -428,3 +479,13 @@ def _document_body(payload: dict[str, object]) -> dict[str, object]:
         source = cast(dict[object, object], nested)
         return {key: value for key, value in source.items() if isinstance(key, str)}
     return payload
+
+
+def _load_document(payload: dict[str, object]) -> Document:
+    """Decode `/api/load` from a document, scene wrapper, section-draft, or section-seed."""
+    if payload.get("schema") == DRAFT_SCHEMA:
+        doc, _ = document_from_draft(payload)
+        return doc
+    if payload.get("schema") == SEED_SCHEMA:
+        return document_from_section_seed(payload)
+    return Document.from_dict(_document_body(payload))

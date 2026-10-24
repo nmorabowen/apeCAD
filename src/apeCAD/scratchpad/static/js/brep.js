@@ -141,7 +141,13 @@ export function brepRoots() {
     .sort((a, b) => (rank[a.kind] ?? 9) - (rank[b.kind] ?? 9) || a.id - b.id);
 }
 
-export function indexBrep() {
+let _indexedSceneState = null;
+
+export function indexBrep(force = false) {
+  if (!force && _indexedSceneState === S.sceneState && S.brepRootOf.size > 0) {
+    return;
+  }
+  _indexedSceneState = S.sceneState;
   S.brepChildrenOf = new Map();
   S.brepParentsOf = new Map();
   S.brepRootOf = new Map();

@@ -1,5 +1,6 @@
 // Typed commands (Enter in the command line) and menu commands.
 import { S } from "./state.js";
+import { requestRender } from "./store.js";
 import { t } from "./strings.js";
 import { goNamedView, setProjectionMode, syncCameras } from "./camera.js";
 import {
@@ -27,7 +28,16 @@ import {
   finishPolyline,
   pendingChain,
 } from "./create.js";
-import { newDocument, openDocument, redoDocument, saveDocument, undoDocument } from "./docfile.js";
+import {
+  exportDxf,
+  exportSectionDraft,
+  exportSvg,
+  newDocument,
+  openDocument,
+  redoDocument,
+  saveDocument,
+  undoDocument,
+} from "./docfile.js";
 import { currentEnd, updateGhost } from "./ghosts.js";
 import {
   setDisplayUnit,
@@ -47,14 +57,27 @@ import { commitDelete } from "./modify.js";
 import { closeTreeMenu } from "./outliner.js";
 import { gridPrefsDialog, helpDialog, prefsDialog, syncPrefsForm } from "./prefs-ui.js";
 import { fromDisplay } from "./prefs.js";
+import { isSectionTool, onSectionEnter } from "./section-tools.js";
 import { selectAll } from "./selection.js";
 import { hitWorkplane } from "./snap.js";
 import { finishArray, finishMirror, finishMove, finishRotate } from "./transform.js";
 import { ghosts } from "./viewport.js";
 
 export async function commitWithEnter() {
+  const echoed = typedText();
+  if (isSectionTool(S.tool)) {
+    try {
+      if (await onSectionEnter(echoed)) return;
+    } catch (error) {
+      refuse(error);
+      S.pending = null;
+      ghosts.clear();
+      S.ghostDims = [];
+      requestRender();
+      return;
+    }
+  }
   if (!S.pending) {
-    const echoed = typedText();
     if (/^grid\s+auto$/i.test(echoed)) {
       appendLog(`${consolePrompt.textContent} ${echoed}`);
       setGridAuto(true);
@@ -140,7 +163,6 @@ export async function commitWithEnter() {
     }
     return;
   }
-  const echoed = typedText();
   if (echoed) appendLog(`${consolePrompt.textContent} ${echoed}`);
   try {
     if (S.pending.kind === "polyline") {
@@ -227,6 +249,8 @@ export async function commitWithEnter() {
     refuse(error);
     S.pending = null;
     ghosts.clear();
+    S.ghostDims = [];
+    requestRender();
   }
 }
 
@@ -241,6 +265,9 @@ function runCommand(cmd) {
   if (cmd === "open" || cmd === "import") return openDocument();
   if (cmd === "save") return saveDocument(false);
   if (cmd === "save-as" || cmd === "export") return saveDocument(true);
+  if (cmd === "export-draft") return exportSectionDraft().catch((error) => refuse(error));
+  if (cmd === "export-svg") return exportSvg().catch((error) => refuse(error));
+  if (cmd === "export-dxf") return exportDxf().catch((error) => refuse(error));
   if (cmd === "prefs") {
     syncPrefsForm();
     prefsDialog.showModal();

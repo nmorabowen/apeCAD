@@ -1,4 +1,6 @@
-// The Z-up view cube: its own small renderer, face labels, and click-to-view picking.
+// Zero-WebGL 26-zone SVG ViewCube + ground compass ring + drag-to-orbit + 90-degree roll
+// buttons (ADR 0037). Ported from apeGmshViewer/src/renderer/viewcube.ts. Replaces the second
+// WebGLRenderer so apeCAD uses a single WebGL context.
 import * as THREE from "three";
 import { S } from "./state.js";
 import {
@@ -9,173 +11,327 @@ import {
   goToView,
   lookAtScene,
   namedViewFromDir,
+  releaseNamedViewForOrbit,
+  syncCameras,
   syncViewMenu,
 } from "./camera.js";
 import { setHint } from "./cmdline.js";
+import { headingBasis, orbitAroundCursor, vDot } from "./navigation.js";
 import { t } from "./strings.js";
-import { INK, chromeColors } from "./theme.js";
-import { ISO_DIR, WORLD_UP, viewUp } from "./viewport.js";
+import { ISO_DIR, WORLD_UP, controls, viewUp } from "./viewport.js";
 
-const cubeCanvas = document.getElementById("viewcube");
-const cubeRenderer = new THREE.WebGLRenderer({
-  canvas: cubeCanvas,
-  antialias: true,
-  alpha: true,
-});
+const SVG_NS = "http://www.w3.org/2000/svg";
+const HALF = 0.72;
+const BEVEL = 0.56;
+const CX = 60;
+const CY = 60;
+const SCALE = 38;
 
-cubeRenderer.setPixelRatio(window.devicePixelRatio);
-cubeRenderer.setClearAlpha(0);
-const cubeScene = new THREE.Scene();
-const cubeCam = new THREE.OrthographicCamera(-1.35, 1.35, 1.35, -1.35, 0.1, 20);
-cubeCam.up.copy(WORLD_UP);
-const cubeGroup = new THREE.Group();
-cubeScene.add(cubeGroup);
+// 6 faces of the Z-up cube, each defined by its outward normal `n`, tangent `u`, bitangent `v`,
+// and uppercase label. Subdividing (u, v) on [-1, -BEVEL, +BEVEL, +1]^2 produces 1 center
+// face zone + 4 edge bevel strips + 4 corner bevel squares = 26 discrete orientation zones.
+const FACES = [
+  { id: "top", label: "TOP", n: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
+  { id: "bottom", label: "BOTTOM", n: [0, 0, -1], u: [1, 0, 0], v: [0, -1, 0] },
+  { id: "front", label: "FRONT", n: [0, -1, 0], u: [1, 0, 0], v: [0, 0, 1] },
+  { id: "back", label: "BACK", n: [0, 1, 0], u: [-1, 0, 0], v: [0, 0, 1] },
+  { id: "right", label: "RIGHT", n: [1, 0, 0], u: [0, 1, 0], v: [0, 0, 1] },
+  { id: "left", label: "LEFT", n: [-1, 0, 0], u: [0, -1, 0], v: [0, 0, 1] },
+];
 
-// Face colours and type follow the chrome tokens; restyleCube() repaints them.
-function makeFaceTexture(label) {
-  const colors = chromeColors();
-  const canvasFace = document.createElement("canvas");
-  canvasFace.width = 256;
-  canvasFace.height = 256;
-  const ctx = canvasFace.getContext("2d");
-  ctx.fillStyle = colors.surface;
-  ctx.fillRect(0, 0, 256, 256);
-  ctx.strokeStyle = colors.line;
-  ctx.lineWidth = 10;
-  ctx.strokeRect(6, 6, 244, 244);
-  ctx.fillStyle = colors.text;
-  ctx.font = `600 56px ${colors.font}`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(label, 128, 128);
-  const texture = new THREE.CanvasTexture(canvasFace);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+const COMPASS_CARDINALS = [
+  { label: "N", angle: Math.PI / 2, dir: [0, 1, 0] },
+  { label: "E", angle: 0, dir: [1, 0, 0] },
+  { label: "S", angle: -Math.PI / 2, dir: [0, -1, 0] },
+  { label: "W", angle: Math.PI, dir: [-1, 0, 0] },
+];
+
+const cubeHost = document.getElementById("viewcube");
+const svgEl = document.createElementNS(SVG_NS, "svg");
+svgEl.setAttribute("viewBox", "0 0 120 120");
+svgEl.setAttribute("class", "vc-svg");
+if (cubeHost) {
+  cubeHost.replaceChildren(svgEl);
 }
 
-const CUBE_FACE = 1.12;
-const cubeFaces = [];
-
-function addCubeFace(nx, ny, nz, ux, uy, uz, label) {
-  const mesh = new THREE.Mesh(
-    new THREE.PlaneGeometry(CUBE_FACE, CUBE_FACE),
-    new THREE.MeshBasicMaterial({ map: makeFaceTexture(label) }),
-  );
-  mesh.userData.label = label;
-  cubeFaces.push(mesh);
-  const normal = new THREE.Vector3(nx, ny, nz);
-  mesh.position.copy(normal).multiplyScalar(CUBE_FACE / 2);
-  mesh.up.set(ux, uy, uz);
-  mesh.lookAt(mesh.position.clone().add(normal));
-  cubeGroup.add(mesh);
+function facePoint3D(face, su, sv) {
+  return {
+    x: (face.n[0] + su * face.u[0] + sv * face.v[0]) * HALF,
+    y: (face.n[1] + su * face.u[1] + sv * face.v[1]) * HALF,
+    z: (face.n[2] + su * face.u[2] + sv * face.v[2]) * HALF,
+  };
 }
-addCubeFace(1, 0, 0, 0, 0, 1, "RIGHT");
-addCubeFace(-1, 0, 0, 0, 0, 1, "LEFT");
-addCubeFace(0, 1, 0, 0, 0, 1, "BACK");
-addCubeFace(0, -1, 0, 0, 0, 1, "FRONT");
-addCubeFace(0, 0, 1, 0, 1, 0, "TOP");
-addCubeFace(0, 0, -1, 0, 1, 0, "BOTTOM");
 
-const cubePick = new THREE.Mesh(
-  new THREE.BoxGeometry(CUBE_FACE, CUBE_FACE, CUBE_FACE),
-  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
-);
-cubeGroup.add(cubePick);
-const cubeEdges = new THREE.LineSegments(
-  new THREE.EdgesGeometry(cubePick.geometry),
-  new THREE.LineBasicMaterial(),
-);
-cubeGroup.add(cubeEdges);
+function zoneDirKey(face, iu, iv) {
+  const su = iu === 0 ? -1 : iu === 2 ? 1 : 0;
+  const sv = iv === 0 ? -1 : iv === 2 ? 1 : 0;
+  const dx = Math.sign(face.n[0] + su * face.u[0] + sv * face.v[0]);
+  const dy = Math.sign(face.n[1] + su * face.u[1] + sv * face.v[1]);
+  const dz = Math.sign(face.n[2] + su * face.u[2] + sv * face.v[2]);
+  return `${dx},${dy},${dz}`;
+}
 
-// Repaint the faces and edges after a theme or canvas change, and once the UI font loads.
-export function restyleCube() {
-  for (const mesh of cubeFaces) {
-    mesh.material.map.dispose();
-    mesh.material.map = makeFaceTexture(mesh.userData.label);
-    mesh.material.needsUpdate = true;
+function projectPoint(pt, right, up, forward) {
+  const sx = CX + vDot(pt, right) * SCALE;
+  const sy = CY - vDot(pt, up) * SCALE;
+  const depth = -vDot(pt, forward);
+  return { x: sx, y: sy, depth };
+}
+
+function ptsAttr(pts) {
+  return pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+}
+
+function snapToDirKey(dirKey) {
+  const parts = String(dirKey || "").split(",").map(Number);
+  if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return;
+  const dir = new THREE.Vector3(parts[0], parts[1], parts[2]);
+  if (dir.lengthSq() < 1e-6) return;
+  dir.normalize();
+  const name = namedViewFromDir(dir);
+  if (name) {
+    goNamedView(name);
+    return;
   }
-  cubeEdges.material.color.setHex(INK.ghost);
+  S.namedView = null;
+  if (S.projection === "orthographic") {
+    S.projection = "parallel";
+    S.useOrtho = true;
+    bindProjectionCamera();
+  }
+  viewUp.copy(WORLD_UP);
+  goToView(dir, { up: WORLD_UP.clone() });
+  syncViewMenu();
+}
+
+let hoveredZoneKey = null;
+
+export function restyleCube() {
+  syncCube();
 }
 
 export function syncCube() {
+  if (!svgEl) return;
   const cam = camera();
-  cubeCam.up.copy(cam.up);
-  cubeCam.position.set(0, 0, 0);
-  cubeCam.quaternion.copy(cam.quaternion);
-  cubeCam.translateZ(3.2);
-  cubeCam.updateMatrixWorld();
-  const size = Math.max(cubeCanvas.clientWidth, 1);
-  cubeRenderer.setSize(size, size, false);
-  cubeRenderer.render(cubeScene, cubeCam);
-}
+  const eye = cam.position;
+  const tgt = controls.target;
+  const forwardVec = {
+    x: tgt.x - eye.x,
+    y: tgt.y - eye.y,
+    z: tgt.z - eye.z,
+  };
+  const { right, up, forward } = headingBasis(forwardVec, {
+    x: cam.up.x,
+    y: cam.up.y,
+    z: cam.up.z,
+  });
 
-function pickCube(event) {
-  const rect = cubeCanvas.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) return null;
-  const ndc = new THREE.Vector2(
-    ((event.clientX - rect.left) / rect.width) * 2 - 1,
-    -((event.clientY - rect.top) / rect.height) * 2 + 1,
-  );
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(ndc, cubeCam);
-  const hits = raycaster.intersectObject(cubePick, true);
-  return hits[0] || null;
-}
+  const nodes = [];
 
-function viewDirFromCubePoint(point) {
-  const local = cubePick.worldToLocal(point.clone());
-  const snap = (value) => (Math.abs(value) < 0.42 ? 0 : Math.sign(value));
-  let x = snap(local.x);
-  let y = snap(local.y);
-  let z = snap(local.z);
-  if (x === 0 && y === 0 && z === 0) {
-    const ax = Math.abs(local.x);
-    const ay = Math.abs(local.y);
-    const az = Math.abs(local.z);
-    if (ax >= ay && ax >= az) x = Math.sign(local.x) || 1;
-    else if (ay >= az) y = Math.sign(local.y) || 1;
-    else z = Math.sign(local.z) || 1;
+  // Ground compass ring in z = -HALF * 1.05 plane.
+  const ringZ = -HALF * 1.05;
+  const ringR = 1.18;
+  const ringPts = [];
+  for (let i = 0; i <= 36; i += 1) {
+    const a = (i / 36) * Math.PI * 2;
+    ringPts.push(
+      projectPoint({ x: Math.cos(a) * ringR, y: Math.sin(a) * ringR, z: ringZ }, right, up, forward),
+    );
   }
-  return new THREE.Vector3(x, y, z).normalize();
+  const polyRing = document.createElementNS(SVG_NS, "polyline");
+  polyRing.setAttribute("class", "vc-ring");
+  polyRing.setAttribute("points", ptsAttr(ringPts));
+  nodes.push(polyRing);
+
+  for (const card of COMPASS_CARDINALS) {
+    const pos = projectPoint(
+      { x: Math.cos(card.angle) * (ringR + 0.22), y: Math.sin(card.angle) * (ringR + 0.22), z: ringZ },
+      right,
+      up,
+      forward,
+    );
+    const txt = document.createElementNS(SVG_NS, "text");
+    txt.setAttribute("class", "vc-compass-label");
+    txt.setAttribute("x", pos.x.toFixed(1));
+    txt.setAttribute("y", pos.y.toFixed(1));
+    txt.textContent = card.label;
+    nodes.push(txt);
+  }
+
+  // Sort visible cube faces back-to-front by camera-facing dot product.
+  const visibleFaces = [];
+  for (const face of FACES) {
+    const nVec = { x: face.n[0], y: face.n[1], z: face.n[2] };
+    // Face is visible when its outward normal points toward the camera (dot(n, -forward) > 0).
+    const facing = -vDot(nVec, forward);
+    if (facing <= 0.02) continue;
+    const center = projectPoint(facePoint3D(face, 0, 0), right, up, forward);
+    visibleFaces.push({ face, depth: center.depth, center });
+  }
+  visibleFaces.sort((a, b) => a.depth - b.depth);
+
+  const gridStops = [-1, -BEVEL, BEVEL, 1];
+  for (const { face, center } of visibleFaces) {
+    // Full face background polygon.
+    const corners = [
+      projectPoint(facePoint3D(face, -1, -1), right, up, forward),
+      projectPoint(facePoint3D(face, 1, -1), right, up, forward),
+      projectPoint(facePoint3D(face, 1, 1), right, up, forward),
+      projectPoint(facePoint3D(face, -1, 1), right, up, forward),
+    ];
+    const bg = document.createElementNS(SVG_NS, "polygon");
+    bg.setAttribute("class", "vc-face-bg");
+    bg.setAttribute("points", ptsAttr(corners));
+    nodes.push(bg);
+
+    // 9 interactive bevel zones (center face + 4 edge strips + 4 corner squares).
+    for (let iu = 0; iu < 3; iu += 1) {
+      for (let iv = 0; iv < 3; iv += 1) {
+        const u0 = gridStops[iu];
+        const u1 = gridStops[iu + 1];
+        const v0 = gridStops[iv];
+        const v1 = gridStops[iv + 1];
+        const zCorners = [
+          projectPoint(facePoint3D(face, u0, v0), right, up, forward),
+          projectPoint(facePoint3D(face, u1, v0), right, up, forward),
+          projectPoint(facePoint3D(face, u1, v1), right, up, forward),
+          projectPoint(facePoint3D(face, u0, v1), right, up, forward),
+        ];
+        const key = zoneDirKey(face, iu, iv);
+        const zone = document.createElementNS(SVG_NS, "polygon");
+        zone.setAttribute("class", key === hoveredZoneKey ? "vc-zone is-hovered" : "vc-zone");
+        zone.setAttribute("points", ptsAttr(zCorners));
+        zone.dataset.dirKey = key;
+        nodes.push(zone);
+      }
+    }
+
+    const labelEl = document.createElementNS(SVG_NS, "text");
+    labelEl.setAttribute("class", "vc-face-label");
+    labelEl.setAttribute("x", center.x.toFixed(1));
+    labelEl.setAttribute("y", center.y.toFixed(1));
+    labelEl.textContent = face.label;
+    nodes.push(labelEl);
+  }
+
+  svgEl.replaceChildren(...nodes);
 }
 
-let cubePointer = null;
+function stepRollAroundZ(deltaRad) {
+  const cam = camera();
+  const dx = cam.position.x - controls.target.x;
+  const dy = cam.position.y - controls.target.y;
+  if (S.namedView === "top" || S.namedView === "bottom" || Math.hypot(dx, dy) < 1e-3) {
+    const sign = cam.position.z >= controls.target.z ? 1 : -1;
+    viewUp.applyAxisAngle(WORLD_UP, deltaRad * sign).normalize();
+    cam.up.copy(viewUp);
+    cam.lookAt(controls.target);
+    syncCameras();
+    return;
+  }
+  releaseNamedViewForOrbit();
+  const res = orbitAroundCursor({
+    eye: cam.position,
+    target: controls.target,
+    pivot: controls.target,
+    yawDeltaRad: deltaRad,
+    pitchDeltaRad: 0,
+  });
+  cam.position.set(res.eye.x, res.eye.y, res.eye.z);
+  controls.target.set(res.target.x, res.target.y, res.target.z);
+  viewUp.copy(WORLD_UP);
+  cam.up.copy(viewUp);
+  cam.lookAt(controls.target);
+  syncCameras();
+}
 
 export function bindViewCube() {
-  if (document.fonts) document.fonts.ready.then(() => restyleCube());
-  cubeCanvas.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    cubePointer = { x: event.clientX, y: event.clientY };
-  });
-  cubeCanvas.addEventListener("pointerup", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    const origin = cubePointer;
-    cubePointer = null;
-    if (!origin) return;
-    if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) > 6) return;
-    const hit = pickCube(event);
-    if (!hit) return;
-    const dir = viewDirFromCubePoint(hit.point);
-    const name = namedViewFromDir(dir);
-    if (name) goNamedView(name);
-    else {
-      S.namedView = null;
-      if (S.projection === "orthographic") {
-        S.projection = "parallel";
-        S.useOrtho = true;
-        bindProjectionCamera();
+  if (!cubeHost) return;
+  let dragState = null;
+
+  svgEl.addEventListener("pointermove", (event) => {
+    if (dragState) {
+      const dx = event.clientX - dragState.lastX;
+      const dy = event.clientY - dragState.lastY;
+      dragState.moved += Math.hypot(dx, dy);
+      dragState.lastX = event.clientX;
+      dragState.lastY = event.clientY;
+      if (dragState.moved > 4) {
+        releaseNamedViewForOrbit();
+        const cam = camera();
+        const res = orbitAroundCursor({
+          eye: cam.position,
+          target: controls.target,
+          pivot: controls.target,
+          yawDeltaRad: -dx * 0.012,
+          pitchDeltaRad: -dy * 0.012,
+        });
+        cam.position.set(res.eye.x, res.eye.y, res.eye.z);
+        controls.target.set(res.target.x, res.target.y, res.target.z);
+        viewUp.copy(WORLD_UP);
+        cam.up.copy(viewUp);
+        cam.lookAt(controls.target);
+        syncCameras();
       }
-      viewUp.copy(WORLD_UP);
-      goToView(dir, { up: WORLD_UP.clone() });
-      syncViewMenu();
+      return;
+    }
+    const zone = event.target && event.target.closest ? event.target.closest("[data-dir-key]") : null;
+    const nextKey = zone ? zone.dataset.dirKey : null;
+    if (nextKey !== hoveredZoneKey) {
+      hoveredZoneKey = nextKey;
+      for (const poly of svgEl.querySelectorAll(".vc-zone")) {
+        poly.classList.toggle("is-hovered", poly.dataset.dirKey === hoveredZoneKey);
+      }
     }
   });
-  cubeCanvas.addEventListener("pointermove", (event) => {
-    cubeCanvas.style.cursor = pickCube(event) ? "pointer" : "default";
+
+  svgEl.addEventListener("pointerleave", () => {
+    hoveredZoneKey = null;
+    for (const poly of svgEl.querySelectorAll(".vc-zone.is-hovered")) {
+      poly.classList.remove("is-hovered");
+    }
   });
-  cubeCanvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+  svgEl.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const zone = event.target && event.target.closest ? event.target.closest("[data-dir-key]") : null;
+    dragState = {
+      pointerId: event.pointerId,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      moved: 0,
+      dirKey: zone ? zone.dataset.dirKey : null,
+    };
+    if (svgEl.setPointerCapture) {
+      try { svgEl.setPointerCapture(event.pointerId); } catch (_e) { /* synthetic event */ }
+    }
+  });
+
+  const endDrag = (event, cancelled = false) => {
+    if (!dragState) return;
+    const st = dragState;
+    dragState = null;
+    if (svgEl.releasePointerCapture) {
+      try { svgEl.releasePointerCapture(st.pointerId); } catch (_e) { /* ignore */ }
+    }
+    if (!cancelled && st.moved <= 4 && st.dirKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      snapToDirKey(st.dirKey);
+    }
+  };
+
+  svgEl.addEventListener("pointerup", (ev) => endDrag(ev, false));
+  svgEl.addEventListener("pointercancel", (ev) => endDrag(ev, true));
+  svgEl.addEventListener("lostpointercapture", (ev) => endDrag(ev, true));
+  svgEl.addEventListener("contextmenu", (event) => event.preventDefault());
+
+  const ccwBtn = document.getElementById("view-roll-ccw");
+  if (ccwBtn) ccwBtn.addEventListener("click", () => stepRollAroundZ(Math.PI / 2));
+  const cwBtn = document.getElementById("view-roll-cw");
+  if (cwBtn) cwBtn.addEventListener("click", () => stepRollAroundZ(-Math.PI / 2));
+
   document.getElementById("view-iso").addEventListener("click", () => {
     S.namedView = null;
     if (S.projection === "orthographic") {

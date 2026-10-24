@@ -32,6 +32,8 @@ from apeCAD.errors import DocumentError
 
 DRAFT_SCHEMA = "apeCAD.section-draft"
 DRAFT_SCHEMA_VERSION = 1
+SEED_SCHEMA = "apeCAD.section-seed"
+SEED_SCHEMA_VERSION = 1
 DRAFT_UNITS = "mm"
 DRAFT_FRAME: Mapping[str, str] = {"x": "right", "y": "up", "origin": "world"}
 
@@ -147,6 +149,95 @@ def project_section(entities: Mapping[EntityId, Entity]) -> Json:
     }
 
 
+def project_seed_section(entities: Mapping[EntityId, Entity]) -> Json:
+    """The `section` block of an `apeCAD.section-seed` v1: 0-based list indices in place of ids."""
+    ordered = [entities[i] for i in sorted(entities)]
+    xy = {
+        e.entity_id: [float(e.xyz_mm.x_mm), float(e.xyz_mm.y_mm)]
+        for e in ordered
+        if isinstance(e, Point)
+    }
+    faces = [e for e in ordered if isinstance(e, ConcreteFace)]
+    bars = [e for e in ordered if isinstance(e, Bar)]
+    face_idx = {e.entity_id: idx for idx, e in enumerate(faces)}
+    bar_idx = {e.entity_id: idx for idx, e in enumerate(bars)}
+    bar_xy = {e.entity_id: xy[e.point_id] for e in bars}
+    return {
+        "concrete_faces": [
+            {
+                "label": e.label,
+                "material": e.material,
+                "role": e.role,
+                "ring_mm": [list(xy[pid]) for pid in e.point_ids],
+            }
+            for e in faces
+        ],
+        "wall_legs": [
+            {
+                "label": e.label,
+                "start_mm": list(xy[e.start_id]),
+                "end_mm": list(xy[e.end_id]),
+                "thickness_mm": float(e.thickness_mm),
+                "concrete_face_id": face_idx[e.face_id],
+                "horizontal": None
+                if e.horizontal is None
+                else {
+                    "designation": e.horizontal.designation,
+                    "spacing_mm": float(e.horizontal.spacing_mm),
+                    "curtains": e.horizontal.curtains,
+                },
+            }
+            for e in ordered
+            if isinstance(e, WallLeg)
+        ],
+        "bars": [
+            {
+                "label": e.label,
+                "x_mm": bar_xy[e.entity_id][0],
+                "y_mm": bar_xy[e.entity_id][1],
+                "diameter_mm": float(e.diameter_mm),
+                "designation": e.designation,
+            }
+            for e in bars
+        ],
+        "hoops": [
+            {
+                "label": e.label,
+                "bar_ids": [bar_idx[bid] for bid in e.bar_ids],
+                "diameter_mm": float(e.diameter_mm),
+                "designation": e.designation,
+                "spacing_mm": float(e.spacing_mm),
+                "hooks": e.hooks,
+            }
+            for e in ordered
+            if isinstance(e, Hoop)
+        ],
+        "crossties": [
+            {
+                "label": e.label,
+                "bar_a_id": bar_idx[e.bar_a_id],
+                "bar_b_id": bar_idx[e.bar_b_id],
+                "diameter_mm": float(e.diameter_mm),
+                "designation": e.designation,
+                "spacing_mm": float(e.spacing_mm),
+                "hooks": e.hooks,
+            }
+            for e in ordered
+            if isinstance(e, Crosstie)
+        ],
+        "cover_guides": [
+            {
+                "face_id": face_idx[e.face_id],
+                "cover_mm": float(e.cover_mm),
+                "tie_diameter_mm": float(e.tie_diameter_mm),
+                "bar_diameter_mm": float(e.bar_diameter_mm),
+            }
+            for e in ordered
+            if isinstance(e, CoverGuide)
+        ],
+    }
+
+
 def _wall_leg(leg: WallLeg, xy: Mapping[EntityId, list[float]]) -> Json:
     steel = leg.horizontal
     return {
@@ -179,6 +270,25 @@ def require_header(draft: Mapping[str, object]) -> None:
     units = draft.get("units")
     if units != DRAFT_UNITS:
         raise DocumentError(f"unsupported draft units {units!r}, expected {DRAFT_UNITS!r}")
+
+
+def require_seed_header(seed: Mapping[str, object]) -> None:
+    """Refuse a seed whose schema, version, units or frame this reader does not know."""
+    schema = seed.get("schema")
+    version = seed.get("version")
+    if schema != SEED_SCHEMA:
+        raise DocumentError(f"unsupported seed schema {schema!r}, expected {SEED_SCHEMA!r}")
+    if type(version) is not int or version != SEED_SCHEMA_VERSION:
+        raise DocumentError(
+            f"unsupported {SEED_SCHEMA} version {version!r}, expected {SEED_SCHEMA_VERSION}"
+        )
+    units = seed.get("units")
+    if units != DRAFT_UNITS:
+        raise DocumentError(f"unsupported seed units {units!r}, expected {DRAFT_UNITS!r}")
+    if "frame" in seed and seed["frame"] != dict(DRAFT_FRAME):
+        raise DocumentError(
+            f"unsupported seed frame {seed['frame']!r}, expected {dict(DRAFT_FRAME)!r}"
+        )
 
 
 def compare_sections(stored: object, fresh: Json) -> list[Json]:

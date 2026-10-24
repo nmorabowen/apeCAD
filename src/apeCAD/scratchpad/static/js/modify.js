@@ -6,7 +6,6 @@ import { api } from "./api.js";
 import { catalog, findRecord, lineRows, pointById } from "./brep.js";
 import { activeLength, clearTyped, labelValue, setHint } from "./cmdline.js";
 import { lineIntersectMm, projectT } from "./geom.js";
-import { updateGhost } from "./ghosts.js";
 import { displayUnit } from "./prefs.js";
 import { pickEntity } from "./pick.js";
 import { refreshFrom } from "./render.js";
@@ -129,7 +128,6 @@ export async function commitTrimPreview(preview) {
   setHint(preview.mode === "extend"
     ? t("done.extended")
     : t("done.trimmed"));
-  if (S.lastPointer) updateGhost(S.lastPointer);
 }
 
 export async function commitBreak(preview) {

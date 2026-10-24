@@ -44,6 +44,10 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0032](0032-exact-collinear-bar-layouts.md) | Bar layouts snap to a lattice so inclined rows stay exactly collinear | Accepted |
 | [0033](0033-ape-drawing-style-errata.md) | APE drawing style errata: cover guide ink and projection weights | Accepted |
 | [0034](0034-dxf-export.md) | DXF export of the drawing (stage D5): ezdxf behind an optional extra, office layers | Accepted |
+| [0035](0035-scratchpad-store-and-reconciler.md) | Scratchpad state store, two-signature reconciler, and dirty-flagged render loop | Accepted |
+| [0036](0036-screen-space-lines-and-triangulation.md) | Ear-clipping triangulation, screen-space LineSegments2, and SelectionHalo | Accepted |
+| [0037](0037-cad-turntable-and-svg-viewcube.md) | Cursor-pivot zero-roll Z-up CAD turntable and zero-GL 26-zone SVG ViewCube | Accepted |
+| [0038](0038-visual-and-contrast-gates.md) | Programmatic WCAG/CVD token gates and deterministic still capture | Accepted |
 
 ## Template
 

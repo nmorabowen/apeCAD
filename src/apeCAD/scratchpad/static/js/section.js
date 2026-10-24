@@ -4,8 +4,16 @@
 import * as THREE from "three";
 import { S } from "./state.js";
 import { pointById } from "./brep.js";
-import { mark, selectionTints } from "./draw.js";
-import { sampleCircle } from "./geom.js";
+import {
+  LINE_WEIGHT_REBAR_PX,
+  LINE_WEIGHT_SECTION_PX,
+  LINE_WEIGHT_SELECTED_PX,
+  makeScreenLineSegments,
+  mark,
+  pointsToSegmentPositions,
+  selectionTints,
+} from "./draw.js";
+import { sampleCircle, triangulatePlanar3D } from "./geom.js";
 import { formatMm } from "./prefs.js";
 import { dashSegments, roundedRing } from "./section-geom.js";
 import { INK } from "./theme.js";
@@ -109,35 +117,42 @@ export function sectionShape(kind, item) {
 const vec = (p, lift = 0) => new THREE.Vector3(p.x_mm, p.y_mm, (p.z_mm || 0) + lift);
 
 // Lines and bars sit in three.js's transparent pass (opacity 1), so renderOrder draws them
-// over the translucent concrete fill; in the opaque pass the fill would wash them out.
-function lineMaterial(color, entityId) {
-  return new THREE.LineBasicMaterial({
-    color: selectionTints(entityId) ? INK.pick : color,
+// over the translucent concrete fill; screen-space LineSegments2 weights differentiate
+// concrete/guides (2.25 px) from hoops/crossties (3.0 px) (ADR 0036).
+function addPolyline(group, pts, closed, color, entityId, baseWidth = LINE_WEIGHT_SECTION_PX) {
+  const flat = pointsToSegmentPositions(pts, closed);
+  const picked = selectionTints(entityId);
+  const line = makeScreenLineSegments(flat, {
+    color: picked ? INK.pick : color,
+    linewidth: picked ? LINE_WEIGHT_SELECTED_PX : baseWidth,
     depthTest: false,
-    transparent: true,
+    renderOrder: 6,
+    entityId,
+    role: "section-line",
+    baseColor: color,
+    baseLinewidth: baseWidth,
   });
-}
-
-function addPolyline(group, pts, closed, color, entityId) {
-  const loop = pts.map((p) => vec(p));
-  if (closed) loop.push(loop[0].clone());
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(loop), lineMaterial(color, entityId));
-  line.renderOrder = 6;
-  mark(line, entityId);
-  group.add(line);
+  if (line) group.add(line);
 }
 
 function addDashed(group, pts, closed, style, entityId) {
   const flat = [];
-  for (const [a, b] of dashSegments(pts, closed, style.dash)) flat.push(vec(a), vec(b));
-  if (!flat.length) return;
-  const line = new THREE.LineSegments(
-    new THREE.BufferGeometry().setFromPoints(flat),
-    lineMaterial(style.color, entityId),
-  );
-  line.renderOrder = 5;
-  mark(line, entityId);
-  group.add(line);
+  for (const [a, b] of dashSegments(pts, closed, style.dash)) {
+    flat.push(a.x_mm, a.y_mm, a.z_mm || 0, b.x_mm, b.y_mm, b.z_mm || 0);
+  }
+  if (flat.length < 6) return;
+  const picked = selectionTints(entityId);
+  const line = makeScreenLineSegments(flat, {
+    color: picked ? INK.pick : style.color,
+    linewidth: picked ? LINE_WEIGHT_SELECTED_PX : LINE_WEIGHT_SECTION_PX,
+    depthTest: false,
+    renderOrder: 5,
+    entityId,
+    role: "section-line",
+    baseColor: style.color,
+    baseLinewidth: LINE_WEIGHT_SECTION_PX,
+  });
+  if (line) group.add(line);
 }
 
 function addConcrete(group, face) {
@@ -146,27 +161,44 @@ function addConcrete(group, face) {
   const style = SECTION_STYLE.concrete;
   const tinted = selectionTints(face.entity_id);
   if (S.prefs.showFaces) {
-    const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x_mm, p.y_mm)));
-    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), new THREE.MeshBasicMaterial({
-      color: tinted ? INK.pick : style.fill,
-      transparent: true,
-      opacity: tinted ? 0.35 : style.opacity,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    }));
-    mesh.position.z = pts[0].z_mm || 0;
-    mesh.renderOrder = 1;
-    mark(mesh, face.entity_id);
-    group.add(mesh);
+    const tris = triangulatePlanar3D(pts);
+    const vertices = [];
+    const z = pts[0].z_mm || 0;
+    for (const [i0, i1, i2] of tris) {
+      vertices.push(
+        pts[i0].x_mm, pts[i0].y_mm, z,
+        pts[i1].x_mm, pts[i1].y_mm, z,
+        pts[i2].x_mm, pts[i2].y_mm, z,
+      );
+    }
+    if (vertices.length >= 9) {
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      const mesh = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({
+        color: tinted ? INK.pick : style.fill,
+        transparent: true,
+        opacity: tinted ? 0.35 : style.opacity,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }));
+      mesh.renderOrder = 1;
+      mark(mesh, face.entity_id, {
+        role: "concrete",
+        baseColor: style.fill,
+        baseOpacity: style.opacity,
+      });
+      group.add(mesh);
+    }
   }
-  addPolyline(group, pts, true, style.edge, face.entity_id);
+  addPolyline(group, pts, true, style.edge, face.entity_id, LINE_WEIGHT_SECTION_PX);
 }
 
 function addBar(group, bar) {
   const centre = pointById(bar.point_id);
   if (!centre) return;
+  const radius = bar.diameter_mm / 2;
   const disc = new THREE.Mesh(
-    new THREE.CircleGeometry(bar.diameter_mm / 2, 24),
+    new THREE.CircleGeometry(radius, 24),
     new THREE.MeshBasicMaterial({
       color: selectionTints(bar.entity_id) ? INK.pick : SECTION_STYLE.bar.color,
       side: THREE.DoubleSide,
@@ -176,7 +208,15 @@ function addBar(group, bar) {
   );
   disc.position.copy(vec(centre));
   disc.renderOrder = 7;
-  mark(disc, bar.entity_id);
+  const flatPositions = pointsToSegmentPositions(
+    sampleCircle({ x_mm: 0, y_mm: 0, z_mm: 0 }, radius, 24),
+    false,
+  );
+  mark(disc, bar.entity_id, {
+    role: "bar",
+    baseColor: SECTION_STYLE.bar.color,
+    flatPositions,
+  });
   group.add(disc);
 }
 
@@ -193,7 +233,7 @@ export function drawSection(group) {
     } else {
       const shape = sectionShape(kind, item);
       const style = kind === "Hoop" ? SECTION_STYLE.hoop : SECTION_STYLE.crosstie;
-      if (shape) addPolyline(group, shape.pts, shape.closed, style.color, item.entity_id);
+      if (shape) addPolyline(group, shape.pts, shape.closed, style.color, item.entity_id, LINE_WEIGHT_REBAR_PX);
     }
   }
 }

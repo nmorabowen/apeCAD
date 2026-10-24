@@ -20,7 +20,7 @@ import {
   prefMinorMm,
 } from "./prefs.js";
 import { INK } from "./theme.js";
-import { canvas, scene } from "./viewport.js";
+import { canvas, disposeObject3D, scene } from "./viewport.js";
 
 export let grid = null;
 
@@ -179,21 +179,11 @@ function makeGrid() {
   return group;
 }
 
-function disposeObject(object) {
-  if (!object) return;
-  object.traverse((node) => {
-    if (node.geometry) node.geometry.dispose();
-    for (const mat of [].concat(node.material || [])) {
-      if (mat) mat.dispose();
-    }
-  });
-}
-
 export function rebuildGrid() {
   const next = makeGrid();
   if (grid) {
     scene.remove(grid);
-    disposeObject(grid);
+    disposeObject3D(grid);
   }
   grid = next;
   scene.add(grid);

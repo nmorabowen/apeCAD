@@ -58,3 +58,6 @@ Thumbs.db
 
 # MkDocs
 site/
+
+!src/apeCAD/scratchpad/static/vendor/three/build/
+!src/apeCAD/scratchpad/static/vendor/three/build/**

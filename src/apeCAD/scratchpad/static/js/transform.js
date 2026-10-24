@@ -1,5 +1,6 @@
 // Transform tools: move, rotate, mirror, and linear / polar arrays of the selection.
 import { S } from "./state.js";
+import { requestRender } from "./store.js";
 import { entities, t } from "./strings.js";
 import { api } from "./api.js";
 import { activeLength, arrayCount, clearTyped, setHint } from "./cmdline.js";
@@ -12,7 +13,10 @@ export async function finishMove(end) {
   const dz = (end.z_mm || 0) - (S.pending.a.z_mm || 0);
   if (Math.hypot(dx, dy, dz) < 1) {
     S.pending = null;
+    clearTyped();
     ghosts.clear();
+    S.ghostDims = [];
+    requestRender();
     setHint(t("done.moveCancelled"));
     return;
   }

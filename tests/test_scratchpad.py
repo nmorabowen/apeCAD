@@ -199,6 +199,12 @@ def test_static_index_is_served(server: ScratchpadServer) -> None:
     assert "addVertexDot" in app
     assert "wall_ids" in app
     assert "sceneState.brep" in app
+    assert "disposeObject3D" in app
+    assert "disposeObject3D(selectionHalos)" in app
+    assert "wrapAutoDispose(selectionHalos)" in app
+    assert "updateCameraMatrices" in app
+    assert "raycaster.params.Line2 = { threshold: 12 }" in app
+    assert "!input.isConnected" in app
 
 
 def _client_source() -> str:
@@ -236,6 +242,31 @@ def test_client_module_paths_are_confined(server: ScratchpadServer, path: str) -
     with pytest.raises(HTTPError) as caught:
         urlopen(f"http://127.0.0.1:{port}{path}")
     assert caught.value.code == 404
+
+
+def test_vendor_three_is_served_and_confined(server: ScratchpadServer) -> None:
+    port = server.server_address[1]
+    with urlopen(f"http://127.0.0.1:{port}/") as response:
+        html = response.read().decode("utf-8")
+    assert "https://" not in html
+    assert "/vendor/three/build/three.module.min.js" in html
+    for rel in (
+        "build/three.module.min.js",
+        "build/three.core.min.js",
+        "examples/jsm/controls/OrbitControls.js",
+        "examples/jsm/lines/LineSegments2.js",
+        "examples/jsm/lines/LineSegmentsGeometry.js",
+        "examples/jsm/lines/LineMaterial.js",
+    ):
+        with urlopen(f"http://127.0.0.1:{port}/vendor/three/{rel}") as response:
+            assert response.status == 200
+            assert response.headers["Content-Type"].startswith("text/javascript")
+            assert "immutable" in response.headers.get("Cache-Control", "")
+            assert len(response.read()) > 100
+    for bad in ("/vendor/three/../server.py", "/vendor/three/missing.js", "/vendor/three/LICENSE"):
+        with pytest.raises(HTTPError) as caught:
+            urlopen(f"http://127.0.0.1:{port}{bad}")
+        assert caught.value.code == 404
 
 
 def test_add_point_via_op_api(server: ScratchpadServer) -> None:

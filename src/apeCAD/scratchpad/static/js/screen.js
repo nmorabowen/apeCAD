@@ -62,3 +62,12 @@ export function shapeQualifies(pts, closed, crossing, rect) {
   }
   return false;
 }
+
+export function configurePickRaycaster(raycaster) {
+  if (!raycaster) return raycaster;
+  if (!raycaster.params) raycaster.params = {};
+  raycaster.params.Line = { threshold: 160 };
+  raycaster.params.Line2 = { threshold: 12 };
+  return raycaster;
+}
+

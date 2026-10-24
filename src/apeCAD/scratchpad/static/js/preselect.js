@@ -1,6 +1,8 @@
-// Hover highlight (preselection) of what a click would select.
+// Hover highlight (preselection) of what a click would select, shared across canvas pointer,
+// outliner row hover, and status warning chip hover (ADR 0035).
 import * as THREE from "three";
 import { S } from "./state.js";
+import { notifySelectionChanged, requestRender, setsEqual } from "./store.js";
 import {
   FILTER_KINDS,
   curveWorldPoints,
@@ -16,7 +18,7 @@ import { pickByFilter } from "./pick.js";
 import { sectionShape } from "./section.js";
 import { INK } from "./theme.js";
 import { windowHits } from "./selection.js";
-import { canvas, preselects } from "./viewport.js";
+import { canvas, disposeObject3D, preselects } from "./viewport.js";
 
 let preselectKey = "";
 
@@ -84,10 +86,31 @@ function drawPreselectEntity(id, shown) {
   }
 }
 
+export function syncHoverPreselect() {
+  const ids = [...(S.hoverIds || [])];
+  const key = `${S.selectFilter}:${ids.map(String).sort().join(",")}`;
+  if (key === preselectKey) return;
+  preselectKey = key;
+  disposeObject3D(preselects);
+  preselects.clear();
+  const shown = new Set();
+  for (const id of ids) {
+    if (S.selectedIds.has(id)) continue;
+    drawPreselectEntity(id, shown);
+  }
+  requestRender();
+}
+
 export function clearPreselect() {
   preselectKey = "";
+  disposeObject3D(preselects);
   preselects.clear();
   canvas.style.cursor = "";
+  if (S.hoverIds && S.hoverIds.size > 0) {
+    S.hoverIds = new Set();
+    notifySelectionChanged();
+  }
+  requestRender();
 }
 
 export function updatePreselect(event) {
@@ -103,14 +126,12 @@ export function updatePreselect(event) {
     const picked = pickByFilter(event, S.selectFilter);
     if (picked != null) ids = [picked];
   }
-  const key = `${S.selectFilter}:${ids.slice().sort((a, b) => a - b).join(",")}`;
   canvas.style.cursor = ids.length ? "pointer" : "";
-  if (key === preselectKey) return;
-  preselectKey = key;
-  preselects.clear();
-  const shown = new Set();
-  for (const id of ids) {
-    if (S.selectedIds.has(id)) continue;
-    drawPreselectEntity(id, shown);
+  const nextHover = new Set(ids);
+  if (!setsEqual(nextHover, S.hoverIds)) {
+    S.hoverIds = nextHover;
+    notifySelectionChanged();
+  } else {
+    syncHoverPreselect();
   }
 }
