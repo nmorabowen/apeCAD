@@ -3,6 +3,10 @@
 // behaviour lives in camera.js.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { disposeObject3D, wrapAutoDispose as _wrapAutoDispose } from "./geom.js";
+import { requestRender } from "./store.js";
+
+export { disposeObject3D };
 
 export const canvas = document.getElementById("view");
 
@@ -73,9 +77,49 @@ scene.add(new THREE.AxesHelper(3000));
 export const draft = new THREE.Group();
 export const ghosts = new THREE.Group();
 export const preselects = new THREE.Group();
+export const selectionHalos = new THREE.Group();
 scene.add(draft);
 scene.add(ghosts);
 scene.add(preselects);
+scene.add(selectionHalos);
 draft.renderOrder = 1;
 ghosts.renderOrder = 2;
 preselects.renderOrder = 3;
+selectionHalos.renderOrder = 4;
+
+export function wrapAutoDispose(group) {
+  return _wrapAutoDispose(group, requestRender);
+}
+
+wrapAutoDispose(draft);
+wrapAutoDispose(ghosts);
+wrapAutoDispose(preselects);
+wrapAutoDispose(selectionHalos);
+
+export function currentLineResolution() {
+  const w = (canvas && canvas.clientWidth) || window.innerWidth || 1;
+  const h = (canvas && canvas.clientHeight) || window.innerHeight || 1;
+  return new THREE.Vector2(w, h);
+}
+
+export function syncAllLineResolutions(
+  w = (canvas && canvas.clientWidth) || 1,
+  h = (canvas && canvas.clientHeight) || 1,
+) {
+  scene.traverse((obj) => {
+    const mats = Array.isArray(obj.material) ? obj.material : obj.material ? [obj.material] : [];
+    for (const mat of mats) {
+      if (mat && mat.resolution && typeof mat.resolution.set === "function") {
+        mat.resolution.set(w, h);
+      }
+    }
+  });
+}
+
+// Render one frame synchronously and capture a PNG data URL (ADR 0038) so visual checks
+// do not need permanent preserveDrawingBuffer overhead.
+export function exportViewportPng(activeCam = orthoCam) {
+  renderer.render(scene, activeCam);
+  return canvas.toDataURL("image/png");
+}
+

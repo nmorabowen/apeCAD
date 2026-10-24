@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>apeCAD — Section Editor</title>
+  <link rel="stylesheet" href="/section/section.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #f7f6f3;
+    }
+    #section-host {
+      width: 100vw;
+      height: 100vh;
+    }
+  </style>
+</head>
+<body>
+  <div id="section-host"></div>
+  <script type="module">
+    import { create, httpTransport } from "/section/apecad-section.js";
+
+    const host = document.getElementById("section-host");
+    const editor = create(host, {
+      transport: httpTransport("/api/section/transport"),
+      units: "mm",
+    });
+    window.addEventListener("resize", () => editor.resize());
+  </script>
+</body>
+</html>

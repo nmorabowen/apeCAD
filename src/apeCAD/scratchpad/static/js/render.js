@@ -1,10 +1,20 @@
-// Rebuilding the draft group from the scene payload after every op.
-import * as THREE from "three";
+// Rebuilding the draft group from the scene payload on geometry changes, and updating
+// selection/hover in place on selectionSignature changes (ADRs 0035, 0036).
 import { S } from "./state.js";
+import {
+  appReconciler,
+  registerReconcileHooks,
+  requestRender,
+  store,
+  syncStoreFromS,
+} from "./store.js";
 import { t } from "./strings.js";
 import { indexBrep } from "./brep.js";
-import { setHint } from "./cmdline.js";
+import { invalidateSceneBounds } from "./camera.js";
+import { logWarnings, refreshToggles, setHint } from "./cmdline.js";
 import {
+  LINE_WEIGHT_SELECTED_PX,
+  LINE_WEIGHT_WIRE_PX,
   addCurve,
   addCylinder,
   addFaceGraphic,
@@ -15,20 +25,41 @@ import {
   clayHex,
   curveFor,
   lineOverlay,
-  mark,
-  xyzMm,
+  makeScreenLineSegments,
+  pointsToSegmentPositions,
+  rebuildSelectionHalos,
+  selectionTints,
+  syncDraftSelection,
 } from "./draw.js";
 import { sampleArc, sampleBezier, sampleCircle, sampleEllipse } from "./geom.js";
 import { rebuildGrid } from "./grid.js";
-import { refreshDocks } from "./outliner.js";
-import { clearPreselect, updatePreselect } from "./preselect.js";
+import { clearPreselect, syncHoverPreselect, updatePreselect } from "./preselect.js";
 import { barPointIds, drawSection } from "./section.js";
-import { draft } from "./viewport.js";
+import { INK, parseCssColor } from "./theme.js";
+import { disposeObject3D, draft } from "./viewport.js";
+
+let _refreshDocks = () => {};
+let _syncSelectionDocks = () => {};
+
+export function registerDockHooks({ refreshDocks, syncSelectionDocks } = {}) {
+  if (typeof refreshDocks === "function") _refreshDocks = refreshDocks;
+  if (typeof syncSelectionDocks === "function") _syncSelectionDocks = syncSelectionDocks;
+}
+
+export function refreshSelection() {
+  syncDraftSelection(draft);
+  _syncSelectionDocks();
+  syncHoverPreselect();
+  requestRender();
+}
 
 export function rebuild() {
+  invalidateSceneBounds();
+  disposeObject3D(draft);
   draft.clear();
   S.committedDims = [];
-  indexBrep();
+  indexBrep(true);
+  const idleCurve = parseCssColor(S.prefs.curve) ?? INK.edge;
   const byId = new Map((S.sceneState.points || []).map((point) => [point.entity_id, point]));
   for (const line of S.sceneState.lines || []) {
     if (S.hiddenIds.has(line.entity_id)) continue;
@@ -36,19 +67,20 @@ export function rebuild() {
     const end = byId.get(line.end_id);
     if (!start || !end) continue;
     if (S.prefs.showCurves) {
+      const picked = selectionTints(line.entity_id);
       const overlay = lineOverlay(line.entity_id);
-      const a = xyzMm(start);
-      const b = xyzMm(end);
-      const drawn = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(a.x_mm, a.y_mm, a.z_mm),
-        new THREE.Vector3(b.x_mm, b.y_mm, b.z_mm),
-      ]), new THREE.LineBasicMaterial({
+      const flat = pointsToSegmentPositions([start, end], false);
+      const drawn = makeScreenLineSegments(flat, {
         color: curveFor(line.entity_id),
+        linewidth: picked ? LINE_WEIGHT_SELECTED_PX : LINE_WEIGHT_WIRE_PX,
         depthTest: !overlay,
-      }));
-      drawn.renderOrder = overlay ? 12 : 0;
-      mark(drawn, line.entity_id);
-      draft.add(drawn);
+        renderOrder: overlay ? 12 : 1,
+        entityId: line.entity_id,
+        role: "curve",
+        baseColor: idleCurve,
+        baseLinewidth: LINE_WEIGHT_WIRE_PX,
+      });
+      if (drawn) draft.add(drawn);
     }
   }
   for (const polyline of S.sceneState.polylines || []) {
@@ -56,22 +88,20 @@ export function rebuild() {
     const pts = polyline.point_ids.map((id) => byId.get(id)).filter(Boolean);
     if (pts.length < 2) continue;
     if (!S.prefs.showCurves) continue;
+    const picked = selectionTints(polyline.entity_id);
     const overlay = lineOverlay(polyline.entity_id);
-    const vectors = pts.map((point) => {
-      const p = xyzMm(point);
-      return new THREE.Vector3(p.x_mm, p.y_mm, p.z_mm);
+    const flat = pointsToSegmentPositions(pts, Boolean(polyline.closed));
+    const drawn = makeScreenLineSegments(flat, {
+      color: curveFor(polyline.entity_id),
+      linewidth: picked ? LINE_WEIGHT_SELECTED_PX : LINE_WEIGHT_WIRE_PX,
+      depthTest: !overlay,
+      renderOrder: overlay ? 12 : 1,
+      entityId: polyline.entity_id,
+      role: "curve",
+      baseColor: idleCurve,
+      baseLinewidth: LINE_WEIGHT_WIRE_PX,
     });
-    if (polyline.closed) vectors.push(vectors[0].clone());
-    const drawn = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(vectors),
-      new THREE.LineBasicMaterial({
-        color: curveFor(polyline.entity_id),
-        depthTest: !overlay,
-      }),
-    );
-    drawn.renderOrder = overlay ? 12 : 0;
-    mark(drawn, polyline.entity_id);
-    draft.add(drawn);
+    if (drawn) draft.add(drawn);
   }
   const extruded = new Set();
   for (const solid of S.sceneState.solids || []) {
@@ -93,11 +123,13 @@ export function rebuild() {
     const center = byId.get(circle.center_id);
     if (!center) continue;
     const loop = sampleCircle(center, circle.radius_mm);
-    const showFill = !extruded.has(circle.entity_id)
+    const isExtruded = extruded.has(circle.entity_id);
+    const showFill = !isExtruded
       || S.selectedIds.has(circle.entity_id)
       || S.selectFilter === "face";
     addFaceGraphic(draft, loop.slice(0, -1), {
       fill: showFill,
+      extrudedProfile: isExtruded,
       opacity: 0.92,
       entityId: circle.entity_id,
     });
@@ -115,11 +147,13 @@ export function rebuild() {
     const center = byId.get(ellipse.center_id);
     if (!center) continue;
     const loop = sampleEllipse(center, ellipse.radius_x_mm, ellipse.radius_y_mm);
-    const showFill = !extruded.has(ellipse.entity_id)
+    const isExtruded = extruded.has(ellipse.entity_id);
+    const showFill = !isExtruded
       || S.selectedIds.has(ellipse.entity_id)
       || S.selectFilter === "face";
     addFaceGraphic(draft, loop.slice(0, -1), {
       fill: showFill,
+      extrudedProfile: isExtruded,
       opacity: 0.92,
       entityId: ellipse.entity_id,
     });
@@ -171,22 +205,33 @@ export function rebuild() {
     if (barPoints.has(point.entity_id)) continue;
     addVertexDot(draft, point);
   }
-  indexBrep();
-  refreshDocks();
+  rebuildSelectionHalos(draft);
+  _refreshDocks();
   rebuildGrid();
   if (S.lastPointer && S.tool === "select") updatePreselect(S.lastPointer);
+  else if (S.hoverIds && S.hoverIds.size > 0) syncHoverPreselect();
   else clearPreselect();
+  const st = syncStoreFromS(store);
+  appReconciler.markBaseline(st);
+  requestRender();
 }
+
+registerReconcileHooks({
+  onGeometry: () => rebuild(),
+  onSelection: () => refreshSelection(),
+});
 
 export async function refreshFrom(payload) {
   S.sceneState = payload;
   try {
     rebuild();
+    logWarnings(payload.warnings);
+    refreshToggles();
   } catch (error) {
     console.error(error);
     try {
-      indexBrep();
-      refreshDocks();
+      indexBrep(true);
+      _refreshDocks();
     } catch (_ignored) { /* docks need a valid catalog */ }
     setHint(t("refuse.draw", { reason: error.message }), "refused");
   }

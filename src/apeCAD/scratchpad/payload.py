@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from apeCAD.document import Document
-from apeCAD.entities import ConcreteFace, CoverGuide, LegSteel, Point
+from apeCAD.entities import Bar, ConcreteFace, CoverGuide, Hoop, LegSteel, Point
+from apeCAD.render.section import rounded_ring
 from apeCAD.section.cover import bar_centre_inset_mm, cover_rings
 
 
@@ -133,6 +134,7 @@ def scene_payload(document: Document) -> dict[str, object]:
                 "diameter_mm": hoop.diameter_mm,
                 "spacing_mm": hoop.spacing_mm,
                 "hooks": hoop.hooks,
+                "display_ring_mm": _hoop_display_ring(document, hoop),
                 "label": hoop.label,
             }
             for hoop in document.hoops()
@@ -163,9 +165,25 @@ def scene_payload(document: Document) -> dict[str, object]:
             for leg in document.wall_legs()
         ],
         "cover_guides": [_cover_guide(document, guide) for guide in document.cover_guides()],
+        "warnings": [warning.to_dict() for warning in document.section_lint()],
         "tags": {name: sorted(ids) for name, ids in document.tags().items()},
         "brep": document.brep().to_payload(),
     }
+
+
+def _hoop_display_ring(document: Document, hoop: Hoop) -> list[list[float]]:
+    centres: list[tuple[float, float, float]] = []
+    offsets: list[float] = []
+    for bar_id in hoop.bar_ids:
+        bar = document.entity(bar_id)
+        assert isinstance(bar, Bar)
+        point = document.entity(bar.point_id)
+        assert isinstance(point, Point)
+        centres.append(point.xyz_mm.to_tuple())
+        offsets.append(bar.diameter_mm / 2.0 + hoop.diameter_mm / 2.0)
+    if len(centres) < 2:
+        return []
+    return [[p[0], p[1]] for p in rounded_ring(centres, offsets, None)]
 
 
 def _steel(steel: LegSteel | None) -> dict[str, object] | None:

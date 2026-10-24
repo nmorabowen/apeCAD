@@ -1,6 +1,7 @@
 // The Model outliner (B-rep tree), its context menu, rename, and the Properties dock.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { notifySelectionChanged, store } from "./store.js";
 import { entities, t } from "./strings.js";
 import { api } from "./api.js";
 import {
@@ -19,7 +20,8 @@ import { circumcircle, dist3 } from "./geom.js";
 import { gridMinorMm } from "./grid.js";
 import { commitDelete } from "./modify.js";
 import { formatMm } from "./prefs.js";
-import { rebuild, refreshFrom } from "./render.js";
+import { rebuild, refreshFrom, registerDockHooks } from "./render.js";
+import { renderSectionProps } from "./section-props.js";
 import { sectionFields } from "./section.js";
 import { setSelection } from "./selection.js";
 import { ISO_DIR, VIEW_PRESETS, controls, viewUp } from "./viewport.js";
@@ -34,7 +36,8 @@ function renderTreeNode(row, parent) {
   node.className = "tree-node";
   const rowEl = document.createElement("div");
   const dimmed = S.hiddenIds.has(row.id);
-  rowEl.className = `tree-row${S.selectedIds.has(row.id) ? " selected" : ""}${dimmed ? " dimmed" : ""}`;
+  const hovered = S.hoverIds && S.hoverIds.has(row.id);
+  rowEl.className = `tree-row${S.selectedIds.has(row.id) ? " selected" : ""}${hovered ? " hovered" : ""}${dimmed ? " dimmed" : ""}`;
   rowEl.dataset.id = String(row.id);
   const toggle = document.createElement("button");
   toggle.type = "button";
@@ -65,6 +68,14 @@ function renderTreeNode(row, parent) {
   rowEl.addEventListener("dblclick", (event) => {
     event.preventDefault();
     beginRename(row, rowEl);
+  });
+  rowEl.addEventListener("pointerenter", () => {
+    store.dispatch({ type: "hover/set", ids: [row.id] });
+    notifySelectionChanged();
+  });
+  rowEl.addEventListener("pointerleave", () => {
+    store.dispatch({ type: "hover/clear" });
+    notifySelectionChanged();
   });
   rowEl.addEventListener("contextmenu", (event) => {
     event.preventDefault();
@@ -181,7 +192,13 @@ export function beginRename(row, rowEl) {
       finish(false);
     }
   });
-  input.addEventListener("blur", () => finish(true));
+  input.addEventListener("blur", () => {
+    if (!input.isConnected) {
+      finished = true;
+      return;
+    }
+    finish(true);
+  });
 }
 
 function fitEntity(row) {
@@ -224,20 +241,26 @@ async function duplicateEntities(ids) {
   setHint(t("done.duplicated", { entities: entities(ids.length) }));
 }
 
-export function refreshDocks() {
-  const rows = catalog();
+export function syncTreeHighlight() {
+  for (const rowEl of treeEl.querySelectorAll(".tree-row[data-id]")) {
+    const raw = rowEl.dataset.id;
+    const num = Number(raw);
+    const id = Number.isFinite(num) ? num : raw;
+    rowEl.classList.toggle("selected", S.selectedIds.has(id));
+    rowEl.classList.toggle("hovered", Boolean(S.hoverIds && S.hoverIds.has(id)));
+    rowEl.classList.toggle("dimmed", S.hiddenIds.has(id));
+  }
+}
+
+export function refreshProps(rows = catalog()) {
   for (const id of [...S.selectedIds]) {
     if (!rows.some((row) => row.id === id)) S.selectedIds.delete(id);
   }
-  treeEl.innerHTML = "";
-  const roots = brepRoots();
-  if (!roots.length) {
-    treeEl.textContent = t("tree.empty");
-  } else {
-    for (const row of roots) renderTreeNode(row, treeEl);
-  }
   if (S.selectedIds.size === 0) {
     propBody.textContent = t("props.none");
+    return;
+  }
+  if (renderSectionProps(propBody, rows)) {
     return;
   }
   if (S.selectedIds.size > 1) {
@@ -254,6 +277,31 @@ export function refreshDocks() {
     `<div class="prop"><dt>${key}</dt><dd>${value}</dd></div>`
   )).join("");
 }
+
+export function syncSelectionDocks() {
+  syncTreeHighlight();
+  refreshProps();
+}
+
+export function refreshDocks() {
+  const rows = catalog();
+  for (const id of [...S.selectedIds]) {
+    if (!rows.some((row) => row.id === id)) S.selectedIds.delete(id);
+  }
+  treeEl.innerHTML = "";
+  const roots = brepRoots();
+  if (!roots.length) {
+    treeEl.textContent = t("tree.empty");
+  } else {
+    for (const row of roots) renderTreeNode(row, treeEl);
+  }
+  refreshProps(rows);
+}
+
+registerDockHooks({
+  refreshDocks,
+  syncSelectionDocks,
+});
 
 function propertyFields(row) {
   const item = row.item;

@@ -1,6 +1,7 @@
 // The selection set, the selection filter, and window / crossing marquee selection.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { notifySelectionChanged, store } from "./store.js";
 import { t } from "./strings.js";
 import {
   FILTER_KINDS,
@@ -18,7 +19,7 @@ import {
 import { camera } from "./camera.js";
 import { refreshToggles, setHint } from "./cmdline.js";
 import { sampleCircle } from "./geom.js";
-import { rebuild } from "./render.js";
+import { syncSectionBar } from "./section-ghosts.js";
 import { sectionShape } from "./section.js";
 import { shapeQualifies } from "./screen.js";
 import { canvas } from "./viewport.js";
@@ -215,7 +216,7 @@ export function setSelection(id, { shift = false } = {}) {
     S.selectedIds.clear();
     S.selectedIds.add(id);
   }
-  rebuild();
+  notifySelectionChanged();
 }
 
 export function setSelectFilter(next) {
@@ -225,9 +226,13 @@ export function setSelectFilter(next) {
   for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
     button.classList.toggle("active", button.dataset.filter === S.selectFilter);
   }
+  syncSectionBar();
   refreshToggles();
   setHint(t("hint.select.filter", { filter: t(`filters.${S.selectFilter}`) }));
-  rebuild();
+  // Filter changes affect vertex-dot visibility, face fills, and outliner child rows.
+  S.vizVersion = (S.vizVersion || 0) + 1;
+  store.dispatch({ type: "filter/set", filter: next });
+  notifySelectionChanged();
 }
 
 export function applyWindowSelect(origin, event) {
@@ -236,7 +241,7 @@ export function applyWindowSelect(origin, event) {
   hideMarquee();
   if (!event.shiftKey) S.selectedIds.clear();
   for (const id of hits) S.selectedIds.add(id);
-  rebuild();
+  notifySelectionChanged();
   setHint(hits.length
     ? t("done.windowSelected", { mode: t(crossing ? "mode.crossing" : "mode.window"), n: S.selectedIds.size })
     : t("done.nothingInWindow"));
@@ -248,6 +253,6 @@ export function selectAll() {
     ? brepRoots().map((row) => row.id)
     : catalog().filter((row) => FILTER_KINDS[S.selectFilter].has(row.kind)).map((row) => row.id);
   S.selectedIds = new Set(ids);
-  rebuild();
+  notifySelectionChanged();
   setHint(S.selectedIds.size ? t("done.selected", { n: S.selectedIds.size }) : t("done.nothingToSelect"));
 }

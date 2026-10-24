@@ -11,8 +11,8 @@
   <script type="importmap">
   {
     "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      "three": "/vendor/three/build/three.module.min.js",
+      "three/addons/": "/vendor/three/examples/jsm/"
     }
   }
   </script>
@@ -30,6 +30,9 @@
         <div class="menu-sep"></div>
         <button type="button" data-cmd="import">Import JSON…</button>
         <button type="button" data-cmd="export">Export JSON…</button>
+        <button type="button" data-cmd="export-draft">Export section draft…</button>
+        <button type="button" data-cmd="export-svg">Export SVG…</button>
+        <button type="button" data-cmd="export-dxf">Export DXF…</button>
         <div class="menu-sep"></div>
         <button type="button" data-cmd="prefs">Preferences…</button>
         <div class="menu-sep"></div>
@@ -44,6 +47,22 @@
         <div class="menu-sep"></div>
         <button type="button" data-cmd="select-all">Select all <kbd>Ctrl+A</kbd></button>
         <button type="button" data-cmd="delete">Delete <kbd>Del</kbd></button>
+      </div>
+    </div>
+    <div class="menu" data-menu="section">
+      <button type="button">Section</button>
+      <div class="menu-panel">
+        <button type="button" data-tool="section-outline">Section outline</button>
+        <button type="button" data-tool="wall-chain">Wall chain</button>
+        <button type="button" data-tool="wall-leg">Wall leg</button>
+        <button type="button" data-tool="cover-guide">Cover guide</button>
+        <div class="menu-sep"></div>
+        <button type="button" data-tool="bar">Bar</button>
+        <button type="button" data-tool="bar-row">Bar row</button>
+        <button type="button" data-tool="bars-edge">Bars along edge</button>
+        <div class="menu-sep"></div>
+        <button type="button" data-tool="hoop">Hoop</button>
+        <button type="button" data-tool="crosstie">Crosstie</button>
       </div>
     </div>
     <div class="menu" data-menu="view">
@@ -127,6 +146,16 @@
       <button data-tool="ellipse" class="icon-btn" title="Ellipse"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="5"/></svg></button>
       <button data-tool="polygon" class="icon-btn" title="Polygon"><svg viewBox="0 0 24 24"><path d="M12 3 L20 8.5 L17 18 L7 18 L4 8.5 Z"/></svg></button>
       <button data-tool="bezier" class="icon-btn" title="Bézier"><svg viewBox="0 0 24 24"><path d="M4 18 C8 4, 16 20, 20 6"/><rect x="6.5" y="6.5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="14.5" y="14.5" width="3" height="3" fill="currentColor" stroke="none"/></svg></button>
+      <div class="rail-sep" title="Section"></div>
+      <button data-tool="section-outline" class="icon-btn" title="Section outline"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" fill="currentColor" fill-opacity="0.2"/><rect x="4" y="5" width="16" height="14"/></svg></button>
+      <button data-tool="wall-chain" class="icon-btn" title="Wall chain"><svg viewBox="0 0 24 24"><path d="M4 19 V5 H19" fill="none"/><path d="M8 19 V9 H19" fill="none"/><path d="M6 19 V7 H19" stroke-dasharray="2 2"/></svg></button>
+      <button data-tool="wall-leg" class="icon-btn" title="Wall leg"><svg viewBox="0 0 24 24"><path d="M4 12 H20" stroke-dasharray="3 2"/><rect x="3" y="10.5" width="3" height="3" fill="currentColor" stroke="none"/><rect x="18" y="10.5" width="3" height="3" fill="currentColor" stroke="none"/></svg></button>
+      <button data-tool="cover-guide" class="icon-btn" title="Cover guide"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16"/><rect x="6.5" y="7.5" width="11" height="9" stroke-dasharray="2.2 2"/></svg></button>
+      <button data-tool="bar" class="icon-btn" title="Bar"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor"/></svg></button>
+      <button data-tool="bar-row" class="icon-btn" title="Bar row"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.3" fill="currentColor"/><circle cx="12" cy="12" r="2.3" fill="currentColor"/><circle cx="19" cy="12" r="2.3" fill="currentColor"/></svg></button>
+      <button data-tool="bars-edge" class="icon-btn" title="Bars along edge"><svg viewBox="0 0 24 24"><path d="M4 18 H20"/><circle cx="6" cy="13.5" r="2" fill="currentColor"/><circle cx="12" cy="13.5" r="2" fill="currentColor"/><circle cx="18" cy="13.5" r="2" fill="currentColor"/></svg></button>
+      <button data-tool="hoop" class="icon-btn" title="Hoop"><svg viewBox="0 0 24 24"><rect x="5" y="6" width="14" height="12" rx="2.5"/><path d="M5 8.5 L8.5 12 M7.5 6 L11 9.5"/><circle cx="8" cy="9" r="1.4" fill="currentColor"/><circle cx="16" cy="9" r="1.4" fill="currentColor"/><circle cx="8" cy="15" r="1.4" fill="currentColor"/><circle cx="16" cy="15" r="1.4" fill="currentColor"/></svg></button>
+      <button data-tool="crosstie" class="icon-btn" title="Crosstie"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="2" fill="currentColor"/><circle cx="18" cy="12" r="2" fill="currentColor"/><path d="M6 12 H18"/><path d="M6 12 L9 8.5 M18 12 L15 15.5"/></svg></button>
       <div class="rail-sep" title="Solid"></div>
       <button data-tool="box" class="icon-btn" title="Box (rectangle, then height)"><svg viewBox="0 0 24 24"><path d="M4 8 L12 4 L20 8 L20 16 L12 20 L4 16 Z"/><path d="M4 8 L12 12 L20 8"/><path d="M12 12 L12 20"/></svg></button>
       <button data-tool="extrude" class="icon-btn" title="Extrude the selected profile"><svg viewBox="0 0 24 24"><rect x="5" y="14" width="14" height="6"/><path d="M12 14 L12 4"/><path d="M8 8 L12 4 L16 8"/></svg></button>
@@ -163,11 +192,48 @@
     </button>
     <div id="stage">
       <canvas id="view" tabindex="0"></canvas>
+      <div id="section-bar" role="toolbar" aria-label="Section parameters" hidden>
+        <label>Bar
+          <select id="sec-bar-dia">
+            <option value="Ø8">Ø8</option><option value="Ø10">Ø10</option><option value="Ø12">Ø12</option>
+            <option value="Ø14">Ø14</option><option value="Ø16" selected>Ø16</option><option value="Ø18">Ø18</option>
+            <option value="Ø20">Ø20</option><option value="Ø22">Ø22</option><option value="Ø25">Ø25</option>
+            <option value="Ø28">Ø28</option><option value="Ø32">Ø32</option>
+          </select>
+        </label>
+        <label>Row
+          <select id="sec-mode">
+            <option value="count" selected>Count</option>
+            <option value="spacing">Spacing</option>
+          </select>
+        </label>
+        <label>n <input id="sec-count" type="number" min="2" max="200" step="1" value="4" /></label>
+        <label>s <input id="sec-spacing" type="number" min="25" max="1000" step="25" value="150" /></label>
+        <label>Tie
+          <select id="sec-tie-dia">
+            <option value="Ø8">Ø8</option><option value="Ø10" selected>Ø10</option><option value="Ø12">Ø12</option>
+            <option value="Ø14">Ø14</option><option value="Ø16">Ø16</option>
+          </select>
+        </label>
+        <label>Tie s <input id="sec-tie-spacing" type="number" min="25" max="500" step="25" value="100" /></label>
+        <label>Hooks
+          <select id="sec-hooks">
+            <option value="135-135" selected>135-135</option>
+            <option value="135-90">135-90</option>
+          </select>
+        </label>
+        <label>Cover <input id="sec-cover" type="number" min="5" max="200" step="5" value="25" /></label>
+        <label>Wall t <input id="sec-thick" type="number" min="50" max="2000" step="25" value="300" /></label>
+        <label>Curtains <input id="sec-curtains" type="number" min="0" max="4" step="1" value="2" /></label>
+        <label>Material <input id="sec-material" type="text" value="concrete" /></label>
+      </div>
       <div id="viewcube-wrap">
-        <canvas id="viewcube" width="108" height="108" title="View cube. Click a face, edge or corner."></canvas>
+        <div id="viewcube" title="View cube. Click a face, edge or corner, or drag to orbit."></div>
         <div id="viewcube-actions">
+          <button type="button" id="view-roll-ccw" title="Orbit 90° counter-clockwise around Z">↶</button>
           <button type="button" id="view-iso" title="Isometric from the right, front, top corner">ISO</button>
           <button type="button" id="view-fit" title="Fit the draft in the view">Fit</button>
+          <button type="button" id="view-roll-cw" title="Orbit 90° clockwise around Z">↷</button>
         </div>
       </div>
       <div id="dims"></div>
@@ -316,12 +382,13 @@
       <div>Esc cancels, then selects · 1 points · 2 lines · 3 faces · 4 solids · 5 whole elements · 6 section entities</div>
       <div>M move · T trim · E extend · J join · O perspective or parallel</div>
       <div>Line chains until Esc · Polyline: Enter finishes; C or a click on the start closes</div>
+      <div>Section tools: Outline, Wall chain, Wall leg, Cover guide, Bar, Bar row, Bars along edge, Hoop, Crosstie</div>
       <div>F3 node snap · F7 grid snap · F8 ORTHO · F9 grid · middle drag orbits · right drag pans</div>
       <div>View menu: perspective, parallel and the six named views · O switches the lens</div>
       <div>Grid, Preferences: units, dots or lines, spacing, dot size · type <kbd>mm</kbd>, <kbd>cm</kbd>, <kbd>m</kbd>, <kbd>in</kbd> or <kbd>grid 50 500</kbd></div>
       <div>F2 renames · right-click the model tree to duplicate, hide or delete</div>
     </div>
   </dialog>
-  <script type="module" src="/app.js?v=73"></script>
+  <script type="module" src="/app.js?v=80"></script>
 </body>
 </html>

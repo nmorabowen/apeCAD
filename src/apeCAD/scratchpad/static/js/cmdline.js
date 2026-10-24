@@ -1,12 +1,26 @@
 // The command line and status bar: prompt/hint and log, the typed length buffer, toggle
 // buttons, and the cursor coordinate readout.
 import { S } from "./state.js";
+import { notifySelectionChanged, requestRender, store } from "./store.js";
 import { refusalText, t } from "./strings.js";
 import { dist3 } from "./geom.js";
-import { syncGridMenu, syncGridPrefsForm } from "./grid-ui.js";
 import { grid, gridMajorMm, gridMinorMm } from "./grid.js";
-import { displayUnit, formatLength, formatNumber, parseLength } from "./prefs.js";
-import { formatDeg } from "./units.js";
+import {
+  GRID_MAX_MM,
+  GRID_MIN_MM,
+  displayUnit,
+  formatGridInput,
+  formatLength,
+  formatNumber,
+  gridAutoOn,
+  gridDotSize,
+  gridLineWidth,
+  gridMinorStyle,
+  hiddenLineScale,
+  mmToUnit,
+  parseLength,
+} from "./prefs.js";
+import { UNIT_STEP, formatDeg } from "./units.js";
 
 const status = document.getElementById("status");
 const labelInput = document.getElementById("label");
@@ -46,11 +60,24 @@ export function appendLog(text, kind = "hint") {
     return;
   }
   const line = document.createElement("div");
-  if (kind === "refused") line.className = "refused";
+  if (kind === "refused" || kind === "warn") line.className = "refused";
   line.textContent = text;
   consoleLog.appendChild(line);
   while (consoleLog.childElementCount > 80) consoleLog.removeChild(consoleLog.firstChild);
   consoleLog.scrollTop = consoleLog.scrollHeight;
+}
+
+export function logWarnings(warnings) {
+  const nextKeys = new Set();
+  for (const w of warnings || []) {
+    const key = `${w.code}:${(w.ids || []).join(",")}:${w.message}`;
+    nextKeys.add(key);
+    if (!S.seenWarnings.has(key)) {
+      const msg = String(w.message || "").trim().replace(/\.+$/, "");
+      appendLog(t("warn.prefix", { message: msg }), "warn");
+    }
+  }
+  S.seenWarnings = nextKeys;
 }
 
 export function typedText() {
@@ -72,6 +99,64 @@ export function isTypingField(event) {
   return Boolean(event.target && event.target.closest && event.target.closest("dialog"));
 }
 
+export function syncGridMenu() {
+  const minorOnEl = document.getElementById("grid-minor-on");
+  if (minorOnEl) minorOnEl.checked = S.gridMinorOn;
+}
+
+export function syncGridPrefsForm() {
+  const showEl = document.getElementById("gpref-show");
+  if (!showEl) return;
+  showEl.checked = S.gridOn;
+  document.getElementById("gpref-minor-on").checked = S.gridMinorOn;
+  document.getElementById("gpref-snap").checked = S.gridSnapOn;
+  const autoEl = document.getElementById("gpref-auto");
+  if (autoEl) autoEl.checked = gridAutoOn();
+  const styleEl = document.getElementById("gpref-minor-style");
+  if (styleEl && document.activeElement !== styleEl) styleEl.value = gridMinorStyle();
+  const unitEl = document.getElementById("gpref-unit");
+  if (unitEl && document.activeElement !== unitEl) unitEl.value = displayUnit();
+  const dots = gridMinorStyle() === "dots";
+  const dotOpts = document.getElementById("gpref-dot-opts");
+  const lineOpts = document.getElementById("gpref-line-opts");
+  if (dotOpts) dotOpts.hidden = !dots;
+  if (lineOpts) lineOpts.hidden = dots;
+  const unit = displayUnit();
+  const step = UNIT_STEP[unit];
+  const min = mmToUnit(GRID_MIN_MM);
+  const max = mmToUnit(GRID_MAX_MM);
+  const minorEl = document.getElementById("gpref-minor");
+  const majorEl = document.getElementById("gpref-major");
+  for (const el of [minorEl, majorEl]) {
+    el.min = String(min);
+    el.max = String(max);
+    el.step = String(step);
+    el.disabled = gridAutoOn();
+  }
+  if (document.activeElement !== minorEl) minorEl.value = formatGridInput(gridMinorMm());
+  if (document.activeElement !== majorEl) majorEl.value = formatGridInput(gridMajorMm());
+  const scaleEl = document.getElementById("gpref-hidden-scale");
+  const scaleNum = document.getElementById("gpref-hidden-scale-num");
+  const scale = hiddenLineScale();
+  if (document.activeElement !== scaleEl) scaleEl.value = String(scale);
+  if (document.activeElement !== scaleNum) scaleNum.value = String(scale);
+  const dotEl = document.getElementById("gpref-dot-size");
+  const dotNum = document.getElementById("gpref-dot-size-num");
+  const size = gridDotSize();
+  if (dotEl && document.activeElement !== dotEl) dotEl.value = String(size);
+  if (dotNum && document.activeElement !== dotNum) dotNum.value = String(size);
+  const widthEl = document.getElementById("gpref-line-width");
+  const widthNum = document.getElementById("gpref-line-width-num");
+  const width = gridLineWidth();
+  if (widthEl && document.activeElement !== widthEl) widthEl.value = String(width);
+  if (widthNum && document.activeElement !== widthNum) widthNum.value = String(width);
+  for (const button of document.querySelectorAll("[data-grid-minor]")) {
+    button.textContent = `${formatGridInput(Number(button.dataset.gridMinor))} / ${formatGridInput(Number(button.dataset.gridMajor))}`;
+  }
+  const placeholder = document.getElementById("console-input");
+  if (placeholder) placeholder.placeholder = t("grid.placeholder", { unit });
+}
+
 export function refreshToggles() {
   snapButton.classList.toggle("active", S.snapOn);
   gridSnapButton.classList.toggle("active", S.gridSnapOn);
@@ -89,17 +174,39 @@ export function refreshToggles() {
   if (S.tool === "select") {
     chips.push([t("chip.filter", { filter: t(`filter.${S.selectFilter || "element"}`) }), true]);
   }
+  const warnings = S.sceneState.warnings || [];
+  if (warnings.length > 0) {
+    chips.push([t("chip.warn", { n: warnings.length }), "warn"]);
+  }
   const typed = activeLength();
   if (typed !== null) chips.push([formatLength(typed), true]);
-  status.replaceChildren(...chips.map(([text, on]) => {
+  status.replaceChildren(...chips.map(([text, state]) => {
     const chip = document.createElement("span");
-    chip.className = on ? "chip on" : "chip";
+    chip.className = state === "warn" ? "chip warn" : state ? "chip on" : "chip";
     chip.textContent = text;
+    if (state === "warn") {
+      chip.title = warnings.map((w) => w.message).join("\n");
+      const warnIds = [];
+      for (const w of warnings) {
+        for (const id of w.ids || []) warnIds.push(id);
+      }
+      if (warnIds.length > 0) {
+        chip.addEventListener("pointerenter", () => {
+          store.dispatch({ type: "hover/set", ids: warnIds });
+          notifySelectionChanged();
+        });
+        chip.addEventListener("pointerleave", () => {
+          store.dispatch({ type: "hover/clear" });
+          notifySelectionChanged();
+        });
+      }
+    }
     return chip;
   }));
-  grid.visible = S.gridOn;
+  if (grid) grid.visible = S.gridOn;
   syncGridMenu();
   syncGridPrefsForm();
+  requestRender();
 }
 
 export function labelValue() {

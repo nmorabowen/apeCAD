@@ -22,8 +22,9 @@ _RETIRED = {
     "0xd55e00", "#d55e00", "0x6cb3ff", "0x7dce7d", "0xff6b6b", "0x111111", "#2c333c",
     "#e8edf2", "0xe4e9ee", "0x1c1c1c", "0xa3a6aa",
 }
-# Key light and contact shadow are physics, not palette; prefs.js migrates a legacy value.
-_ALLOWED_HEX = {"viewport.js", "prefs.js"}
+# Key light and contact shadow are physics, not palette; prefs.js migrates a legacy value;
+# canvas2d.js holds the standalone 2-D section fallback PALETTE table (ADR 0026).
+_ALLOWED_HEX = {"viewport.js", "prefs.js", "canvas2d.js"}
 
 
 @pytest.fixture
@@ -105,10 +106,120 @@ def test_canvas_presets_define_the_canvas_roles() -> None:
 
 
 def test_client_keeps_no_retired_colour() -> None:
-    files = [STATIC_DIR / "index.html", STATIC_DIR / "app.js", *(STATIC_DIR / "js").glob("*.js")]
+    sec_dir = STATIC_DIR / "section"
+    sec_files = list(sec_dir.glob("*.js")) if sec_dir.exists() else []
+    files = [
+        STATIC_DIR / "index.html",
+        STATIC_DIR / "app.js",
+        *(STATIC_DIR / "js").glob("*.js"),
+        *sec_files,
+    ]
     for path in files:
+        assert "vendor" not in path.parts
         found = set(_HEX.findall(path.read_text(encoding="utf-8")))
         assert not found & _RETIRED, (path.name, sorted(found & _RETIRED))
         if path.suffix == ".js" and path.name not in _ALLOWED_HEX:
             assert not found, (path.name, sorted(found))
     assert "<style>" not in (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+
+def _srgb_to_linear(u8: int) -> float:
+    c = (u8 & 255) / 255.0
+    return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def _parse_hex(val: str) -> tuple[int, int, int]:
+    raw = val.strip().lstrip("#")[:6]
+    n = int(raw, 16)
+    return (n >> 16) & 255, (n >> 8) & 255, n & 255
+
+
+def _luminance(val: str) -> float:
+    r, g, b = _parse_hex(val)
+    return 0.2126 * _srgb_to_linear(r) + 0.7152 * _srgb_to_linear(g) + 0.0722 * _srgb_to_linear(b)
+
+
+def _contrast(a: str, b: str) -> float:
+    l1, l2 = _luminance(a), _luminance(b)
+    return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+
+
+_CVD_MATS: dict[str, tuple[tuple[float, float, float], ...]] = {
+    "protan": (
+        (0.152286, 1.052583, -0.204868),
+        (0.114503, 0.786281, 0.099216),
+        (-0.003882, -0.048116, 1.051998),
+    ),
+    "deutan": (
+        (0.367322, 0.860646, -0.227968),
+        (0.280085, 0.672501, 0.047413),
+        (-0.011820, 0.042940, 0.968881),
+    ),
+}
+
+
+def _oklab_from_lin(r: float, g: float, b: float) -> tuple[float, float, float]:
+    r, g, b = max(0.0, min(1.0, r)), max(0.0, min(1.0, g)), max(0.0, min(1.0, b))
+    l_ = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1.0 / 3.0)
+    m_ = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1.0 / 3.0)
+    s_ = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1.0 / 3.0)
+    return (
+        0.2104542553 * l_ + 0.7936177850 * m_ - 0.0040720468 * s_,
+        1.9779984951 * l_ - 2.4285922050 * m_ + 0.4505937099 * s_,
+        0.0259040371 * l_ + 0.7827717662 * m_ - 0.8086757660 * s_,
+    )
+
+
+def _cvd_oklab_dist(hex_a: str, hex_b: str, mode: str) -> float:
+    mat = _CVD_MATS[mode]
+
+    def sim(val: str) -> tuple[float, float, float]:
+        r8, g8, b8 = _parse_hex(val)
+        rl, gl, bl = _srgb_to_linear(r8), _srgb_to_linear(g8), _srgb_to_linear(b8)
+        return _oklab_from_lin(
+            mat[0][0] * rl + mat[0][1] * gl + mat[0][2] * bl,
+            mat[1][0] * rl + mat[1][1] * gl + mat[1][2] * bl,
+            mat[2][0] * rl + mat[2][1] * gl + mat[2][2] * bl,
+        )
+
+    la, lb = sim(hex_a), sim(hex_b)
+    return ((la[0] - lb[0]) ** 2 + (la[1] - lb[1]) ** 2 + (la[2] - lb[2]) ** 2) ** 0.5
+
+
+def test_wcag_contrast_and_cvd_oklab_gates() -> None:
+    css = CSS.read_text(encoding="utf-8")
+    light = _block(css, ":root {")
+    dark = {**light, **_block(css, ':root[data-theme="dark"]')}
+    for theme_name, palette in (("light", light), ("dark", dark)):
+        for surf in ("--surface-0", "--surface-1", "--surface-2"):
+            for ink in ("--text", "--accent-text", "--signal-text"):
+                cr = _contrast(palette[ink], palette[surf])
+                assert cr >= 4.5, f"{theme_name} {ink} on {surf}: {cr:.2f} < 4.5"
+
+    paper_base = _block(css, '#stage[data-canvas="paper"], #stage[data-canvas="mist"] {')
+    mist_override = _block(css, '#stage[data-canvas="mist"] {')
+    carbon_override = _block(css, '#stage[data-canvas="carbon"] {')
+    presets = [
+        ("light", light),
+        ("dark", dark),
+        ("paper", {**light, **paper_base}),
+        ("mist", {**light, **paper_base, **mist_override}),
+        ("carbon", {**light, **carbon_override}),
+    ]
+    strokes = (
+        "--ink-edge",
+        "--pick",
+        "--snap",
+        "--ink-concrete",
+        "--ink-section-guide",
+        "--ink-rebar",
+    )
+    for name, pal in presets:
+        bg = pal["--canvas"]
+        for stroke in strokes:
+            cr = _contrast(pal[stroke], bg)
+            assert cr >= 2.2, f"{name} {stroke} on --canvas: {cr:.2f} < 2.2"
+        for mode in ("protan", "deutan"):
+            assert _cvd_oklab_dist(pal["--pick"], pal["--snap"], mode) >= 0.055
+            assert _cvd_oklab_dist(pal["--pick"], pal["--ink-edge"], mode) >= 0.055
+

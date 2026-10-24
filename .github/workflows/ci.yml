@@ -32,6 +32,8 @@ jobs:
       - name: Install
         run: python -m pip install -e ".[dev,mcp,dxf]"
       - name: pytest
+        env:
+          APECAD_REQUIRE_NODE: "1"
         run: python -m pytest -q
       - name: ruff check
         run: python -m ruff check src tests

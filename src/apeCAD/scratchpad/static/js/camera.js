@@ -2,6 +2,7 @@
 // framing the model, and keeping both cameras and the renderer in sync (ADR 0013).
 import * as THREE from "three";
 import { S } from "./state.js";
+import { requestRender } from "./store.js";
 import { t } from "./strings.js";
 import { setHint } from "./cmdline.js";
 import { gridMajorMm, gridMinorMm, syncGridLineResolution } from "./grid.js";
@@ -14,19 +15,30 @@ import {
   orthoCam,
   persp,
   renderer,
+  syncAllLineResolutions,
   viewUp,
 } from "./viewport.js";
 
 export const projButton = document.getElementById("proj");
 let viewSize = { w: 0, h: 0 };
 let viewAnim = null;
+let _cachedBoundsScene = null;
+let _cachedBounds3 = null;
+
+export function invalidateSceneBounds() {
+  _cachedBoundsScene = null;
+  _cachedBounds3 = null;
+}
 
 function sceneBounds3() {
+  if (_cachedBoundsScene === S.sceneState) return _cachedBounds3;
+  _cachedBoundsScene = S.sceneState;
   const box = new THREE.Box3();
   for (const point of S.sceneState.points || []) {
     box.expandByPoint(new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm || 0));
   }
-  return box.isEmpty() ? null : box;
+  _cachedBounds3 = box.isEmpty() ? null : box;
+  return _cachedBounds3;
 }
 
 function sceneFrame() {
@@ -99,7 +111,7 @@ function updateClipPlanes(dist) {
 }
 
 
-export function syncCameras() {
+export function updateCameraMatrices() {
   const src = camera();
   const dst = S.useOrtho ? persp : orthoCam;
   src.up.copy(viewUp);
@@ -122,8 +134,14 @@ export function syncCameras() {
   if (width !== viewSize.w || height !== viewSize.h) {
     viewSize = { w: width, h: height };
     renderer.setSize(width, height, false);
+    syncGridLineResolution();
+    syncAllLineResolutions(width, height);
   }
-  syncGridLineResolution();
+}
+
+export function syncCameras() {
+  updateCameraMatrices();
+  requestRender();
 }
 
 export function syncViewMenu() {
@@ -285,27 +303,30 @@ export function goToView(dir, extras = {}) {
     t0: performance.now(),
     ms: 220,
   };
+  requestRender();
 }
 
 export function tickViewAnim() {
-  if (!viewAnim) return;
+  if (!viewAnim) return false;
   const u = Math.min(1, (performance.now() - viewAnim.t0) / viewAnim.ms);
   const s = u * u * (3 - 2 * u);
   const target = viewAnim.fromTarget.clone().lerp(viewAnim.toTarget, s);
   const offset = slerpOffset(viewAnim.fromOffset, viewAnim.toOffset, s);
   applyCameraPose(target.clone().add(offset), target, viewAnim.up);
-  syncCameras();
+  updateCameraMatrices();
   if (u >= 1) {
     const endTarget = viewAnim.toTarget;
     const endPos = endTarget.clone().add(viewAnim.toOffset);
     applyCameraPose(endPos, endTarget, viewAnim.up);
     setOrbitPoleLimit(viewAnim.axis);
-    syncCameras();
+    updateCameraMatrices();
     controls.update();
     applyCameraPose(endPos, endTarget, viewAnim.up);
-    syncCameras();
+    updateCameraMatrices();
     viewAnim = null;
+    return false;
   }
+  return true;
 }
 
 export function fitView() {
@@ -325,8 +346,10 @@ function worldToScreen(x, y, z) {
 
 export function initCamera() {
   window.addEventListener("resize", syncCameras);
+  controls.addEventListener("change", syncCameras);
   setProjection(true);
   if (typeof ResizeObserver === "function") {
     new ResizeObserver(() => syncCameras()).observe(document.getElementById("stage"));
   }
 }
+

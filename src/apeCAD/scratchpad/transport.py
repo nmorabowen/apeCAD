@@ -1,4 +1,4 @@
-"""The stateless section transport: `handle(request) -> response` (ADR 0026, stage C5).
+"""The stateless section transport: `handle(request) -> response` (ADR 0026, stage C5/C10).
 
 A request carries the client's whole state, so a host keeps nothing between calls:
 
@@ -11,10 +11,11 @@ The actions:
 - `scene`: replay and return the state unchanged.
 - `apply`: apply `op`, a catalog request `{"op": name, ...params}` (the `/api/op` body).
 - `undo`, `redo`: one step.
-- `load`: replace the state with `payload`, an ops log or an `apeCAD.section-draft`.
-  `document` and `redo` are not read. A draft's reopen warnings come back as `warnings`.
+- `load`: replace the state with `payload`, an ops log, an `apeCAD.section-draft`, or an
+  `apeCAD.section-seed`. `document` and `redo` are not read. A draft's reopen warnings come
+  back as `warnings`.
 - `draft`: the state plus `draft`, the ADR 0025 section-draft.
-- `seed`: refused until stage C10.
+- `seed`: replace the state with `payload`, an `apeCAD.section-seed` v1 (stage C10).
 
 A success is `{ok: true, status: 200, transport_version, document, redo, scene}`, plus
 `created_id` (apply), `draft` (draft) or `warnings` (load). Every refusal, a malformed request
@@ -33,11 +34,15 @@ from typing import cast
 
 from apeCAD import catalog
 from apeCAD.document import Document
-from apeCAD.errors import INVALID_ARGUMENT, REFUSED, TOO_LARGE, DocumentError
+from apeCAD.errors import INVALID_ARGUMENT, TOO_LARGE, DocumentError
 from apeCAD.ops import op_to_dict
 from apeCAD.scratchpad.payload import scene_payload
-from apeCAD.section.draft import DRAFT_SCHEMA
-from apeCAD.section_draft import document_from_draft, section_draft
+from apeCAD.section.draft import DRAFT_SCHEMA, SEED_SCHEMA
+from apeCAD.section_draft import (
+    document_from_draft,
+    document_from_section_seed,
+    section_draft,
+)
 
 Json = dict[str, object]
 
@@ -95,7 +100,7 @@ def _handle(request: Json) -> Json:
     if action not in ACTIONS:
         raise _Refusal(INVALID_ARGUMENT, f"unknown action {action!r}, expected one of {ACTIONS}")
     if action == "seed":
-        raise _Refusal(REFUSED, "seed is not available yet (plan stage C10)")
+        return _seed(request.get("payload"))
     if action == "load":
         return _load(request.get("payload"))
     document = _restore(request.get("document"), request.get("redo"))
@@ -114,6 +119,13 @@ def _handle(request: Json) -> Json:
     return _state(document, extras)
 
 
+def _seed(payload: object) -> Json:
+    body = _object(payload, "seed payload")
+    document = document_from_section_seed(body)
+    _check_size([op_to_dict(op) for op in document.ops()], None)
+    return _state(document, {})
+
+
 def _load(payload: object) -> Json:
     body = _object(payload, "load payload")
     if body.get("schema") == DRAFT_SCHEMA:
@@ -121,6 +133,8 @@ def _load(payload: object) -> Json:
         _check_size(cast(Json, nested).get("ops") if isinstance(nested, dict) else None, None)
         document, warnings = document_from_draft(body)
         return _state(document, {"warnings": warnings})
+    if body.get("schema") == SEED_SCHEMA:
+        return _seed(body)
     _check_size(body.get("ops"), None)
     return _state(Document.from_dict(body), {})
 

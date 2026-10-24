@@ -1,12 +1,23 @@
-// Scene-graph builders: clay materials, curves, faces, volumes and vertex dots, tinted by
-// selection. Each object carries its entity id in userData for picking.
+// Scene-graph builders: clay materials, screen-space LineSegments2 curves/edges, ear-clipped
+// faces, volumes, vertex dots, and depth-exempt SelectionHalos (ADRs 0035, 0036).
 import * as THREE from "three";
+import { LineMaterial } from "three/addons/lines/LineMaterial.js";
+import { LineSegments2 } from "three/addons/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/addons/lines/LineSegmentsGeometry.js";
+import { triangulatePlanar3D } from "./geom.js";
 import { S } from "./state.js";
 import { INK, parseCssColor } from "./theme.js";
-import { ghosts, preselects } from "./viewport.js";
+import { currentLineResolution, disposeObject3D, ghosts, preselects, selectionHalos } from "./viewport.js";
+
+export const LINE_WEIGHT_WIRE_PX = 1.5;
+export const LINE_WEIGHT_SECTION_PX = 2.25;
+export const LINE_WEIGHT_REBAR_PX = 3.0;
+export const LINE_WEIGHT_SELECTED_PX = 3.0;
+export const HALO_CASING_PX = 4.5;
+export const HALO_CORE_PX = 2.5;
 
 function isOverlayGroup(group) {
-  return group === ghosts || group === preselects;
+  return group === ghosts || group === preselects || group === selectionHalos;
 }
 
 export function clayHex() {
@@ -47,6 +58,72 @@ export function lineOverlay(entityId) {
   return S.selectFilter === "line" || selectionTints(entityId);
 }
 
+export function xyzMm(point) {
+  const x = Number(point.x_mm ?? point.x);
+  const y = Number(point.y_mm ?? point.y);
+  const z = Number(point.z_mm ?? point.z);
+  return {
+    x_mm: Number.isFinite(x) ? x : 0,
+    y_mm: Number.isFinite(y) ? y : 0,
+    z_mm: Number.isFinite(z) ? z : 0,
+  };
+}
+
+export function pointsToSegmentPositions(pts, closed = false, zOverride = null) {
+  const out = [];
+  if (!pts || pts.length < 2) return out;
+  const coords = pts.map((pt) => {
+    const p = xyzMm(pt);
+    return [p.x_mm, p.y_mm, zOverride != null ? zOverride : p.z_mm];
+  });
+  for (let i = 0; i < coords.length - 1; i += 1) {
+    const a = coords[i];
+    const b = coords[i + 1];
+    out.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+  }
+  if (closed && coords.length >= 3) {
+    const last = coords[coords.length - 1];
+    const first = coords[0];
+    if (
+      Math.hypot(last[0] - first[0], last[1] - first[1], last[2] - first[2]) > 1e-6
+    ) {
+      out.push(last[0], last[1], last[2], first[0], first[1], first[2]);
+    }
+  }
+  return out;
+}
+
+export function makeScreenLineSegments(
+  flatPositions,
+  {
+    color = INK.edge,
+    linewidth = LINE_WEIGHT_WIRE_PX,
+    depthTest = true,
+    renderOrder = 0,
+    entityId = null,
+    role = "wire",
+    baseColor = color,
+    baseLinewidth = linewidth,
+  } = {},
+) {
+  if (!flatPositions || flatPositions.length < 6) return null;
+  const geom = new LineSegmentsGeometry();
+  geom.setPositions(flatPositions);
+  const mat = new LineMaterial({
+    color,
+    linewidth,
+    worldUnits: false,
+    resolution: currentLineResolution(),
+    depthTest,
+    depthWrite: depthTest,
+    transparent: !depthTest,
+  });
+  const segs = new LineSegments2(geom, mat);
+  segs.renderOrder = renderOrder;
+  mark(segs, entityId, { role, baseColor, baseLinewidth, flatPositions });
+  return segs;
+}
+
 function clayMat(preview, opacity, entityId = null) {
   return new THREE.MeshLambertMaterial({
     color: preview || selectionTints(entityId) ? INK.pick : clayHex(),
@@ -58,37 +135,55 @@ function clayMat(preview, opacity, entityId = null) {
 
 function addEdgeOverlay(group, mesh, entityId, preview) {
   if (preview || !S.prefs.showEdges) return;
-  const edges = new THREE.LineSegments(
-    new THREE.EdgesGeometry(mesh.geometry),
-    new THREE.LineBasicMaterial({ color: INK.edge }),
-  );
-  edges.position.copy(mesh.position);
-  edges.quaternion.copy(mesh.quaternion);
-  mark(edges, entityId);
-  group.add(edges);
+  const edgeGeom = new THREE.EdgesGeometry(mesh.geometry);
+  const posAttr = edgeGeom.getAttribute("position");
+  const flat = posAttr ? Array.from(posAttr.array) : [];
+  edgeGeom.dispose();
+  if (flat.length < 6) return;
+  const picked = selectionTints(entityId);
+  const segs = makeScreenLineSegments(flat, {
+    color: picked ? INK.pick : INK.edge,
+    linewidth: picked ? LINE_WEIGHT_SELECTED_PX : LINE_WEIGHT_WIRE_PX,
+    depthTest: true,
+    renderOrder: 2,
+    entityId,
+    role: "edge",
+    baseColor: INK.edge,
+    baseLinewidth: LINE_WEIGHT_WIRE_PX,
+  });
+  if (!segs) return;
+  segs.position.copy(mesh.position);
+  segs.quaternion.copy(mesh.quaternion);
+  group.add(segs);
 }
 
 export function addCurve(group, pts, color = curveIdle(), entityId = null) {
   if (pts.length < 2) return;
   if (!isOverlayGroup(group) && !S.prefs.showCurves) return;
+  const preview = isOverlayGroup(group);
+  const picked = !preview && selectionTints(entityId);
   const overlay = group !== ghosts && lineOverlay(entityId);
-  const line = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(
-      pts.map((point) => {
-        const p = xyzMm(point);
-        return new THREE.Vector3(p.x_mm, p.y_mm, p.z_mm);
-      }),
-    ),
-    new THREE.LineBasicMaterial({ color, depthTest: !overlay }),
-  );
-  line.renderOrder = overlay ? 12 : 0;
-  mark(line, entityId);
-  group.add(line);
+  const flat = pointsToSegmentPositions(pts, false);
+  const segs = makeScreenLineSegments(flat, {
+    color,
+    linewidth: preview || picked ? LINE_WEIGHT_SELECTED_PX : LINE_WEIGHT_WIRE_PX,
+    depthTest: !overlay && !preview,
+    renderOrder: overlay || preview ? 12 : 1,
+    entityId,
+    role: "curve",
+    baseColor: curveIdle(),
+    baseLinewidth: LINE_WEIGHT_WIRE_PX,
+  });
+  if (segs) group.add(segs);
 }
 
-export function mark(object, entityId) {
-  if (entityId == null) return;
-  object.userData.entityId = entityId;
+export function mark(object, entityId, meta = null) {
+  if (meta && typeof meta === "object") {
+    Object.assign(object.userData, meta);
+  }
+  if (entityId != null) {
+    object.userData.entityId = entityId;
+  }
 }
 
 export function addVolume(group, origin, size, color, opacity, entityId = null) {
@@ -98,7 +193,7 @@ export function addVolume(group, origin, size, color, opacity, entityId = null) 
     clayMat(preview, opacity, entityId),
   );
   mesh.position.set(origin[0] + size[0] / 2, origin[1] + size[1] / 2, origin[2] + size[2] / 2);
-  mark(mesh, entityId);
+  mark(mesh, entityId, { role: "clay", baseOpacity: opacity });
   if (!preview && !S.prefs.showFaces) mesh.visible = false;
   group.add(mesh);
   addEdgeOverlay(group, mesh, entityId, preview);
@@ -112,60 +207,59 @@ export function addCylinder(group, cx, cy, radius, originZ, height, color, opaci
   );
   mesh.rotation.x = Math.PI / 2;
   mesh.position.set(cx, cy, originZ + height / 2);
-  mark(mesh, entityId);
+  mark(mesh, entityId, { role: "clay", baseOpacity: opacity });
   if (!preview && !S.prefs.showFaces) mesh.visible = false;
   group.add(mesh);
   addEdgeOverlay(group, mesh, entityId, preview);
 }
 
-export function addFaceGraphic(group, pts, { fill = true, opacity = 0.92, entityId = null, color = null } = {}) {
+export function addFaceGraphic(
+  group,
+  pts,
+  { fill = true, extrudedProfile = false, opacity = 0.92, entityId = null, color = null } = {},
+) {
   if (pts.length < 3) return;
   const preview = isOverlayGroup(group);
   const z = (Number.isFinite(pts[0].z_mm) ? pts[0].z_mm : 0) + 20;
-  if (fill && (preview || S.prefs.showFaces)) {
+  if ((fill || extrudedProfile) && (preview || S.prefs.showFaces)) {
+    const tris = triangulatePlanar3D(pts);
     const vertices = [];
-    const origin = pts[0];
-    for (let i = 1; i < pts.length - 1; i += 1) {
+    for (const [i0, i1, i2] of tris) {
       vertices.push(
-        origin.x_mm, origin.y_mm, z,
-        pts[i].x_mm, pts[i].y_mm, z,
-        pts[i + 1].x_mm, pts[i + 1].y_mm, z,
+        pts[i0].x_mm, pts[i0].y_mm, z,
+        pts[i1].x_mm, pts[i1].y_mm, z,
+        pts[i2].x_mm, pts[i2].y_mm, z,
       );
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(
-      geometry,
-      clayMat(preview, preview ? opacity : 0.92, entityId),
-    );
-    if (preview && color != null) mesh.material.color.setHex(color);
-    mesh.renderOrder = 2;
-    mark(mesh, entityId);
-    group.add(mesh);
+    if (vertices.length >= 9) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.computeVertexNormals();
+      const mesh = new THREE.Mesh(
+        geometry,
+        clayMat(preview, preview ? opacity : 0.92, entityId),
+      );
+      if (preview && color != null) mesh.material.color.setHex(color);
+      mesh.renderOrder = 2;
+      mesh.visible = Boolean(fill);
+      mark(mesh, entityId, { role: "clay", baseOpacity: 0.92, extrudedProfile });
+      group.add(mesh);
+    }
   }
   if (!preview && !S.prefs.showEdges && !S.prefs.showCurves) return;
-  const loop = pts.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, z + 8));
-  loop.push(loop[0].clone());
-  const outline = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints(loop),
-    new THREE.LineBasicMaterial({
-      color: preview ? (color ?? curveIdle()) : INK.edge,
-    }),
-  );
-  mark(outline, entityId);
-  group.add(outline);
-}
-
-export function xyzMm(point) {
-  const x = Number(point.x_mm);
-  const y = Number(point.y_mm);
-  const z = Number(point.z_mm);
-  return {
-    x_mm: Number.isFinite(x) ? x : 0,
-    y_mm: Number.isFinite(y) ? y : 0,
-    z_mm: Number.isFinite(z) ? z : 0,
-  };
+  const flat = pointsToSegmentPositions(pts, true, z + 8);
+  const picked = !preview && selectionTints(entityId);
+  const outline = makeScreenLineSegments(flat, {
+    color: preview ? (color ?? curveIdle()) : (picked ? INK.pick : INK.edge),
+    linewidth: preview || picked ? LINE_WEIGHT_SELECTED_PX : LINE_WEIGHT_WIRE_PX,
+    depthTest: !preview,
+    renderOrder: preview ? 12 : 2,
+    entityId,
+    role: "edge",
+    baseColor: INK.edge,
+    baseLinewidth: LINE_WEIGHT_WIRE_PX,
+  });
+  if (outline) group.add(outline);
 }
 
 export function addPlanarFace(group, pts, entityId) {
@@ -173,34 +267,39 @@ export function addPlanarFace(group, pts, entityId) {
   const preview = isOverlayGroup(group);
   const world = pts.map(xyzMm);
   if (preview || S.prefs.showFaces) {
+    const tris = triangulatePlanar3D(world);
     const vertices = [];
-    const origin = world[0];
-    for (let i = 1; i < world.length - 1; i += 1) {
+    for (const [i0, i1, i2] of tris) {
       vertices.push(
-        origin.x_mm, origin.y_mm, origin.z_mm,
-        world[i].x_mm, world[i].y_mm, world[i].z_mm,
-        world[i + 1].x_mm, world[i + 1].y_mm, world[i + 1].z_mm,
+        world[i0].x_mm, world[i0].y_mm, world[i0].z_mm,
+        world[i1].x_mm, world[i1].y_mm, world[i1].z_mm,
+        world[i2].x_mm, world[i2].y_mm, world[i2].z_mm,
       );
     }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
-    const mesh = new THREE.Mesh(geometry, clayMat(preview, preview ? 0.22 : 1, entityId));
-    mesh.renderOrder = 1;
-    mark(mesh, entityId);
-    group.add(mesh);
+    if (vertices.length >= 9) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+      geometry.computeVertexNormals();
+      const mesh = new THREE.Mesh(geometry, clayMat(preview, preview ? 0.22 : 1, entityId));
+      mesh.renderOrder = 1;
+      mark(mesh, entityId, { role: "clay", baseOpacity: 1 });
+      group.add(mesh);
+    }
   }
   if ((preview || S.prefs.showEdges || S.prefs.showCurves) && (preview || S.selectFilter !== "line")) {
-    const loop = world.map((point) => new THREE.Vector3(point.x_mm, point.y_mm, point.z_mm));
-    loop.push(loop[0].clone());
-    const outline = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(loop),
-      new THREE.LineBasicMaterial({
-        color: preview ? INK.pick : (selectionTints(entityId) ? INK.pick : INK.edge),
-      }),
-    );
-    mark(outline, entityId);
-    group.add(outline);
+    const flat = pointsToSegmentPositions(world, true);
+    const picked = !preview && selectionTints(entityId);
+    const outline = makeScreenLineSegments(flat, {
+      color: preview ? INK.pick : (picked ? INK.pick : INK.edge),
+      linewidth: preview || picked ? LINE_WEIGHT_SELECTED_PX : LINE_WEIGHT_WIRE_PX,
+      depthTest: !preview,
+      renderOrder: preview ? 12 : 2,
+      entityId,
+      role: "edge",
+      baseColor: INK.edge,
+      baseLinewidth: LINE_WEIGHT_WIRE_PX,
+    });
+    if (outline) group.add(outline);
   }
 }
 
@@ -264,6 +363,72 @@ export function addVertexDot(group, point) {
   const dot = new THREE.Points(geometry, material);
   dot.renderOrder = 20;
   dot.raycast = () => {};
-  mark(dot, point.entity_id);
+  mark(dot, point.entity_id, { role: "vertex" });
   group.add(dot);
+}
+
+// Depth-exempt SelectionHalo (ADR 0036) + in-place selection material update (ADR 0035).
+export function rebuildSelectionHalos(draftGroup) {
+  disposeObject3D(selectionHalos);
+  selectionHalos.clear();
+  if (!draftGroup || S.selectedIds.size === 0) return;
+  for (const node of draftGroup.children) {
+    const ud = node.userData || {};
+    if (ud.entityId == null || !selectionTints(ud.entityId)) continue;
+    if (ud.flatPositions && ud.flatPositions.length >= 6) {
+      const casing = makeScreenLineSegments(ud.flatPositions, {
+        color: INK.canvas,
+        linewidth: HALO_CASING_PX,
+        depthTest: false,
+        renderOrder: 30,
+      });
+      const core = makeScreenLineSegments(ud.flatPositions, {
+        color: INK.pick,
+        linewidth: HALO_CORE_PX,
+        depthTest: false,
+        renderOrder: 31,
+      });
+      for (const h of [casing, core]) {
+        if (!h) continue;
+        h.position.copy(node.position);
+        h.quaternion.copy(node.quaternion);
+        h.raycast = () => {};
+        selectionHalos.add(h);
+      }
+    }
+  }
+}
+
+export function syncDraftSelection(draftGroup) {
+  if (!draftGroup) return;
+  for (const node of draftGroup.children) {
+    const ud = node.userData || {};
+    const id = ud.entityId;
+    if (id == null || !node.material) continue;
+    const picked = selectionTints(id);
+    if (ud.role === "clay") {
+      node.material.color.setHex(picked ? INK.pick : clayHex());
+      if (ud.extrudedProfile) {
+        node.visible = Boolean(S.prefs.showFaces) && (S.selectedIds.has(id) || S.selectFilter === "face");
+      }
+    } else if (ud.role === "concrete") {
+      node.material.color.setHex(picked ? INK.pick : (ud.baseColor ?? INK.concreteFill));
+      node.material.opacity = picked ? 0.35 : (ud.baseOpacity ?? 0.6);
+    } else if (ud.role === "bar") {
+      node.material.color.setHex(picked ? INK.pick : (ud.baseColor ?? INK.rebar));
+    } else if (ud.role === "vertex") {
+      node.material.color.setHex(picked ? INK.pick : INK.edge);
+      node.material.size = S.selectFilter === "point" || picked ? 11 : 8;
+    } else if (ud.role === "curve") {
+      node.material.color.setHex(curveFor(id));
+      node.material.linewidth = picked ? LINE_WEIGHT_SELECTED_PX : (ud.baseLinewidth ?? LINE_WEIGHT_WIRE_PX);
+      const overlay = lineOverlay(id);
+      node.material.depthTest = !overlay;
+      node.renderOrder = overlay ? 12 : 1;
+    } else if (ud.role === "edge" || ud.role === "section-line") {
+      node.material.color.setHex(picked ? INK.pick : (ud.baseColor ?? INK.edge));
+      node.material.linewidth = picked ? LINE_WEIGHT_SELECTED_PX : (ud.baseLinewidth ?? LINE_WEIGHT_WIRE_PX);
+    }
+  }
+  rebuildSelectionHalos(draftGroup);
 }

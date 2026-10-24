@@ -48,7 +48,9 @@ def _source_files() -> list[Path]:
     return sorted(
         path
         for path in SRC.rglob("*")
-        if path.suffix in _SOURCE_SUFFIXES and "__pycache__" not in path.parts
+        if path.suffix in _SOURCE_SUFFIXES
+        and "__pycache__" not in path.parts
+        and "vendor" not in path.parts
     )
 
 

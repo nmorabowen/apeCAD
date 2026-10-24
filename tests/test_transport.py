@@ -212,8 +212,17 @@ def test_malformed_requests_are_422(request_: object) -> None:
     assert response["ok"] is False and response["status"] == 422, response
 
 
-def test_seed_is_refused_until_c10() -> None:
-    assert "C10" in _refused(handle(_request("seed", payload={})), "REFUSED")
+def test_seed_action_and_load_with_seed_schema() -> None:
+    from apeCAD.section_draft import section_seed
+
+    built = l_wall_two_hoops()
+    seed = section_seed(built)
+    res_seed = _ok(handle(_request("seed", payload=seed)))
+    assert res_seed["redo"] == []
+    res_load = _ok(handle(_request("load", payload=seed)))
+    assert res_load["document"] == res_seed["document"]
+    assert res_load["scene"] == res_seed["scene"]
+    assert "seed schema" in _refused(handle(_request("seed", payload={})), "REFUSED")
 
 
 def test_max_ops_refuses_and_never_truncates() -> None:

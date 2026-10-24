@@ -16,6 +16,8 @@ import {
 } from "./brep.js";
 import { camera } from "./camera.js";
 import { xyzMm } from "./draw.js";
+import { triangulatePlanar3D } from "./geom.js";
+import { configurePickRaycaster } from "./screen.js";
 import { rayInsidePlan, sectionShape } from "./section.js";
 import { canvas, draft } from "./viewport.js";
 
@@ -25,6 +27,8 @@ const PICK_LINE_PX = 14;
 function pickDrawnEntity(event) {
   const raycaster = new THREE.Raycaster();
   raycaster.params.Line = { threshold: 160 };
+  raycaster.params.Line2 = { threshold: 12 };
+  configurePickRaycaster(raycaster);
   raycaster.setFromCamera(ndcFromEvent(event), camera());
   const hits = raycaster.intersectObjects(draft.children, true);
   for (const hit of hits) {
@@ -90,12 +94,13 @@ function eventRay(event) {
 
 function rayHitsPolygon(ray, pts) {
   if (!pts || pts.length < 3) return null;
-  const a = new THREE.Vector3(pts[0].x_mm, pts[0].y_mm, pts[0].z_mm || 0);
+  const tris = triangulatePlanar3D(pts);
   const target = new THREE.Vector3();
   let best = null;
-  for (let i = 1; i < pts.length - 1; i += 1) {
-    const b = new THREE.Vector3(pts[i].x_mm, pts[i].y_mm, pts[i].z_mm || 0);
-    const c = new THREE.Vector3(pts[i + 1].x_mm, pts[i + 1].y_mm, pts[i + 1].z_mm || 0);
+  for (const [i0, i1, i2] of tris) {
+    const a = new THREE.Vector3(pts[i0].x_mm, pts[i0].y_mm, pts[i0].z_mm || 0);
+    const b = new THREE.Vector3(pts[i1].x_mm, pts[i1].y_mm, pts[i1].z_mm || 0);
+    const c = new THREE.Vector3(pts[i2].x_mm, pts[i2].y_mm, pts[i2].z_mm || 0);
     if (ray.intersectTriangle(a, b, c, false, target)) {
       const dist = ray.origin.distanceTo(target);
       if (best == null || dist < best) best = dist;

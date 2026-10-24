@@ -1,6 +1,7 @@
 // Canvas pointer and window keyboard handling, and the rail / toggle button wiring.
 import * as THREE from "three";
 import { S } from "./state.js";
+import { requestRender } from "./store.js";
 import { t } from "./strings.js";
 import { findRecord } from "./brep.js";
 import { projButton, releaseNamedViewForOrbit, setProjectionMode } from "./camera.js";
@@ -24,7 +25,7 @@ import { updateGhost } from "./ghosts.js";
 import { setGridOn, setGridSnapOn } from "./grid-ui.js";
 import { commitDelete } from "./modify.js";
 import { beginRename, treeEl } from "./outliner.js";
-import { updatePreselect } from "./preselect.js";
+import { clearPreselect, updatePreselect } from "./preselect.js";
 import {
   applyWindowSelect,
   hideMarquee,
@@ -41,7 +42,11 @@ let pointerDown = null;
 
 export function bindToolButtons() {
   for (const button of document.querySelectorAll("button[data-tool]")) {
-    button.addEventListener("click", () => setTool(button.dataset.tool));
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeMenus();
+      setTool(button.dataset.tool);
+    });
   }
   for (const button of document.querySelectorAll("#sel-filters [data-filter]")) {
     button.addEventListener("click", () => {
@@ -214,6 +219,15 @@ export function bindKeys() {
         S.ghostDims = [];
         hideMarquee();
         refreshToggles();
+        requestRender();
+        setHint(t("done.cancelled"));
+        return;
+      }
+      if (S.marqueeOrigin) {
+        pointerDown = null;
+        hideMarquee();
+        clearPreselect();
+        requestRender();
         setHint(t("done.cancelled"));
         return;
       }
@@ -237,7 +251,7 @@ export function bindKeys() {
         return;
       }
       if (consoleInput.value === "" && !event.ctrlKey && !event.metaKey && !event.altKey) {
-        if (event.key === "t" || event.key === "T") {
+        if ((event.key === "t" || event.key === "T") && S.tool !== "wall-chain" && S.tool !== "wall-leg") {
           event.preventDefault();
           setTool("trim");
           return;
@@ -270,8 +284,18 @@ export function bindKeys() {
           return;
         }
       }
+      if ((event.key === "c" || event.key === "C") && S.pending?.kind === "section-outline" && S.pending.pts.length >= 2) {
+        event.preventDefault();
+        commitWithEnter();
+        return;
+      }
       if (event.key === "t" || event.key === "T") {
         event.preventDefault();
+        if (S.tool === "wall-chain" || S.tool === "wall-leg") {
+          setTyped("t ");
+          consoleInput.focus();
+          return;
+        }
         setTool("trim");
         return;
       }

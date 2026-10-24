@@ -1,5 +1,6 @@
 // Tool switching and the canvas click state machine that drives every tool.
 import { S } from "./state.js";
+import { requestRender } from "./store.js";
 import { count, t } from "./strings.js";
 import { findRecord } from "./brep.js";
 import { activeLength, clearTyped, refreshToggles, refuse, setHint } from "./cmdline.js";
@@ -18,7 +19,7 @@ import {
   pendingChain,
   profileExtents,
 } from "./create.js";
-import { currentEnd } from "./ghosts.js";
+import { currentEnd, updateGhost } from "./ghosts.js";
 import {
   commitBreak,
   commitDelete,
@@ -34,7 +35,9 @@ import {
   solveTrimOrExtend,
 } from "./modify.js";
 import { pickEntity } from "./pick.js";
+import { clearPreselect } from "./preselect.js";
 import { rebuild } from "./render.js";
+import { isSectionTool, onSectionClick, onStartSectionTool, syncSectionBar } from "./section-tools.js";
 import { selectedProfileId, setSelection } from "./selection.js";
 import { hitWorkplane } from "./snap.js";
 import { finishArray, finishMirror, finishMove, finishPolar, finishRotate } from "./transform.js";
@@ -68,6 +71,8 @@ export function setTool(next) {
   clearTyped();
   ghosts.clear();
   S.ghostDims = [];
+  if (next !== "select") clearPreselect();
+  requestRender();
   if (next === "trim" || next === "extend") {
     seedCuttersFromSelection();
   } else {
@@ -76,7 +81,11 @@ export function setTool(next) {
   for (const button of document.querySelectorAll("button[data-tool]")) {
     button.classList.toggle("active", button.dataset.tool === S.tool);
   }
+  syncSectionBar();
   refreshToggles();
+  if (isSectionTool(next) && onStartSectionTool(next)) {
+    return;
+  }
   if (next === "trim") {
     setHint(S.cutterIds.size
       ? t("hint.trim.pinned", { n: S.cutterIds.size, cutters: cutterNoun(S.cutterIds.size) })
@@ -93,6 +102,10 @@ export function setTool(next) {
 
 export async function onClick(event) {
   try {
+    if (isSectionTool(S.tool)) {
+      await onSectionClick(event);
+      return;
+    }
     if (S.tool === "select") {
       const picked = pickEntity(event);
       setSelection(picked, { shift: event.shiftKey });
@@ -215,6 +228,7 @@ export async function onClick(event) {
         return;
       }
       await commitTrimPreview(preview);
+      if (S.lastPointer) updateGhost(S.lastPointer);
       return;
     }
     if (S.tool === "break") {
@@ -375,6 +389,7 @@ export async function onClick(event) {
     S.pending = null;
     ghosts.clear();
     S.ghostDims = [];
+    requestRender();
   }
 }
 
@@ -383,6 +398,7 @@ const TOOL_HINTS = new Set([
   "select", "line", "polyline", "rect", "circle", "arc", "ellipse", "polygon", "bezier", "box",
   "extrude", "move", "rotate", "mirror", "array", "polar", "trim", "extend", "break", "node",
   "chamfer", "fillet",
+  "section-outline", "wall-chain", "wall-leg", "cover-guide", "bar", "bar-row", "bars-edge", "hoop", "crosstie",
 ]);
 
 function cutterNoun(n) {
