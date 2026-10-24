@@ -1,6 +1,6 @@
 # Spec — modelling helpers (scratchpad + intent)
 
-**Status:** Implemented in part (2026-08-14)  
+**Status:** Implemented (2026-08-14)  
 **ADRs:** 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013, 0015, 0016, 0017, 0018, 0029
 
 ## In the document (library base)

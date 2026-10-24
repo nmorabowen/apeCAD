@@ -5,6 +5,7 @@ import { camera } from "./camera.js";
 import { bufferLength } from "./cmdline.js";
 import { gridMajorMm, gridMinorMm, nearestGridPoint, snapGrid } from "./grid.js";
 import { ndcFromEvent } from "./pick.js";
+import { WORLD_UP, controls, draft } from "./viewport.js";
 
 export const SNAP_APERTURE_MM = 400;
 
@@ -109,6 +110,34 @@ export function applySnaps(raw) {
 
 export function hitWorkplane(event) {
   return applySnaps(rawHit(event));
+}
+
+export function cursorPivot(event) {
+  const cam = camera();
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(ndcFromEvent(event), cam);
+  if (draft.children.length) {
+    const hits = raycaster.intersectObjects(draft.children, true);
+    for (const hit of hits) {
+      if (hit.point) return { x_mm: hit.point.x, y_mm: hit.point.y, z_mm: hit.point.z };
+    }
+  }
+  const hit = new THREE.Vector3();
+  const camDist = Math.max(cam.position.distanceTo(controls.target), 1);
+  if (
+    Math.abs(raycaster.ray.direction.z) >= 0.15 &&
+    raycaster.ray.intersectPlane(new THREE.Plane(WORLD_UP, 0), hit) &&
+    hit.distanceTo(controls.target) <= camDist * 2.5
+  ) {
+    return { x_mm: hit.x, y_mm: hit.y, z_mm: 0 };
+  }
+  const look = new THREE.Vector3();
+  cam.getWorldDirection(look);
+  const viewPlane = new THREE.Plane().setFromNormalAndCoplanarPoint(look, controls.target);
+  if (raycaster.ray.intersectPlane(viewPlane, hit)) {
+    return { x_mm: hit.x, y_mm: hit.y, z_mm: hit.z };
+  }
+  return null;
 }
 
 function wantOrtho(event) {

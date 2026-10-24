@@ -1,11 +1,12 @@
 // Camera behaviour: perspective/parallel lens, named axis views, animated view changes,
-// framing the model, and keeping both cameras and the renderer in sync (ADR 0013).
+// framing the model, and keeping both cameras and the renderer in sync (ADR 0013, ADR 0037).
 import * as THREE from "three";
 import { S } from "./state.js";
 import { requestRender } from "./store.js";
 import { t } from "./strings.js";
 import { setHint } from "./cmdline.js";
 import { gridMajorMm, gridMinorMm, syncGridLineResolution } from "./grid.js";
+import { applyStageViewOffset, viewOffsetForStage } from "./navigation.js";
 import {
   ISO_DIR,
   VIEW_PRESETS,
@@ -24,6 +25,23 @@ let viewSize = { w: 0, h: 0 };
 let viewAnim = null;
 let _cachedBoundsScene = null;
 let _cachedBounds3 = null;
+let _stageDockEl = null;
+
+export function setStageDock(el) {
+  _stageDockEl = el || null;
+  syncCameras();
+}
+
+function currentStageDockRect() {
+  const el =
+    _stageDockEl ||
+    (typeof document !== "undefined" &&
+      document.querySelector('.stage-dock-right, #dock-right, [data-stage-dock="right"]'));
+  if (!el || el.hidden) return null;
+  if (typeof el.getBoundingClientRect === "function") return el.getBoundingClientRect();
+  if (typeof el.width === "number" && typeof el.height === "number") return el;
+  return null;
+}
 
 export function invalidateSceneBounds() {
   _cachedBoundsScene = null;
@@ -124,13 +142,29 @@ export function updateCameraMatrices() {
   persp.aspect = aspect;
   const dist = Math.max(src.position.distanceTo(controls.target), 1);
   updateClipPlanes(dist);
-  persp.updateProjectionMatrix();
   const half = Math.max(dist * Math.tan((persp.fov * Math.PI) / 360), 1);
   orthoCam.left = -half * aspect;
   orthoCam.right = half * aspect;
   orthoCam.top = half;
   orthoCam.bottom = -half;
-  orthoCam.updateProjectionMatrix();
+  const rawRect =
+    canvas && typeof canvas.getBoundingClientRect === "function"
+      ? canvas.getBoundingClientRect()
+      : null;
+  const stageRect =
+    rawRect && rawRect.width > 0 && rawRect.height > 0
+      ? rawRect
+      : { left: 0, top: 0, width, height };
+  const dockRect = currentStageDockRect();
+  const offset = viewOffsetForStage(stageRect, dockRect);
+  if (offset.offsetX !== 0 || offset.offsetY !== 0) {
+    applyStageViewOffset([persp, orthoCam], stageRect, dockRect);
+  } else {
+    if (persp.view && persp.view.enabled) persp.clearViewOffset();
+    if (orthoCam.view && orthoCam.view.enabled) orthoCam.clearViewOffset();
+    persp.updateProjectionMatrix();
+    orthoCam.updateProjectionMatrix();
+  }
   if (width !== viewSize.w || height !== viewSize.h) {
     viewSize = { w: width, h: height };
     renderer.setSize(width, height, false);
@@ -214,10 +248,10 @@ function setProjection(nextOrtho) {
 }
 
 export function releaseNamedViewForOrbit() {
+  viewAnim = null;
   if (!S.namedView) return;
   const leaving = S.namedView;
   S.namedView = null;
-  viewAnim = null;
   if (S.projection === "orthographic") {
     S.projection = "parallel";
     S.useOrtho = true;
@@ -263,8 +297,12 @@ export function namedViewFromDir(dir) {
 function stableViewDir(dir) {
   const next = dir.clone().normalize();
   if (Math.hypot(next.x, next.y) < 0.04 && Math.abs(next.z) > 0.98) {
-    // Nudge Top/Bottom off the orbit pole; approach from Front so +Y is screen-up.
-    next.set(0, next.z > 0 ? -0.045 : 0.045, Math.sign(next.z) || 1).normalize();
+    const sz = Math.sign(next.z) || 1;
+    const upLen = Math.hypot(viewUp.x, viewUp.y);
+    const ux = upLen > 1e-3 ? viewUp.x / upLen : 0;
+    const uy = upLen > 1e-3 ? viewUp.y / upLen : 1;
+    // Nudge Top/Bottom off the orbit pole along the current viewUp azimuth so any 90° roll is preserved.
+    next.set(-sz * ux * 0.045, -sz * uy * 0.045, sz).normalize();
   }
   return next;
 }
@@ -306,9 +344,9 @@ export function goToView(dir, extras = {}) {
   requestRender();
 }
 
-export function tickViewAnim() {
+export function tickViewAnim(flush = false) {
   if (!viewAnim) return false;
-  const u = Math.min(1, (performance.now() - viewAnim.t0) / viewAnim.ms);
+  const u = flush ? 1 : Math.min(1, (performance.now() - viewAnim.t0) / viewAnim.ms);
   const s = u * u * (3 - 2 * u);
   const target = viewAnim.fromTarget.clone().lerp(viewAnim.toTarget, s);
   const offset = slerpOffset(viewAnim.fromOffset, viewAnim.toOffset, s);
@@ -346,7 +384,13 @@ function worldToScreen(x, y, z) {
 
 export function initCamera() {
   window.addEventListener("resize", syncCameras);
-  controls.addEventListener("change", syncCameras);
+  controls.addEventListener("start", () => {
+    viewAnim = null;
+  });
+  controls.addEventListener("change", () => {
+    viewAnim = null;
+    syncCameras();
+  });
   setProjection(true);
   if (typeof ResizeObserver === "function") {
     new ResizeObserver(() => syncCameras()).observe(document.getElementById("stage"));

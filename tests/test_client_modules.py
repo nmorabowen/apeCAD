@@ -69,3 +69,17 @@ def test_single_webgl_renderer_in_client() -> None:
         f"Expected only viewport.js to instantiate WebGLRenderer, got {owners}"
     )
 
+
+def test_no_orbit_controls_in_client() -> None:
+    static_dir = ROOT / "src" / "apeCAD" / "scratchpad" / "static"
+    offenders = [
+        path.relative_to(static_dir).as_posix()
+        for path in sorted(static_dir.rglob("*.js"))
+        if "OrbitControls" in path.read_text(encoding="utf-8")
+    ]
+    assert offenders == [], f"OrbitControls is retired (ADR 0037), found in: {offenders}"
+    assert not (
+        static_dir / "vendor" / "three" / "examples" / "jsm" / "controls" / "OrbitControls.js"
+    ).exists()
+
+
