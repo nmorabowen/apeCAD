@@ -1,6 +1,6 @@
 # ADR 0023 — Module boundaries and a line budget
 
-**Status:** Proposed (2026-10-09)
+**Status:** Accepted (2026-10-09)
 
 Number note: 0022 is taken by the CI-gate ADR, which is being written in parallel. The
 ape-web-tools HA-04 plan (`docs/ha04-editor-plan.md`) reserves apeCAD 0020–0022 for section

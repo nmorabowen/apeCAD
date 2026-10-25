@@ -266,7 +266,11 @@ Result for `svg`: MCP content `[{type: "text", text: "<svg …>…</svg>"}]`, pl
 `extents_mm` is the visible rectangle on the view plane, `{min: [u, v], max: [u, v]}` with u
 right and v up. The function behind it is `apeCAD.render.render_svg`.
 Result for `png`: MCP content `[{type: "image", mimeType: "image/png", data: <base64>}]` plus
-the same envelope.
+the same envelope (the in-process tool envelope carries base64 `png`, which MCP moves into the
+image content block and CLI omits when writing `-o`). The function behind it is
+`apeCAD.render.render_png`, which rasterizes the `render_svg` output via
+`resvg_py.svg_to_bytes` from the optional `apeCAD[png]` extra (`resvg-py>=0.2`); without the
+extra it raises `PngUnavailableError` (`UNAVAILABLE`), never falling back to SVG.
 
 ### `export_dxf`
 
@@ -350,12 +354,13 @@ python -m apeCAD.cli inspect FILE
 python -m apeCAD.cli query FILE [--kind K,K] [--tag T] [--label L] [--ids 1,2]
                      [--window=x0,y0,z0,x1,y1,z1] [--mode crossing] [--detail full]
                      [--limit N] [--cursor C]
-python -m apeCAD.cli render FILE [-o OUT.svg] [--view top] [--size 800x600]
+python -m apeCAD.cli render FILE [-o OUT.svg] [--format svg|png] [--view top] [--size 800x600]
                      [--ids 1,2] [--highlight 3] [--window=...] [--no-labels] [--show-ids] [--no-annotate]
 python -m apeCAD.cli export-dxf FILE [-o OUT.dxf] [--ids 1,2] [--no-annotate]
 ```
 
-Without `-o`, `render` puts the SVG in the envelope's `svg` field, and `export-dxf` the DXF in
+Without `-o`, `render` puts the SVG in the envelope's `svg` field (or base64 PNG in `png` when
+`--format png`), and `export-dxf` the DXF in
 its `dxf` field. Each call is its own
 process, so revisions start at 0 and `apply` reports 1. A file that is missing is `IO_ERROR`,
 one that does not replay is `REFUSED`, and a failed `apply` leaves the file unchanged.
@@ -386,8 +391,8 @@ what its tests prove.
 | **S4 — render** | `render/svg.py`, the `render` tool, `GET /api/render.svg`, CLI `render`, `save_to` | Golden SVGs for a line, a face, a box and an extruded face in each view, compared byte for byte. Size clamp, margin and an empty draft are tested. A label containing `<script>` comes out escaped. `save_to` outside the root → `INVALID_ARGUMENT` |
 | **S5 — attach mode** | `agent/attach.py` (urllib), `--attach-port`, `--attach`, `--root`, `X-ApeCAD-Instance`, the browser polling `/api/revision` | A scratchpad on port 0 plus an attached tool set: apply through MCP, and it shows up in `/api/scene`. Stop the scratchpad → the next call is `DETACHED`, and no local document exists. Wrong `--root` → exit 2. Restart on the same port (new pid) → `DETACHED` |
 | **S6 — CLI** | `apeCAD/cli.py` | Each subcommand against a temp file; exit codes 0, 1, 2 |
-| **S7 — PNG (optional)** | `png` extra; `format: "png"` | Without the extra: `UNAVAILABLE`, never SVG. With it: a PNG whose size matches the request. The rasterizer is chosen in this stage, between a dependency and a small stdlib rasterizer (zlib PNG, lines and fills only) |
-| **S8 — DXF (optional)** | `dxf` extra (ezdxf): `import_dxf` → ops, `export_dxf` | Import of a fixture produces only catalog ops and replays. Export then import keeps line and arc counts. Not started before section mode's C-stages need it |
+| **S7 — PNG (optional, implemented)** | `png` extra (`resvg-py>=0.2`); `render_png`; `format: "png"` | Without the extra: `UNAVAILABLE`, never SVG. With it: a PNG whose size matches the request (`resvg_py.svg_to_bytes`) |
+| **S8 — DXF (optional; export implemented in D5 / ADR 0034)** | `dxf` extra (ezdxf): `import_dxf` → ops, `export_dxf` | Import of a fixture produces only catalog ops and replays. Export then import keeps line and arc counts. `export_dxf` shipped in ADR 0034 (stage D5) |
 
 S1 should land before section mode's first composite op (ADR 0024), so that op arrives with
 its catalog entry. S2 needs ADR 0027 (atomic ops, PR #17) for its batch and

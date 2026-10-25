@@ -8,8 +8,8 @@ Needs the `mcp` extra (`pip install apeCAD[mcp]`); nothing outside this module a
 
 - Every tool result is the §2 envelope as structured content, with the same JSON as a text
   block. A failed envelope (`REFUSED`, `STALE`, `NOT_FOUND`, ...) sets `isError: true`.
-- `render` puts the SVG in the text block instead, and leaves it out of the envelope;
-  `export_dxf` does the same with the DXF.
+- `render` puts the SVG in the text block (or PNG in an image block) and leaves it out of
+  the envelope; `export_dxf` does the same with the DXF.
 - An unknown tool, or arguments that do not fit the tool's input schema, are JSON-RPC
   invalid-params errors (`mcp_tools.check_arguments`).
 - stdout carries JSON-RPC only; logs go to stderr.
@@ -44,6 +44,14 @@ log = logging.getLogger("apeCAD.mcp")
 def tool_result(name: str, envelope: Envelope) -> types.CallToolResult:
     """Wrap one envelope as an MCP tool result."""
     ok = envelope.get("ok") is True
+    if name == "render" and ok and isinstance(envelope.get("png"), str):
+        data = str(envelope["png"])
+        structured = {key: value for key, value in envelope.items() if key != "png"}
+        return types.CallToolResult(
+            content=[types.ImageContent(data=data, mime_type="image/png")],
+            structured_content=structured,
+            is_error=False,
+        )
     payload = {"render": "svg", "export_dxf": "dxf"}.get(name)
     body = envelope.get(payload) if payload is not None else None
     if payload is not None and ok and isinstance(body, str):

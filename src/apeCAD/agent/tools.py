@@ -7,7 +7,9 @@ never raises: it comes back as `{ok: false, error: {code, message}, revision}`.
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
+from typing import Any
 
 from apeCAD import catalog
 from apeCAD.agent.args import (
@@ -28,9 +30,9 @@ from apeCAD.agent.errors import Envelope, ToolError, guarded
 from apeCAD.agent.query import query_entities as _query_entities
 from apeCAD.agent.session import Session
 from apeCAD.catalog import Applied
-from apeCAD.errors import INVALID_ARGUMENT, UNAVAILABLE, DocumentError
+from apeCAD.errors import INVALID_ARGUMENT, DocumentError
 from apeCAD.ops import SCHEMA_ID
-from apeCAD.render.api import render_svg
+from apeCAD.render.api import render_png, render_svg
 from apeCAD.render.dxf import export_dxf as _export_dxf
 from apeCAD.section_draft import section_draft
 
@@ -159,36 +161,49 @@ def get_section_draft(session: Session) -> Envelope:
 
 
 def render(session: Session, *, root: Path | None = None, **params: object) -> Envelope:
-    """SVG of the draft: the envelope plus `svg` (S3 moves it into the MCP content block).
+    """SVG or PNG of the draft: the envelope plus `svg` or base64 `png` (S3/S7 moves it into
+    the MCP content block).
 
-    `save_to` resolves under `root`. `format: "png"` is `UNAVAILABLE` until the `png` extra
-    exists (stage S7); it never falls back to SVG.
+    `save_to` resolves under `root`. `format: "png"` uses `render_png` (`apeCAD[png]`);
+    without the extra it fails `UNAVAILABLE` and never falls back to SVG.
     """
 
     def body() -> Envelope:
         only_keys("render", params, set(RENDER_DEFAULTS))
         values = {**RENDER_DEFAULTS, **params}
         fmt = as_str("format", values["format"])
-        if fmt == "png":
-            raise ToolError(UNAVAILABLE, "png output needs the png extra, which is not built yet")
-        if fmt != "svg":
+        if fmt not in ("svg", "png"):
             raise ToolError(INVALID_ARGUMENT, f"format must be svg or png, got {fmt!r}")
-        result = render_svg(
-            session.document,
-            view=opt_str("view", values["view"]),
-            width=as_int("width", values["width"]),
-            height=as_int("height", values["height"]),
-            margin=as_number("margin", values["margin"]),
-            ids=opt_int_list("ids", values["ids"]),
-            highlight=opt_int_list("highlight", values["highlight"]),
-            labels=as_bool("labels", values["labels"]),
-            show_ids=as_bool("show_ids", values["show_ids"]),
-            annotate=as_bool("annotate", values["annotate"]),
-            window=_render_window(values["window"]),
-            save_to=opt_str("save_to", values["save_to"]),
-            root=root,
-        )
-        fields: dict[str, object] = {
+        kwargs: dict[str, Any] = {
+            "view": opt_str("view", values["view"]),
+            "width": as_int("width", values["width"]),
+            "height": as_int("height", values["height"]),
+            "margin": as_number("margin", values["margin"]),
+            "ids": opt_int_list("ids", values["ids"]),
+            "highlight": opt_int_list("highlight", values["highlight"]),
+            "labels": as_bool("labels", values["labels"]),
+            "show_ids": as_bool("show_ids", values["show_ids"]),
+            "annotate": as_bool("annotate", values["annotate"]),
+            "window": _render_window(values["window"]),
+            "save_to": opt_str("save_to", values["save_to"]),
+            "root": root,
+        }
+        if fmt == "png":
+            png_result = render_png(session.document, **kwargs)
+            fields: dict[str, object] = {
+                "view": png_result.view,
+                "width": png_result.width,
+                "height": png_result.height,
+                "scale_px_per_mm": png_result.scale_px_per_mm,
+                "extents_mm": png_result.extents_mm,
+                "entities": png_result.entities,
+                "png": base64.b64encode(png_result.png).decode("ascii"),
+            }
+            if png_result.path is not None:
+                fields["path"] = png_result.path
+            return _ok(session, fields)
+        result = render_svg(session.document, **kwargs)
+        fields = {
             "view": result.view,
             "width": result.width,
             "height": result.height,
@@ -202,6 +217,9 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
         return _ok(session, fields)
 
     return guarded(lambda: session.revision, body)
+
+
+apecad_render = render
 
 
 EXPORT_DXF_DEFAULTS: dict[str, object] = {

@@ -4,14 +4,24 @@ from __future__ import annotations
 
 import os
 import re
+import struct
+import sys
+import types
 import xml.etree.ElementTree as ET
+import zlib
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
 from apeCAD.document import Document
-from apeCAD.render import VIEW_NAMES, RenderArgumentError, render_svg
+from apeCAD.render import (
+    VIEW_NAMES,
+    PngUnavailableError,
+    RenderArgumentError,
+    render_png,
+    render_svg,
+)
 from apeCAD.render.query import render_from_query
 
 GOLDEN_DIR = Path(__file__).resolve().parent / "fixtures" / "render"
@@ -290,3 +300,59 @@ def test_query_string_mirrors_the_parameters() -> None:
 def test_bad_query_is_invalid_argument(query: str) -> None:
     with pytest.raises(RenderArgumentError):
         render_from_query(_box(), query)
+
+
+def _fake_png(
+    svg_string: str = "",
+    *,
+    width: int | None = None,
+    height: int | None = None,
+    **_kwargs: object,
+) -> bytes:
+    """Minimal valid 1x1-scaled PNG carrying the SVG's requested width and height in IHDR."""
+    root = ET.fromstring(svg_string)
+    svg_w = int(root.get("width", "1"))
+    svg_h = int(root.get("height", "1"))
+    if width is not None:
+        assert width == svg_w
+    if height is not None:
+        assert height == svg_h
+    w = width if width is not None else svg_w
+    h = height if height is not None else svg_h
+
+    def chunk(tag: bytes, payload: bytes) -> bytes:
+        crc = zlib.crc32(tag + payload) & 0xFFFFFFFF
+        return struct.pack(">I", len(payload)) + tag + payload + struct.pack(">I", crc)
+
+    ihdr = struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)
+    idat = zlib.compress(b"\x00" + b"\xff\xff\xff" * w)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", idat) + chunk(b"IEND", b"")
+
+
+def test_render_png_unavailable_without_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(sys.modules, "resvg_py", None)
+    with pytest.raises(PngUnavailableError) as caught:
+        render_png(_line())
+    assert caught.value.code == "UNAVAILABLE"
+    assert "apeCAD[png]" in str(caught.value)
+
+
+def test_render_png_rasterizes_and_saves_under_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = types.ModuleType("resvg_py")
+    fake.svg_to_bytes = _fake_png  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "resvg_py", fake)
+    result = render_png(
+        _box(), view="iso", width=320, height=240, save_to="out/box.png", root=tmp_path
+    )
+    assert result.png.startswith(b"\x89PNG\r\n\x1a\n")
+    w, h = struct.unpack(">II", result.png[16:24])
+    assert (w, h) == (320, 240) == (result.width, result.height)
+    assert result.view == "iso"
+    assert result.path == str((tmp_path / "out" / "box.png").resolve())
+    assert (tmp_path / "out" / "box.png").read_bytes() == result.png
+    with pytest.raises(RenderArgumentError) as caught:
+        render_png(_box(), save_to="../escape.png", root=tmp_path)
+    assert caught.value.code == "INVALID_ARGUMENT"
+

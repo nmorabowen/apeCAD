@@ -38,6 +38,10 @@ dev = [
 mcp = [
     "mcp>=2.3,<3",
 ]
+# PNG render, `render(..., format="png")` / `render_png` (spec agent-surface-mcp, stage S7).
+png = [
+    "resvg-py>=0.2",
+]
 # DXF export, `export_dxf` (ADR 0034, stage D5). ezdxf writes the R2000+ structure
 # (handles, tables, objects) that office CAD needs; core stays dependency-free.
 dxf = [

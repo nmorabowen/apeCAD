@@ -1,6 +1,6 @@
 # ADR 0020 — AGENTS.md is the agent entry point
 
-**Status:** Proposed (2026-09-25)
+**Status:** Accepted (2026-09-25)
 
 Revision 1. Not yet adversarially reviewed.
 

@@ -411,8 +411,15 @@ def test_render_svg(tools: LocalTools, doc: str, tmp_path: Path) -> None:
     ],
 )
 def test_render_errors(
-    tools: LocalTools, doc: str, params: dict[str, object], code: str
+    tools: LocalTools,
+    doc: str,
+    params: dict[str, object],
+    code: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import sys
+
+    monkeypatch.setitem(sys.modules, "resvg_py", None)
     _two_points_and_a_line(tools, doc)
     result = tools.render(doc, **params)
     assert _error(result)["code"] == code
