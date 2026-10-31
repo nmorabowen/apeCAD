@@ -1,6 +1,6 @@
 # ADR 0041 — A read-only results overlay on the section client and the render tool
 
-**Status:** Proposed (2026-10-31)
+**Status:** Accepted (2026-10-31)
 
 Builds on [ADR 0024](0024-section-mode-rc-intent.md) decision 2 (no mechanics in apeCAD),
 [ADR 0026](0026-section-transport-and-client.md) (the 2-D client) and

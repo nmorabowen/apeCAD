@@ -1,6 +1,6 @@
 # ADR 0040 — Parametric section templates are composite ops that keep their parameters in the log
 
-**Status:** Proposed (2026-10-31)
+**Status:** Accepted (2026-10-31)
 
 Builds on [ADR 0006](0006-one-source-of-truth.md) (the ops log is the one source of truth),
 [ADR 0024](0024-section-mode-rc-intent.md) (one gesture, one composite op),

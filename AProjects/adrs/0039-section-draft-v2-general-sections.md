@@ -1,6 +1,6 @@
 # ADR 0039 — `apeCAD.section-draft` v2: general sections with many faces, roles, circles and spirals
 
-**Status:** Proposed (2026-10-31)
+**Status:** Accepted (2026-10-31)
 
 Builds on [ADR 0024](0024-section-mode-rc-intent.md) (section mode) and
 [ADR 0025](0025-section-draft-contract.md) (the v1 contract and its versioning rule). Its
