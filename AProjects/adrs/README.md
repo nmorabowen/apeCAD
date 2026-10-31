@@ -48,6 +48,9 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0036](0036-screen-space-lines-and-triangulation.md) | Ear-clipping triangulation, screen-space LineSegments2, and SelectionHalo | Accepted |
 | [0037](0037-cad-turntable-and-svg-viewcube.md) | Cursor-pivot zero-roll Z-up CAD turntable and zero-GL 26-zone SVG ViewCube | Accepted |
 | [0038](0038-visual-and-contrast-gates.md) | Programmatic WCAG/CVD token gates and deterministic still capture | Accepted |
+| [0039](0039-section-draft-v2-general-sections.md) | `apeCAD.section-draft` v2: general sections with many faces, roles, circles and spirals | Accepted |
+| [0040](0040-parametric-section-templates.md) | Parametric section templates are composite ops that keep their parameters in the log | Accepted |
+| [0041](0041-section-results-overlay.md) | A read-only results overlay on the section client and the render tool | Accepted |
 
 ## Template
 
