@@ -460,9 +460,9 @@ def _boundary_args(
     payload: dict[str, object],
 ) -> tuple[tuple[VertexRef, ...], VertexRef | None, float | None]:
     center = payload.get("center_id")
-    ring = payload.get("point_ids", [])
-    if ring == ():  # the catalog fills an omitted ring with its schema default, ()
-        ring = []
+    ring: object = payload.get("point_ids")
+    if ring is None or ring == ():  # omitted, or the catalog's schema default, ()
+        ring = cast(list[object], [])
     return (
         as_vertex_tuple("point_ids", ring),
         None if center is None else as_vertex("center_id", center),

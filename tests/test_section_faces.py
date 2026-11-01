@@ -383,8 +383,10 @@ def _post(server: ScratchpadServer, body: dict[str, object]) -> dict[str, object
 
 def test_face_ops_post_through_the_op_api(server: ScratchpadServer) -> None:
     ring = [{"xyz": [x, y, 0]} for x, y in RECT_CW]
-    _post(server, {"op": "AddSectionFace", "role": "concrete", "material": "H30", "point_ids": ring})
-    _post(server, {"op": "AddFaceHole", "face_id": 5, "point_ids": [{"xyz": list(p) + [0]} for p in HOLE_CCW]})
+    hole = [{"xyz": [x, y, 0]} for x, y in HOLE_CCW]
+    face = {"op": "AddSectionFace", "role": "concrete", "material": "H30", "point_ids": ring}
+    _post(server, face)
+    _post(server, {"op": "AddFaceHole", "face_id": 5, "point_ids": hole})
     payload = _post(
         server,
         {"op": "AddSteelShape", "point_ids": [{"xyz": [x, y, 0]} for x, y in W_RING],
@@ -395,7 +397,7 @@ def test_face_ops_post_through_the_op_api(server: ScratchpadServer) -> None:
     names = [op["op"] for op in document["ops"]]  # type: ignore[index]
     assert names == ["AddSectionFace", "AddFaceHole", "AddSteelShape"]
     with pytest.raises(HTTPError) as refused:
-        _post(server, {"op": "AddSectionFace", "role": "void", "material": "H30", "point_ids": ring})
+        _post(server, {**face, "role": "void"})
     assert refused.value.code == 400
     body = json.loads(refused.value.read().decode("utf-8"))
     assert body["code"] == "INVALID_ARGUMENT" and "no material" in body["error"]
