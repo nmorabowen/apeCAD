@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from apeCAD.errors import INVALID_ARGUMENT, TOO_LARGE
+from apeCAD.render.labels import CHAR_PX
 from apeCAD.render.style import BLUE
 from apeCAD.render.svg import FONT, Viewport, clean_text, num
 from apeCAD.render.views import Vec2, View
@@ -594,14 +595,56 @@ def _legend_svg(
         f'height="{num(LEGEND_BAR_PX)}" fill="url(#{gradient})" stroke="{BLUE}" '
         'stroke-width="0.5"/>'
     )
-    label_y = bar_top + LEGEND_BAR_PX + 11.0
-    ticks = [(lo, x0, "start"), (hi, right, "end")]
+    bar_bottom = bar_top + LEGEND_BAR_PX
+    wanted = [(f"{lo:.4g}", x0, "start"), (f"{hi:.4g}", right, "end")]
     if scale.kind == "diverging":
         mid = cast(tuple[float, ...], scale.domain)[1]
-        ticks.insert(1, (mid, x0 + LEGEND_W_PX * (mid - lo) / (hi - lo), "middle"))
+        at = x0 + LEGEND_W_PX * (mid - lo) / (hi - lo)
+        out.append(
+            f'<path d="M{num(at)} {num(bar_bottom)} L{num(at)} {num(bar_bottom + 3.0)}" '
+            f'stroke="{BLUE}" stroke-width="0.5"/>'
+        )
+        wanted.append((f"{mid:.4g}", at, "middle"))
+    placed = legend_ticks(wanted, x0, right)
     out.extend(
-        f'<text x="{num(x)}" y="{num(label_y)}" text-anchor="{anchor}">{v:.4g}</text>'
-        for v, x, anchor in ticks
+        f'<text x="{num(x)}" y="{num(bar_bottom + 11.0 + row * LEGEND_TICK_ROW_PX)}" '
+        f'text-anchor="{anchor}">{clean_text(text)}</text>'
+        for text, x, anchor, row in placed
     )
     out.append("</g>")
-    return out, 14.0 + LEGEND_BAR_PX + 13.0
+    rows = 1 + max(row for *_rest, row in placed)
+    return out, 14.0 + LEGEND_BAR_PX + 13.0 + (rows - 1) * LEGEND_TICK_ROW_PX
+
+
+LEGEND_TICK_ROW_PX = 11.0
+LEGEND_TICK_GAP_PX = 4.0
+
+
+def legend_ticks(
+    wanted: Sequence[tuple[str, float, str]], x0: float, right: float
+) -> list[tuple[str, float, str, int]]:
+    """Each tick label in the first row where it clears the labels already there, by
+    `LEGEND_TICK_GAP_PX` (widths estimated with `labels.CHAR_PX`). A centred label is first
+    clamped inside [x0, right]. Returns (text, x, anchor, row) in the order given."""
+    rows: list[list[tuple[float, float]]] = []
+    placed: list[tuple[str, float, str, int]] = []
+    for text, x, anchor in wanted:
+        width = len(text) * CHAR_PX
+        if anchor == "middle":
+            x = min(max(x, x0 + width / 2.0), right - width / 2.0)
+            box = (x - width / 2.0, x + width / 2.0)
+        elif anchor == "end":
+            box = (x - width, x)
+        else:
+            box = (x, x + width)
+        row = 0
+        while row < len(rows) and any(
+            box[0] < b + LEGEND_TICK_GAP_PX and a < box[1] + LEGEND_TICK_GAP_PX
+            for a, b in rows[row]
+        ):
+            row += 1
+        if row == len(rows):
+            rows.append([])
+        rows[row].append(box)
+        placed.append((text, x, anchor, row))
+    return placed

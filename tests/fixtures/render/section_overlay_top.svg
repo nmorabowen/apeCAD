@@ -112,16 +112,17 @@
 <stop offset="1" stop-color="#b2182b"/>
 </linearGradient></defs>
 <rect x="638" y="26" width="150" height="10" fill="url(#overlay-scale-0)" stroke="#000077" stroke-width="0.5"/>
+<path d="M648.47 36 L648.47 39" stroke="#000077" stroke-width="0.5"/>
 <text x="638" y="47" text-anchor="start">-30</text>
-<text x="648.47" y="47" text-anchor="middle">0</text>
 <text x="788" y="47" text-anchor="end">400</text>
+<text x="648.47" y="58" text-anchor="middle">0</text>
 </g>
 <g class="overlay-legend" data-layer="bars" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
-<text x="638" y="69">Bars</text>
-<rect x="638" y="73" width="10" height="10" fill="#1a9850" stroke="#000077" stroke-width="0.5"/>
-<text x="652" y="82">elastic</text>
-<rect x="638" y="87" width="10" height="10" fill="#d73027" stroke="#000077" stroke-width="0.5"/>
-<text x="652" y="96">yielded</text>
+<text x="638" y="80">Bars</text>
+<rect x="638" y="84" width="10" height="10" fill="#1a9850" stroke="#000077" stroke-width="0.5"/>
+<text x="652" y="93">elastic</text>
+<rect x="638" y="98" width="10" height="10" fill="#d73027" stroke="#000077" stroke-width="0.5"/>
+<text x="652" y="107">yielded</text>
 </g>
 </g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">

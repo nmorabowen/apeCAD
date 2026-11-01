@@ -35,6 +35,7 @@ from apeCAD.render import (
     render_svg,
 )
 from apeCAD.render.drawable import SECTION_LAYERS
+from apeCAD.render.labels import CHAR_PX
 from apeCAD.render.overlay import COLOR_TOKENS, as_overlay
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -294,6 +295,60 @@ def test_layers_draw_in_order_and_hidden_layers_draw_nothing() -> None:
     assert stress[0].get("data-ids") == "1" and stress[0].get("data-value") == "-30"
     assert stress[5].get("d", "").count("Z") == 2  # ring plus hole, even-odd
     assert stress[5].get("fill-rule") == "evenodd"
+
+
+def _tick_boxes(svg: str) -> list[list[tuple[float, float, float, str]]]:
+    """Per numeric legend, each tick label's (y, left, right, text), by the same width
+    estimate the placement uses (labels.CHAR_PX)."""
+    root = ET.fromstring(svg)
+    group = next(g for g in root if _class(g) == "overlay")
+    out: list[list[tuple[float, float, float, str]]] = []
+    for legend in (g for g in group if _class(g) == "overlay-legend"):
+        ticks = [t for t in legend if t.tag == f"{SVG_NS}text" and t.get("text-anchor")]
+        boxes: list[tuple[float, float, float, str]] = []
+        for t in ticks:
+            text, x = t.text or "", float(t.get("x", "0"))
+            width = len(text) * CHAR_PX
+            shift = {"start": 0.0, "end": width, "middle": width / 2.0}
+            left = x - shift[t.get("text-anchor", "")]
+            boxes.append((float(t.get("y", "0")), left, left + width, text))
+        if boxes:
+            out.append(boxes)
+    return out
+
+
+@pytest.mark.parametrize(
+    "domain",
+    [[-30, 0, 400], [-1e6, 0, 1], [-0.0031234, 1e-05, 123456], [-1, 0, 1], [0, 1e-09, 1e9]],
+    ids=["golden_probe", "mid_at_right", "long_labels", "symmetric", "mid_at_left"],
+)
+def test_legend_ticks_never_collide(domain: list[float]) -> None:
+    """Review of PR #50, finding 5: `-30` and `0` overlapped on the golden's legend. Tick
+    labels on one row keep a gap and stay inside the bar's span; one that would collide
+    drops to the next row."""
+    scale = {"kind": "diverging", "domain": domain, "colors": ["#000", "#888", "#fff"],
+             "unit": "", "title": ""}
+    overlay = _one({"kind": "point", "at": [0, 0], "value": 0}, scale)
+    for boxes in _tick_boxes(render_svg(rect_boundary_hoops(), overlay=overlay).svg):
+        assert len(boxes) == 3
+        lefts = [left for _y, left, _r, _t in boxes]
+        rights = [right for _y, _l, right, _t in boxes]
+        assert min(lefts) >= 800 - 12 - 150 - 1e-9 and max(rights) <= 800 - 12 + 1e-9
+        for i, a in enumerate(boxes):
+            for b in boxes[i + 1 :]:
+                if a[0] == b[0]:
+                    assert a[2] + 4.0 <= b[1] or b[2] + 4.0 <= a[1], (a, b)
+
+
+def test_the_golden_legend_ticks_do_not_collide() -> None:
+    svg = GOLDEN.read_text(encoding="utf-8")
+    (stress,) = _tick_boxes(svg)
+    rows = {y for y, *_rest in stress}
+    assert len(rows) == 2  # 0 sits 10.5 px from -30, so it drops below them
+    for i, a in enumerate(stress):
+        for b in stress[i + 1 :]:
+            if a[0] == b[0]:
+                assert a[2] + 4.0 <= b[1] or b[2] + 4.0 <= a[1], (a, b)
 
 
 def test_text_is_escaped_through_clean_text() -> None:

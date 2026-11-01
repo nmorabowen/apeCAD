@@ -142,7 +142,10 @@ section and sketch geometry and below the annotation, the highlight and the labe
 drawn layer is a `<g class="overlay-layer" data-layer="id" data-label="label">`. Each visible
 layer with a scale adds a legend at the top right (`<g class="overlay-legend"
 data-layer="id">`): the title and unit, then a gradient bar labelled with the domain values
-(numeric scales), or a swatch per category. The fit, the scale and `extents_mm` are the
+(numeric scales), or a swatch per category. Tick labels never overlap: `lo` sits at the
+bar's left end, `hi` at its right end, and a diverging `mid` (marked on the bar at its true
+place) is centred there, clamped inside the bar. A label that would come within 4 px of one
+already on its row drops to the next row. The fit, the scale and `extents_mm` are the
 document's: the overlay never moves the view.
 
 ## Fixtures
