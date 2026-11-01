@@ -6,6 +6,7 @@ from typing import cast
 
 from apeCAD.entities import LegSteel
 from apeCAD.errors import DocumentError
+from apeCAD.ops.base import VertexRef
 from apeCAD.ops.section import (
     AddBar,
     AddBarRow,
@@ -23,6 +24,15 @@ from apeCAD.ops.section import (
     SetMaterial,
     SetTransverse,
 )
+from apeCAD.ops.section_faces import (
+    SECTION_FACE_OPS,
+    AddBarsOnCircle,
+    AddCircularTie,
+    AddFaceHole,
+    AddSectionFace,
+    AddSteelShape,
+    SectionFaceOp,
+)
 from apeCAD.ops.values import (
     as_entity_id,
     as_float,
@@ -39,6 +49,8 @@ from apeCAD.ops.values import (
 
 
 def section_op_to_dict(op: SectionOp) -> dict[str, object]:
+    if isinstance(op, SECTION_FACE_OPS):
+        return _face_op_to_dict(op)
     if isinstance(op, AddConcreteFace):
         return {
             "op": "AddConcreteFace",
@@ -56,6 +68,8 @@ def section_op_to_dict(op: SectionOp) -> dict[str, object]:
             "label": op.label,
             "entity_id": op.entity_id,
             "point_id": op.point_id,
+            # Additive (ADR 0039 decision 6): absent when unset, so v1 logs stay as they were.
+            **({} if op.material is None else {"material": op.material}),
         }
     if isinstance(op, AddHoop):
         return {
@@ -293,7 +307,11 @@ def _parse_wall_op(kind: object, payload: dict[str, object]) -> SectionOp | None
 
 def parse_section_op(kind: object, payload: dict[str, object]) -> SectionOp | None:
     """The section op `payload` names, or None when `kind` is not a section op."""
-    wall = _parse_wall_op(kind, payload) or _parse_layout_op(kind, payload)
+    wall = (
+        _parse_wall_op(kind, payload)
+        or _parse_layout_op(kind, payload)
+        or _parse_face_op(kind, payload)
+    )
     if wall is not None:
         return wall
     if kind == "AddConcreteFace":
@@ -312,6 +330,7 @@ def parse_section_op(kind: object, payload: dict[str, object]) -> SectionOp | No
             label=as_optional_str(payload.get("label")),
             entity_id=as_optional_entity_id(payload.get("entity_id")),
             point_id=None if point_id is None else as_entity_id("point_id", point_id),
+            material=_as_optional_name("material", payload.get("material")),
         )
     if kind == "AddHoop":
         return AddHoop(
@@ -351,5 +370,161 @@ def parse_section_op(kind: object, payload: dict[str, object]) -> SectionOp | No
             designation=None if designation is None else as_str("designation", designation),
             spacing_mm=None if spacing is None else as_float("spacing_mm", spacing),
             hooks=None if hooks is None else as_str("hooks", hooks),
+        )
+    return None
+
+
+def _boundary_json(
+    point_ids: tuple[VertexRef, ...], center_id: VertexRef | None, radius_mm: float | None
+) -> dict[str, object]:
+    return {
+        "point_ids": vertices_json(point_ids),
+        "center_id": None if center_id is None else vertex_json(center_id),
+        "radius_mm": radius_mm,
+    }
+
+
+def _face_op_to_dict(op: SectionFaceOp) -> dict[str, object]:
+    """The v2 ops (ADR 0039); `section_op_to_dict` delegates here first."""
+    if isinstance(op, AddSectionFace):
+        return {
+            "op": "AddSectionFace",
+            "role": op.role,
+            "material": op.material,
+            **_boundary_json(op.point_ids, op.center_id, op.radius_mm),
+            "label": op.label,
+            "entity_id": op.entity_id,
+        }
+    if isinstance(op, AddFaceHole):
+        return {
+            "op": "AddFaceHole",
+            "face_id": op.face_id,
+            **_boundary_json(op.point_ids, op.center_id, op.radius_mm),
+            "hole_index": op.hole_index,
+        }
+    if isinstance(op, AddSteelShape):
+        return {
+            "op": "AddSteelShape",
+            "point_ids": vertices_json(op.point_ids),
+            "material": op.material,
+            "catalog": op.catalog,
+            "designation": op.designation,
+            "anchor_mm": list(op.anchor_mm),
+            "rotation_deg": op.rotation_deg,
+            "label": op.label,
+            "entity_id": op.entity_id,
+        }
+    if isinstance(op, AddCircularTie):
+        return {
+            "op": "AddCircularTie",
+            "kind": op.kind,
+            "center_id": vertex_json(op.center_id),
+            "centerline_radius_mm": op.centerline_radius_mm,
+            "designation": op.designation,
+            "pitch_mm": op.pitch_mm,
+            "label": op.label,
+            "entity_id": op.entity_id,
+        }
+    return {
+        "op": "AddBarsOnCircle",
+        "center_x_mm": op.center_x_mm,
+        "center_y_mm": op.center_y_mm,
+        "radius_mm": op.radius_mm,
+        "count": op.count,
+        "designation": op.designation,
+        "start_angle_deg": op.start_angle_deg,
+        "material": op.material,
+        "bar_ids": list(op.bar_ids),
+        "bar_point_ids": list(op.bar_point_ids),
+    }
+
+
+def _as_optional_name(name: str, value: object) -> str | None:
+    return None if value is None else as_str(name, value)
+
+
+def _as_optional_float(name: str, value: object) -> float | None:
+    return None if value is None else as_float(name, value)
+
+
+def _as_pair(name: str, value: object) -> tuple[float, float]:
+    if not isinstance(value, list):
+        raise DocumentError(f"{name} must be a list of two millimetre components, got {value!r}")
+    items = cast(list[object], value)
+    if len(items) != 2:
+        raise DocumentError(f"{name} must be a list of two millimetre components, got {value!r}")
+    return (as_float(f"{name}[0]", items[0]), as_float(f"{name}[1]", items[1]))
+
+
+def _boundary_args(
+    payload: dict[str, object],
+) -> tuple[tuple[VertexRef, ...], VertexRef | None, float | None]:
+    center = payload.get("center_id")
+    ring: object = payload.get("point_ids")
+    if ring is None or ring == ():  # omitted, or the catalog's schema default, ()
+        ring = cast(list[object], [])
+    return (
+        as_vertex_tuple("point_ids", ring),
+        None if center is None else as_vertex("center_id", center),
+        _as_optional_float("radius_mm", payload.get("radius_mm")),
+    )
+
+
+def _parse_face_op(kind: object, payload: dict[str, object]) -> SectionOp | None:
+    if kind == "AddSectionFace":
+        point_ids, center_id, radius_mm = _boundary_args(payload)
+        return AddSectionFace(
+            role=as_str("role", payload["role"]),
+            material=_as_optional_name("material", payload.get("material")),
+            point_ids=point_ids,
+            center_id=center_id,
+            radius_mm=radius_mm,
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+        )
+    if kind == "AddFaceHole":
+        point_ids, center_id, radius_mm = _boundary_args(payload)
+        raw_index = payload.get("hole_index")
+        return AddFaceHole(
+            face_id=as_entity_id("face_id", payload["face_id"]),
+            point_ids=point_ids,
+            center_id=center_id,
+            radius_mm=radius_mm,
+            hole_index=None if raw_index is None else as_int("hole_index", raw_index),
+        )
+    if kind == "AddSteelShape":
+        return AddSteelShape(
+            point_ids=as_vertex_tuple("point_ids", payload["point_ids"]),
+            material=as_str("material", payload["material"]),
+            catalog=as_str("catalog", payload["catalog"]),
+            designation=as_str("designation", payload["designation"]),
+            anchor_mm=_as_pair("anchor_mm", payload["anchor_mm"]),
+            rotation_deg=as_float("rotation_deg", payload.get("rotation_deg", 0.0)),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+        )
+    if kind == "AddCircularTie":
+        return AddCircularTie(
+            kind=as_str("kind", payload["kind"]),
+            center_id=as_vertex("center_id", payload["center_id"]),
+            centerline_radius_mm=as_float(
+                "centerline_radius_mm", payload["centerline_radius_mm"]
+            ),
+            designation=as_str("designation", payload["designation"]),
+            pitch_mm=as_float("pitch_mm", payload["pitch_mm"]),
+            label=as_optional_str(payload.get("label")),
+            entity_id=as_optional_entity_id(payload.get("entity_id")),
+        )
+    if kind == "AddBarsOnCircle":
+        return AddBarsOnCircle(
+            center_x_mm=as_float("center_x_mm", payload["center_x_mm"]),
+            center_y_mm=as_float("center_y_mm", payload["center_y_mm"]),
+            radius_mm=as_float("radius_mm", payload["radius_mm"]),
+            count=as_int("count", payload["count"]),
+            designation=as_str("designation", payload["designation"]),
+            start_angle_deg=as_float("start_angle_deg", payload.get("start_angle_deg", 0.0)),
+            material=_as_optional_name("material", payload.get("material")),
+            bar_ids=as_id_tuple("bar_ids", payload.get("bar_ids", [])),
+            bar_point_ids=as_id_tuple("bar_point_ids", payload.get("bar_point_ids", [])),
         )
     return None

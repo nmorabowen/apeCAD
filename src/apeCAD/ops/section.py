@@ -13,6 +13,13 @@ from apeCAD.entities import EntityId, LegSteel
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import require_finite
 from apeCAD.ops.base import VertexRef, optional_label
+from apeCAD.ops.section_faces import (
+    AddBarsOnCircle,
+    AddCircularTie,
+    AddFaceHole,
+    AddSectionFace,
+    AddSteelShape,
+)
 from apeCAD.section.designations import diameter_of
 
 HOOP_HOOKS = ("135",)
@@ -29,6 +36,11 @@ def require_material(material: str) -> str:
     if stripped == "":
         raise DocumentError("material must be a non-empty name")
     return stripped
+
+
+def optional_material(material: str | None) -> str | None:
+    """A bar's optional steel name (ADR 0039 decision 6): None, or a non-empty name."""
+    return None if material is None else require_material(material)
 
 
 def require_spacing(spacing_mm: float) -> float:
@@ -95,12 +107,14 @@ class AddBar:
     label: str | None = None
     entity_id: EntityId | None = None
     point_id: EntityId | None = None
+    material: str | None = None
 
     def __post_init__(self) -> None:
         require_finite("x_mm", self.x_mm)
         require_finite("y_mm", self.y_mm)
         require_designation_name(self.designation)
         object.__setattr__(self, "label", optional_label(self.label))
+        object.__setattr__(self, "material", optional_material(self.material))
 
 
 @dataclass(frozen=True, slots=True)
@@ -381,6 +395,11 @@ SectionOp = (
     | SetCover
     | AddBarRow
     | AddBarsAlongEdge
+    | AddSectionFace
+    | AddFaceHole
+    | AddSteelShape
+    | AddCircularTie
+    | AddBarsOnCircle
 )
 SECTION_OPS = (
     AddConcreteFace,
@@ -397,4 +416,9 @@ SECTION_OPS = (
     SetCover,
     AddBarRow,
     AddBarsAlongEdge,
+    AddSectionFace,
+    AddFaceHole,
+    AddSteelShape,
+    AddCircularTie,
+    AddBarsOnCircle,
 )

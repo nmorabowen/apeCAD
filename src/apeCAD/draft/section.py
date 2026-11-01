@@ -11,13 +11,18 @@ from dataclasses import dataclass, replace
 from apeCAD.draft.state import DraftState
 from apeCAD.entities import (
     Bar,
+    CircleBoundary,
     ConcreteFace,
     CoverGuide,
     Crosstie,
     EntityId,
+    FaceBoundary,
     Hoop,
     LegSteel,
     Point,
+    RingBoundary,
+    SectionFace,
+    SteelShape,
     WallLeg,
 )
 from apeCAD.errors import DocumentError
@@ -26,8 +31,11 @@ from apeCAD.ops import (
     AddBar,
     AddConcreteFace,
     AddCrosstie,
+    AddFaceHole,
     AddHoop,
+    AddSectionFace,
     AddSectionOutline,
+    AddSteelShape,
     AddWallChain,
     AddWallLeg,
     PointAt,
@@ -57,6 +65,94 @@ def add_concrete_face(state: DraftState, op: AddConcreteFace) -> AddConcreteFace
     point_ids, refs = state.resolve_all(op.point_ids)
     entity_id = _store_face(state, point_ids, op.material, op.label, op.entity_id)
     return replace(op, point_ids=refs, entity_id=entity_id)
+
+
+def add_section_face(state: DraftState, op: AddSectionFace) -> AddSectionFace:
+    """A v2 face (ADR 0039 decision 2): a ring stored CCW, or an exact circle.
+
+    Overlapping faces are not refused: precedence (void > steel > concrete) decides for the
+    consumer, and two of one role overlapping is the `same-role-overlap` lint warning.
+    """
+    boundary, refs, center = _boundary(state, op.point_ids, op.center_id, op.radius_mm, False)
+    role = "void" if op.role == "void" else "steel" if op.role == "steel" else "concrete"
+    entity_id = _store_section_face(
+        state,
+        SectionFace(entity_id=0, role=role, boundary=boundary, material=op.material),
+        op.label,
+        op.entity_id,
+    )
+    return replace(op, point_ids=refs, center_id=center, entity_id=entity_id)
+
+
+def add_face_hole(state: DraftState, op: AddFaceHole) -> AddFaceHole:
+    """Append a hole (a ring stored CW, or a circle) to a v2 face; record its index.
+
+    A hole outside its face is kept: `hole-outside-face` is a lint warning, not a refusal.
+    """
+    face = state.entities.get(op.face_id)
+    if isinstance(face, ConcreteFace):
+        raise DocumentError(
+            f"entity {op.face_id} is a v1 concrete face, which has no holes; draw the "
+            "section with AddSectionFace, or cut it with a void face"
+        )
+    if not isinstance(face, SectionFace):
+        raise DocumentError(f"entity {op.face_id} is not a section face")
+    index = len(face.holes)
+    if op.hole_index is not None and op.hole_index != index:
+        raise DocumentError(
+            f"the op records hole {op.hole_index} of face {op.face_id}; the face's next "
+            f"hole is {index}"
+        )
+    hole, refs, center = _boundary(state, op.point_ids, op.center_id, op.radius_mm, True)
+    state.entities[op.face_id] = replace(face, holes=(*face.holes, hole))
+    return replace(op, point_ids=refs, center_id=center, hole_index=index)
+
+
+def add_steel_shape(state: DraftState, op: AddSteelShape) -> AddSteelShape:
+    """A steel face from the ring the host resolved; it keeps the shape's provenance."""
+    boundary, refs, _ = _boundary(state, op.point_ids, None, None, False)
+    shape = SteelShape(op.catalog, op.designation, op.anchor_mm, op.rotation_deg)
+    face = SectionFace(
+        entity_id=0, role="steel", boundary=boundary, material=op.material, shape=shape
+    )
+    entity_id = _store_section_face(state, face, op.label, op.entity_id)
+    return replace(op, point_ids=refs, entity_id=entity_id)
+
+
+def _boundary(
+    state: DraftState,
+    point_ids: tuple[VertexRef, ...],
+    center_id: VertexRef | None,
+    radius_mm: float | None,
+    hole: bool,
+) -> tuple[FaceBoundary, tuple[VertexRef, ...], VertexRef | None]:
+    """Resolve a ring (CCW as a boundary, CW as a hole) or a circle on z = 0.
+
+    Returns the boundary and the vertex forms the committed op records.
+    """
+    what = "a hole" if hole else "a section face"
+    if point_ids:
+        ids, refs = state.resolve_all(point_ids)
+        ring = [_xy_on_plane(state, point_id) for point_id in ids]
+        require_simple(ring, what)
+        if (signed_area(ring) < 0.0) != hole:
+            ids = ids[::-1]
+        return RingBoundary(ids), refs, None
+    if center_id is None or radius_mm is None:
+        raise DocumentError(f"internal error: {what} has no boundary")
+    center, center_ref = state.resolve(center_id)
+    _xy_on_plane(state, center)
+    return CircleBoundary(center, radius_mm), (), center_ref
+
+
+def _store_section_face(
+    state: DraftState, face: SectionFace, label: str | None, requested: EntityId | None
+) -> EntityId:
+    state.reject_taken_label(label)
+    entity_id = state.allocate_id(requested)
+    state.register_label(entity_id, label)
+    state.entities[entity_id] = replace(face, entity_id=entity_id, label=label)
+    return entity_id
 
 
 def add_section_outline(state: DraftState, op: AddSectionOutline) -> AddSectionOutline:
@@ -231,6 +327,7 @@ def add_bar(state: DraftState, op: AddBar) -> AddBar:
         designation=op.designation,
         diameter_mm=diameter_of(op.designation),
         label=op.label,
+        material=op.material,
     )
     return replace(op, entity_id=entity_id, point_id=point_id)
 
@@ -286,7 +383,17 @@ def set_bar_size(state: DraftState, op: SetBarSize) -> SetBarSize:
 
 
 def set_material(state: DraftState, op: SetMaterial) -> SetMaterial:
+    """Rename the material of v1 and v2 faces; a void face takes none.
+
+    A bar's steel is named when it is added (`AddBar`, `AddBarsOnCircle`).
+    """
     for entity_id in op.entity_ids:
+        target = state.entities.get(entity_id)
+        if isinstance(target, SectionFace) and target.role == "void":
+            raise DocumentError(f"entity {entity_id} is a void face, which takes no material")
+        if isinstance(target, SectionFace):
+            state.entities[entity_id] = replace(target, material=op.material)
+            continue
         face = _require_face(state, entity_id)
         state.entities[entity_id] = replace(face, material=op.material)
     return op

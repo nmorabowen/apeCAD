@@ -12,6 +12,8 @@ from apeCAD.entities import (
     Bezier,
     Box,
     Circle,
+    CircleBoundary,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
@@ -19,12 +21,16 @@ from apeCAD.entities import (
     Entity,
     EntityId,
     Face,
+    FaceBoundary,
     Hoop,
     Line,
     Point,
     Polyline,
+    RingBoundary,
+    SectionFace,
     Solid,
     WallLeg,
+    section_face_point_ids,
 )
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import collinear_xy
@@ -68,6 +74,10 @@ def referenced_ids(entity: Entity) -> frozenset[EntityId]:
         return frozenset({entity.start_id, entity.end_id, entity.face_id})
     if isinstance(entity, CoverGuide):
         return frozenset({entity.face_id})
+    if isinstance(entity, SectionFace):
+        return frozenset(section_face_point_ids(entity))
+    if isinstance(entity, CircularTie):
+        return frozenset({entity.center_id})
     return frozenset({entity.start_id, entity.mid_id, entity.end_id})
 
 
@@ -259,6 +269,15 @@ def absorb_point(state: DraftState, old_id: EntityId, new_id: EntityId) -> None:
                 raise DocumentError("sew would collapse a Bézier")
             if compacted != entity.point_ids:
                 state.entities[entity.entity_id] = replace(entity, point_ids=compacted)
+        elif isinstance(entity, SectionFace):
+            boundary = _absorb_boundary(entity.boundary, old_id, new_id)
+            holes = tuple(_absorb_boundary(h, old_id, new_id) for h in entity.holes)
+            if boundary != entity.boundary or holes != entity.holes:
+                state.entities[entity.entity_id] = replace(
+                    entity, boundary=boundary, holes=holes
+                )
+        elif isinstance(entity, CircularTie) and entity.center_id == old_id:
+            state.entities[entity.entity_id] = replace(entity, center_id=new_id)
         elif isinstance(entity, (Circle, Ellipse)) and entity.center_id == old_id:
             state.entities[entity.entity_id] = replace(entity, center_id=new_id)
         elif isinstance(entity, Arc):
@@ -276,6 +295,21 @@ def absorb_point(state: DraftState, old_id: EntityId, new_id: EntityId) -> None:
             state.labels[old.label] = new_id
         elif old.label in state.labels:
             del state.labels[old.label]
+
+
+def _absorb_boundary(
+    boundary: FaceBoundary, old_id: EntityId, new_id: EntityId
+) -> FaceBoundary:
+    """A v2 face boundary with old_id rewired to new_id; a ring may not collapse."""
+    if isinstance(boundary, CircleBoundary):
+        if boundary.center_id != old_id:
+            return boundary
+        return replace(boundary, center_id=new_id)
+    ids = tuple(new_id if pid == old_id else pid for pid in boundary.point_ids)
+    compacted = compact_ids(ids, closed=True)
+    if len(compacted) < 3:
+        raise DocumentError("sew would collapse a section face ring")
+    return boundary if compacted == boundary.point_ids else RingBoundary(compacted)
 
 
 def simplify_loop(
