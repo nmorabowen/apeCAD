@@ -73,6 +73,9 @@ it and must agree with it on every case in `tests/fixtures/section_overlay/`.
   - Each fixture case has exactly one fault. With several, which one is named is not
     specified. The message is for people: it starts with the path, and its wording is
     free.
+- **Integers** (`version`, `revision`, `ids`) are defined by value: a finite number with
+  no fractional part. `1.0` is the integer 1, as `JSON.parse` reads it, and a reader
+  normalises it to an integer; `1.5` is refused.
 - `schema`, `version` and `units` are exactly `"apeCAD.section-overlay"`, `1` and `"mm"`.
 - **Coordinates** are world millimetres in the section plane (x right, y up, z = 0), the
   frame of the section-draft. The render tool draws an overlay on the `top` view only, and

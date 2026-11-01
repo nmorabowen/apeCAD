@@ -141,7 +141,7 @@ def parse_overlay(value: object) -> Overlay:
     if top["schema"] != OVERLAY_SCHEMA:
         raise _refuse("overlay.schema", f"must be {OVERLAY_SCHEMA!r}, got {top['schema']!r}")
     version = top["version"]
-    if isinstance(version, bool) or not isinstance(version, int) or version != 1:
+    if _integral(version) != OVERLAY_SCHEMA_VERSION:
         raise _refuse("overlay.version", f"must be {OVERLAY_SCHEMA_VERSION}, got {version!r}")
     if top["units"] != "mm":
         raise _refuse("overlay.units", f"must be 'mm', got {top['units']!r}")
@@ -411,10 +411,23 @@ def _str(path: str, value: object) -> str:
     return value
 
 
+def _integral(value: object) -> int | None:
+    """An integer by value (spec "Integers"): a finite number with no fractional part, so
+    `1.0` is 1, as JSON.parse reads it. None for anything else, a bool included."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        return int(value)
+    return None
+
+
 def _int(path: str, value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+    whole = _integral(value)
+    if whole is None or whole < 0:
         raise _refuse(path, f"must be a non-negative integer, got {value!r}")
-    return value
+    return whole
 
 
 def _number(path: str, value: object) -> float:

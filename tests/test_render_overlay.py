@@ -111,6 +111,18 @@ def test_valid_fixtures_are_accepted(path: Path) -> None:
     )
 
 
+def test_integers_are_read_by_value_and_normalised() -> None:
+    """Review of PR #50, finding 1: JSON.parse reads `1.0` as 1, so Python must too."""
+    raw = cast(Json, _json(FIXTURES / "valid" / "integral_floats.json"))
+    assert isinstance(raw["revision"], float)  # the fixture really carries 3.0, not 3
+    overlay = parse_overlay(raw)
+    assert overlay.revision == 3 and type(overlay.revision) is int
+    ids = overlay.layers[0].primitives[0].ids
+    assert ids == (2, 5) and all(type(i) is int for i in ids)
+    svg = render_svg(rect_boundary_hoops(), overlay=raw).svg
+    assert 'data-revision="3"' in svg and 'data-ids="2 5"' in svg
+
+
 INVALID = cast(list[Json], _json(FIXTURES / "invalid.json"))
 
 
