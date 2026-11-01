@@ -155,3 +155,22 @@ question open.
    that adds a ring normalises it. The contract block states both. Mirroring a face that
    carries steel `shape` provenance is refused by name, because the stored `designation`,
    `anchor_mm` and `rotation_deg` would describe the wrong outline for an asymmetric shape.
+8. **Five readings from the review of apeCAD PR #48 (orchestrator's rulings).** The spec
+   states each one outside its hashed block, so the contract's SHA-256 is unchanged.
+   1. *A steel face with no ring.* Seed v2 refuses a designation-only steel face, by name:
+      the host resolves the outline before it seeds. With `AddSteelShape` requiring a ring,
+      no path writes `boundary: null`, so `steel-shape-unresolved` is retired as a
+      **reserved** code that is never emitted. This supersedes the `boundary: null` half of
+      point 6. The block still admits null, and a reader refuses it by name.
+   2. *`version=1` and v2-only fields.* A document whose bars carry `material`, or whose
+      entities carry `template_id`, is refused by name for `version=1`, the same as a v2-only
+      entity. Fields are never dropped to fit.
+   3. *The kept v1 codes on many faces.* `face-without-cover-guide` applies to concrete faces
+      only. A bar gets one location code at most, by precedence `bar-in-void` >
+      `bar-in-steel` > `bar-outside-concrete`. A hole, which has no entity id, is identified
+      as `(face_id, hole_index)`, the pair the hole ops record (C1-S2).
+   4. *`material` on solid faces.* Required and non-null on `concrete` and `steel` faces;
+      only a `void` face has null, and `SetMaterial` refuses a void (C1-S2).
+   5. *`shape.anchor_mm`.* The point, in section coordinates, where the shape's catalog
+      origin (its centroid) is placed. Reopen compares it as a length (warn beyond rel 1e-9),
+      not structurally.

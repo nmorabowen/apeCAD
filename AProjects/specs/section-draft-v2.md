@@ -102,7 +102,7 @@ ADR 0039 decision 7), in this order:
 1. The v1 codes that keep their meaning in v2, in v1's order: `bar-overlap`,
    `bar-outside-concrete`, `hoop-bar-not-in-face`, `crosstie-crosses-outside`,
    `face-without-cover-guide`, `inclined-wall-leg`, `tie-mismatch-in-core`.
-2. The seven v2 codes:
+2. The v2 codes of ADR 0039 decision 7, six emitted and one reserved:
 
 | Code | Warns when |
 |---|---|
@@ -112,11 +112,23 @@ ADR 0039 decision 7), in this order:
 | `bar-in-void` | a bar centre lies where a void face wins |
 | `bar-in-steel` | a bar centre lies where a steel face wins |
 | `circular-tie-outside-face` | a circular tie's centreline is not inside a concrete face |
-| `steel-shape-unresolved` | a steel face carries a `shape` but no ring (`boundary` is null). Only imported or seed content can raise it: `AddSteelShape` always requires a ring (Errata 6) |
+| `steel-shape-unresolved` | **Reserved, never emitted** (Errata 8.1). No path can produce a steel face without a ring: `AddSteelShape` requires one and a seed refuses a designation-only steel face |
 
 `more-than-one-solid-face` and `face-without-wall-leg` are v1-only (ADR 0039 Errata 2): a v2
 draft never carries them. Many faces are normal in v2, and a face without a leg is a wall
 question the consumer asks only when the drawing is a wall (ADR 0039 decision 6).
+
+How the kept v1 codes read on many faces (Errata 8.3):
+
+- `face-without-cover-guide` applies to **concrete** faces only. A steel or void face never
+  raises it.
+- A bar gets **one location code** at most, the first that holds in the order
+  `bar-in-void` > `bar-in-steel` > `bar-outside-concrete`. It follows the overlap
+  precedence: a bar in a void inside concrete is `bar-in-void` alone.
+- A hole is identified as **`(face_id, hole_index)`**, its owning face's id and its 0-based
+  index in that face's `holes[]`, the same pair the hole ops record (C1-S2). Holes have no
+  entity id of their own, so a warning about a hole (`hole-outside-face`) carries the face's
+  id in `ids` and names `hole_index` in its `message`.
 
 ## Rules
 
@@ -149,10 +161,10 @@ entity ids (positive integers) and stay stable across replay. Rows not listed (`
 | `document` | object | The full ops log, `apeCAD.document.v1`, the same as in a v1 draft. Only the derived `section` block differs | apeCAD on reopen |
 | `section.faces[]` | list, any count | `{id, label, role, material, boundary, holes}`, plus optional `shape` and `template_id` | apeCAD (rings simple and oriented) |
 | `faces[].role` | `"concrete"`, `"steel"`, `"void"` | Decides overlaps, by precedence `void` > `steel` > `concrete`. A v1 `ConcreteFace` (live role `"solid"`) is written as `"concrete"` (Errata 3) | consumer |
-| `faces[].material` | string or null | A name. Null on a `void` face, which has no material (Errata 6) | consumer binds it |
-| `faces[].boundary` | boundary or null | `{"kind": "ring", "ring_mm"}`: CCW and simple. `{"kind": "circle", "center_mm", "radius_mm"}`: exact, `radius_mm` > 0. Null only on a steel face with a `shape` that arrived unresolved in an imported draft or a seed (`steel-shape-unresolved`, Errata 6) | apeCAD (ring); consumer refuses null when it needs the region |
-| `faces[].holes[]` | list of boundaries | Same two kinds; a hole ring is stored CW. Each strictly inside its own face (`hole-outside-face`). Removes material from that face only. Holes carry no id | apeCAD lint; consumer |
-| `faces[].shape` | object, optional, steel faces only | Provenance: `catalog`, `designation`, `anchor_mm`, `rotation_deg` (degrees, CCW). Stored and shown, never resolved by apeCAD. A plate or a built-up shape has none | host |
+| `faces[].material` | string or null | A name, **required and non-null** on `concrete` and `steel` faces. Null on a `void` face only, which has no material; `SetMaterial` refuses a void (Errata 6, 8.4) | apeCAD (null only on void); consumer binds it |
+| `faces[].boundary` | boundary or null | `{"kind": "ring", "ring_mm"}`: CCW and simple. `{"kind": "circle", "center_mm", "radius_mm"}`: exact, `radius_mm` > 0. The block admits null, but apeCAD never writes it: every face has a boundary (Errata 8.1) | apeCAD (ring); a reader refuses null by name |
+| `faces[].holes[]` | list of boundaries | Same two kinds; a hole ring is stored CW. Each strictly inside its own face (`hole-outside-face`). Removes material from that face only. A hole has no entity id: it is identified as `(face_id, hole_index)`, its 0-based index in this list (Errata 8.3) | apeCAD lint; consumer |
+| `faces[].shape` | object, optional, steel faces only | Provenance: `catalog`, `designation`, `anchor_mm`, `rotation_deg` (degrees, CCW). `anchor_mm` is the point, in section coordinates, where the shape's catalog origin (its centroid) is placed (Errata 8.5). Stored and shown, never resolved by apeCAD. A plate or a built-up shape has none | host |
 | `section.wall_legs[]` | list, optional content | Exactly as in v1. `concrete_face_id` names a `faces[]` entry | consumer, only for a wall |
 | `section.bars[]` | list | As in v1, plus optional `material`, the bar steel's name; absent means the consumer's default | consumer |
 | `section.hoops[]`, `section.crossties[]` | list | Exactly as in v1 (polygon hoops on the strict CCW hull; crossties between two bars) | as in v1 |
@@ -204,6 +216,9 @@ decision 7), under the same header as seed v1 with `"version": 2`:
   into plain entities (ADR 0040 Context, option 2); `materials_used` is derived (Errata 5).
 - apeCAD alone turns a seed into ops. A seed reader validates the header, every 0-based
   cross-reference, and `diameter_mm` against `designation` (rel 1e-9), as for seed v1.
+- A seed refuses, by name, a steel face that has a `shape` but no ring (a designation-only
+  face). The host resolves the outline before it seeds (Errata 8.1). A seed also refuses a
+  `concrete` or `steel` face whose `material` is missing or null (Errata 8.4).
 
 ## Writer and reader (planned, C1-S3)
 
@@ -212,16 +227,20 @@ Outside the hashed block, so the contract is unchanged. Names follow v1's table 
 
 - `section_draft(document, *, version=1, commit="auto")`. `version=2` writes this block.
   `version=1` writes v1 and is refused by name when the document holds anything v1 cannot
-  say: a second face, a void or steel face, a circle, a hole, a circular tie. It never drops
-  entities to fit (ADR 0039 decision 1).
+  say: a second face, a void or steel face, a circle, a hole, a circular tie. The same holds
+  for the v2-only fields: a bar with a `material`, or any entity with a `template_id`, is
+  refused by name (Errata 8.2). It never drops entities or fields to fit (ADR 0039
+  decision 1).
 - Hosts ask for v2 explicitly. The transport's `action: "draft"` and the MCP and CLI
   `get_section_draft` take an optional `version`, 1 or 2, default 1, so HA-04 is unchanged.
   Any other value is refused by name (Errata 1).
 - `document_from_draft` reads v1 and v2, replays `document` and recomputes `section`, with
   v1's reopen rules: a length beyond rel 1e-9 is one `reopen-numeric-difference` warning per
   item and the replay wins; anything else that differs is refused, including a role, a
-  boundary of another kind, the number of holes, a material, a `shape`, a template id. A
-  stored key the reader does not write is ignored. The stored `warnings[]` are not compared.
+  boundary of another kind, the number of holes, a material, a `shape`'s `catalog` or
+  `designation`, a template id. `shape.anchor_mm` is a length and compares numerically: a
+  difference beyond rel 1e-9 warns, it is not refused (Errata 8.5). A stored key the reader
+  does not write is ignored. The stored `warnings[]` are not compared.
 - An unknown `schema` or `version`, or `units` other than `"mm"`, is refused.
 - Lists are in entity-id order; every length is written as a float.
 
