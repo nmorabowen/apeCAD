@@ -102,6 +102,12 @@ def _with(base: dict[str, object], **changes: object) -> dict[str, object]:
 _DROP = object()
 
 
+def _ngon(n: int, radius: float = 1e5) -> list[list[float]]:
+    """A convex regular n-gon (re-review of #56: polygon_column's O(n²) before the cap)."""
+    step = 2.0 * math.pi / n
+    return [[radius * math.cos(k * step), radius * math.sin(k * step)] for k in range(n)]
+
+
 # --- the oracles (C3 record §2) ---------------------------------------------------------
 
 
@@ -308,6 +314,9 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("polygon_column", {"spacing_max": 5}, "spacing_max"),  # neighbours 5 mm apart
     ("polygon_column", {"spacing_max": 0.1}, "spacing_max"),  # finding 4: > 1000 on an edge
     ("polygon_column", {"ring": [[0, 0], [2.0**21, 0], [0, 500]]}, "ring"),  # extent
+    # Re-review of #56: the cap is checked before any O(n²) work on the ring.
+    ("polygon_column", {"ring": _ngon(1001)}, "ring"),  # a bar per vertex: over 1000
+    ("polygon_column", {"ring": _ngon(600)}, "spacing_max"),  # Σ ceil(L / 150) = 4200 bars
     ("rect_hollow", {"t_x": 116}, "t_x"),  # t - 2d = 0: the bar rings coincide
     ("rect_hollow", {"t_x": 117, "t_y": 117}, "t_x"),  # t - 2d = 1 mm, under Ø16
     ("rect_hollow", {"t_y": 131}, "t_y"),  # t - 2d = 15 mm, under Ø16
@@ -377,8 +386,16 @@ def test_params_that_are_not_an_object_are_refused(template: str, params: object
 def test_the_bar_cap_refuses_before_building() -> None:
     # Finding 1: 10**9 bars used to run out of memory; the refusal must be immediate.
     start = time.perf_counter()
-    for template, changes in (("rect_column", {"nx": 10**9}), ("t_beam", {"bottom": {
-            "n": 10**9, "bar": "Ø20"}})):  # fmt: skip
+    # Re-review: a 4000-vertex ring took 19 s, 20 000 took 458 s; spacing 0.01 mm on a box.
+    cases: list[tuple[str, dict[str, object]]] = [
+        ("rect_column", {"nx": 10**9}),
+        ("t_beam", {"bottom": {"n": 10**9, "bar": "Ø20"}}),
+        ("polygon_column", {"ring": _ngon(1001)}),
+        ("polygon_column", {"ring": _ngon(20_000)}),
+        ("polygon_column", {"spacing_max": 1e-6}),
+        ("rect_hollow", {"spacing_max": 1e-6}),
+    ]
+    for template, changes in cases:
         with pytest.raises(TemplateParamError, match="a template places at most 1000"):
             expand(template, _with(ORACLES[template], **changes))
     assert time.perf_counter() - start < 1.0

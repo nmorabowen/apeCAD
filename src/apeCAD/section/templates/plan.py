@@ -28,7 +28,13 @@ from typing import Literal
 from apeCAD.errors import DocumentError, OpArgumentError
 from apeCAD.section.designations import DESIGNATIONS
 from apeCAD.section.geometry import Point2, convex_hull_ccw, is_simple, signed_area
-from apeCAD.section.layout import EXTENT_LIMIT_MM, MAX_LAYOUT_BARS
+from apeCAD.section.layout import (
+    EXTENT_LIMIT_MM,
+    MAX_LAYOUT_BARS,
+    edge_positions,
+    is_inclined,
+    snap,
+)
 
 PlanRole = Literal["concrete", "steel", "void"]
 """A face's role, as `entities.SectionRole` (ADR 0039 decision 2)."""
@@ -328,6 +334,47 @@ def require_extent(template: str, param: str, points: Iterable[Point2]) -> None:
                 f"the section reaches ({x:g}, {y:g}); sections stay within "
                 f"±{EXTENT_LIMIT_MM:g} mm (ADR 0032)",
             )
+
+
+def layout_ring(ring: Sequence[Point2]) -> list[Point2]:
+    """`ring` as `layout.edge_positions` places bars on it, computed once.
+
+    `edge_positions` snaps every vertex to `SNAP_GRID_MM` when any edge of its ring is
+    inclined (ADR 0032), and does so again for every edge it is asked about: O(n²) on a ring
+    of n vertices. Snapping is idempotent, so snapping here once and handing it one edge at a
+    time (`ring_positions`) places the same bars.
+    """
+    points = list(ring)
+    if any(is_inclined(points[i - 1], points[i]) for i in range(len(points))):
+        points = [(snap(x), snap(y)) for x, y in points]
+    return points
+
+
+def ring_intervals(ring: Sequence[Point2], spacing_mm: float) -> list[int]:
+    """Per edge of a `layout_ring`, the intervals `edge_positions` takes at `spacing_mm`.
+
+    The same formula as `layout.edge_positions` (the fewest equal intervals no longer than
+    the spacing), so a template can count its bars before placing any.
+    """
+    n = len(ring)
+    out: list[int] = []
+    for i in range(n):
+        (ax, ay), (bx, by) = ring[i], ring[(i + 1) % n]
+        out.append(max(1, math.ceil(math.hypot(bx - ax, by - ay) / spacing_mm - 1e-9)))
+    return out
+
+
+def ring_positions(ring: Sequence[Point2], spacing_mm: float) -> list[list[Point2]]:
+    """Bars along every edge of a `layout_ring`, each edge without its end corner.
+
+    Each edge goes to `edge_positions` as a two-vertex ring of already snapped points, so
+    nothing is snapped twice and the work is linear in the bars placed.
+    """
+    n = len(ring)
+    return [
+        edge_positions((ring[i], ring[(i + 1) % n]), 0, None, spacing_mm)[:-1]
+        for i in range(n)
+    ]
 
 
 def require_bar_count(p: Params, counts: Mapping[str, int]) -> None:

@@ -137,7 +137,10 @@ question open.
    face it rests on (ADR 0024 open q6). A template refuses, by name, parameters that are not
    an object; a missing, unknown or mistyped parameter; a `template_version` that is not a
    whole number; an inset that collapses; a point outside the ADR 0032 extent; more than 1000
-   bars, counted from the parameters before anything is built; and two bars closer than the
+   bars, counted before any bar is placed and before any work that grows faster than the bar
+   count (`rect_column` and `t_beam` from their counts; `polygon_column` from its vertex count,
+   then from the bar-centre ring's edges, Σ max(1, ⌈L / spacing_max⌉); `rect_hollow` from both
+   bar rings' edges); and two bars closer than the
    mean of their diameters (lint's `bar-overlap` rule), named by the parameter that sets their
    spacing. `TemplateParamError` is an `OpArgumentError` (`INVALID_ARGUMENT`) whose message
    starts `<template>: <param>:`.

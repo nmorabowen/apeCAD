@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from apeCAD.errors import DocumentError
 from apeCAD.section.designations import DESIGNATIONS
 from apeCAD.section.geometry import Point2
-from apeCAD.section.layout import edge_positions
 from apeCAD.section.templates.plan import (
     Params,
     Plan,
@@ -35,7 +34,10 @@ from apeCAD.section.templates.plan import (
     PlanRing,
     finish,
     hull_of,
+    require_bar_count,
     require_extent,
+    ring_intervals,
+    ring_positions,
 )
 
 TEMPLATE = "rect_hollow"
@@ -111,13 +113,13 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
     outer = _rect(x0 + d, y0 + d, x1 - d, y1 - d)
     inner = _rect(hx0 - d, hy0 - d, hx1 + d, hy1 + d)
     require_extent(TEMPLATE, "center_mm", _rect(x0, y0, x1, y1))
+    # Axis-aligned rings: `edge_positions` snaps nothing, so they are their own layout ring.
+    require_bar_count(p, {"spacing_max": sum(ring_intervals(outer, q.spacing_max))
+                          + sum(ring_intervals(inner, q.spacing_max))})  # fmt: skip
     rings: list[list[Point2]] = []
     try:
         for centre_ring in (outer, inner):
-            positions: list[Point2] = []
-            for edge in range(4):
-                positions += edge_positions(centre_ring, edge, None, q.spacing_max)[:-1]
-            rings.append(positions)
+            rings.append([xy for edge in ring_positions(centre_ring, q.spacing_max) for xy in edge])
     except DocumentError as exc:  # the extent was checked above
         raise p.error("spacing_max", str(exc)) from exc
     bars = tuple(

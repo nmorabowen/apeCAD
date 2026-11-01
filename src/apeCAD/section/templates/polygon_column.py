@@ -24,8 +24,8 @@ from dataclasses import dataclass
 from apeCAD.errors import DocumentError
 from apeCAD.section.designations import DESIGNATIONS
 from apeCAD.section.geometry import Point2, ensure_ccw, is_simple, miter_offset
-from apeCAD.section.layout import edge_positions
 from apeCAD.section.templates.plan import (
+    MAX_TEMPLATE_BARS,
     Params,
     Plan,
     PlanBar,
@@ -35,8 +35,12 @@ from apeCAD.section.templates.plan import (
     PlanRing,
     finish,
     hull_of,
+    layout_ring,
     point_value,
+    require_bar_count,
     require_extent,
+    ring_intervals,
+    ring_positions,
 )
 
 TEMPLATE = "polygon_column"
@@ -80,6 +84,12 @@ def _convex_ring(p: Params) -> tuple[Point2, ...]:
     points = [point_value(p, f"ring[{i}]", v) for i, v in enumerate(raw)]
     if len(points) < 3:
         raise p.error("ring", f"needs 3 or more vertices, got {len(points)}")
+    if len(points) > MAX_TEMPLATE_BARS:  # every inset vertex holds a bar: over the cap
+        raise p.error(
+            "ring",
+            f"has {len(points)} vertices; each holds a bar, and a template places at most "
+            f"{MAX_TEMPLATE_BARS}",
+        )
     require_extent(p.template, "ring", points)
     if not is_simple(points):
         raise p.error("ring", "must be a simple polygon (no repeated vertex, no crossing)")
@@ -108,15 +118,15 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
         raise p.error(
             "ring", f"too small for the bar-centre inset {inset:g} mm: {exc}"
         ) from exc
+    centre_ring = layout_ring(centre_ring)
+    intervals = ring_intervals(centre_ring, q.spacing_max)  # bars per edge, corners shared
+    require_bar_count(p, {"spacing_max": sum(intervals)})
     positions: list[Point2] = []
     edge_of: list[int] = []  # the edge each bar starts
-    intervals: list[int] = []  # per edge
     try:
-        for edge in range(len(centre_ring)):
-            placed = edge_positions(centre_ring, edge, None, q.spacing_max)[:-1]
+        for edge, placed in enumerate(ring_positions(centre_ring, q.spacing_max)):
             positions += placed
             edge_of += [edge] * len(placed)
-            intervals.append(len(placed))
     except DocumentError as exc:  # the ring's extent was checked in parse
         raise p.error("spacing_max", str(exc)) from exc
     bars = tuple(PlanBar(x, y, q.bar, bar_d, q.bar_material) for x, y in positions)
