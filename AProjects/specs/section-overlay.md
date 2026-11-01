@@ -1,6 +1,6 @@
 # Spec — `apeCAD.section-overlay` v1
 
-**Status:** Implemented in the render tool (2026-11-01); the section client is stage C2-S2
+**Status:** Implemented in the render tool (2026-11-01, stage C2-S1) and the section client (2026-11-01, stage C2-S2, `overlay.js`)
 **ADRs:** 0024, 0025, 0026, 0028, 0031, 0041
 
 The one text of the results-overlay contract (ADR 0041 decision 1). A host (apeSection,
