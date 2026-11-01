@@ -117,3 +117,41 @@ area" means to a v1 reader. That is a changed meaning.
 - apeConcrete's wall reader (`io/apecad.py`) keeps v1 and refuses v2 by name. Its general
   reader is new (apeConcrete ADR-0026).
 - `AGENTS.md`'s cross-repo table and `memory/coupling-map.md` gain apeSection as a consumer.
+
+## Errata (2026-11-01)
+
+Recorded while writing [`specs/section-draft-v2.md`](../specs/section-draft-v2.md)
+(apeSection#25, stage C1-S1). The Decision above is unchanged. These points record one owner
+ruling and the apeSection program orchestrator's rulings where the Decision text left a
+question open.
+
+1. **Hosts request v2 explicitly (owner's ruling, "Explicit version arg").** The transport's
+   `action: "draft"` and the MCP and CLI `get_section_draft` take an optional `version`, 1 or
+   2, default 1; any other value is refused by name. A host that asks for nothing still gets
+   v1, so ape-web-tools HA-04 is unchanged. This carries decision 1's
+   `section_draft(document, *, version=1 | 2)` to the hosts.
+2. **`more-than-one-solid-face` and `face-without-wall-leg` apply to v1 drafts only.** Many
+   faces are normal in v2, and decision 6 makes a face without a leg a question the consumer
+   asks only for a wall. A v2 draft carries the other seven v1 codes and the seven of
+   decision 7.
+3. **The live `FaceRole "solid"` maps to the v2 role `"concrete"`.** A v1 `ConcreteFace`
+   (`entities.py`, role `"solid"`) is written in v2 as a `role: "concrete"` ring face with no
+   holes. v1 drafts keep writing `"solid"`.
+4. **`template_id` is declared here and emitted by ADR 0040 (stage C3).** The v2 block
+   declares the optional `template_id` on every section entity now, so the contract's hash
+   does not move when templates land. Until C3, no entity carries it.
+5. **`templates[]` is declared with it, and a seed carries neither (orchestrator's ruling).**
+   ADR 0040 decision 7 adds `templates[] = {id, template, template_version, params}` to the v2
+   block. The block declares it now: always present, and empty until C3. `apeCAD.section-seed`
+   v2 carries no `templates[]`, no `template_id` and no `materials_used`. A seed replays into
+   plain entities (ADR 0040 Context, option 2), and `materials_used` is derived.
+6. **Two nulls (orchestrator's ruling).** A `void` face has `material: null`: it has no
+   material. A steel face with a `shape` may have `boundary: null` only in a draft or seed
+   that arrives unresolved. The `AddSteelShape` op always requires a ring, so
+   `steel-shape-unresolved` (decision 7, "a `shape` with no ring") fires only on imported or
+   seed content. Every other face has a boundary.
+7. **Ring orientation and mirroring (orchestrator's ruling).** A `boundary` ring follows v1's
+   rule: CCW and simple. A hole ring is stored with the opposite orientation (CW), and the op
+   that adds a ring normalises it. The contract block states both. Mirroring a face that
+   carries steel `shape` provenance is refused by name, because the stored `designation`,
+   `anchor_mm` and `rotation_deg` would describe the wrong outline for an asymmetric shape.

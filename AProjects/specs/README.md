@@ -9,6 +9,8 @@ to implement without re-arguing the ADR.
 | [`to_frame()`](to-frame.md) | Implemented | 0002, 0004, 0006, 0017 |
 | [scratchpad client](scratchpad.md) | Implemented | 0002, 0003, 0005, 0006, 0013, 0014, 0015, 0016, 0017, 0018, 0019, 0023, 0024, 0025, 0030, 0031, 0034, 0035, 0036, 0037, 0038 |
 | [section-draft v1](section-draft.md) | Implemented | 0006, 0023, 0024, 0025, 0026 |
+| [section-draft v2](section-draft-v2.md) | Specified (writer, reader and fixtures planned, C1) | 0006, 0023, 0024, 0025, 0026, 0039, 0040 |
+| section-overlay v1 (`section-overlay.md`) | Planned (C2) | 0024, 0026, 0028, 0041 |
 | [section embedding kit](section-embedding.md) | Implemented | 0023, 0024, 0025, 0026 |
 | [agent surface (MCP)](agent-surface-mcp.md) | Implemented (S1–S7; DXF export in D5) | 0006, 0019, 0023, 0026, 0027, 0028, 0034 |
 | [APE design system](ape-design.md) | Implemented (D1–D5) | 0014, 0023, 0024, 0028, 0031, 0033, 0034 |
