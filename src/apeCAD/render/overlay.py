@@ -219,6 +219,8 @@ def _scale(path: str, value: object) -> Scale:
             raise _refuse(f"{path}.domain", f"of a {kind} scale needs {want} numbers")
         if any(a >= b for a, b in zip(bounds, bounds[1:])):
             raise _refuse(f"{path}.domain", f"must increase strictly, got {list(bounds)}")
+        if not math.isfinite(bounds[-1] - bounds[0]):  # the stops would be inf or nan
+            raise _refuse(f"{path}.domain", f"must span a finite range, got {list(bounds)}")
         if kind == "diverging" and len(colors) % 2 == 0:
             raise _refuse(
                 f"{path}.colors",
@@ -417,7 +419,7 @@ def _integral(value: object) -> int | None:
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
-        return value
+        return value if _as_double(value) is not None else None
     if isinstance(value, float) and math.isfinite(value) and value.is_integer():
         return int(value)
     return None
@@ -426,16 +428,30 @@ def _integral(value: object) -> int | None:
 def _int(path: str, value: object) -> int:
     whole = _integral(value)
     if whole is None or whole < 0:
-        raise _refuse(path, f"must be a non-negative integer, got {value!r}")
+        shown = repr(value)
+        shown = shown if len(shown) <= 40 else f"a number of {len(shown)} chars"
+        raise _refuse(path, f"must be a finite non-negative integer, got {shown}")
     return whole
+
+
+def _as_double(value: int | float) -> float | None:
+    """The number as a finite double, or None. Python's json reads a 400-digit literal as an
+    int that overflows `float()`; JSON.parse reads it as Infinity. Both are non-finite."""
+    try:
+        double = float(value)
+    except OverflowError:
+        return None
+    return double if math.isfinite(double) else None
 
 
 def _number(path: str, value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise _refuse(path, f"must be a number, got {value!r}")
-    if not math.isfinite(value):
-        raise _refuse(path, f"must be finite, got {value!r}")
-    return float(value)
+    double = _as_double(value)
+    if double is None:
+        shown = value if isinstance(value, float) else f"an integer of {len(str(value))} chars"
+        raise _refuse(path, f"must be finite, got {shown}")
+    return double
 
 
 def _xy(path: str, value: object) -> Vec2:

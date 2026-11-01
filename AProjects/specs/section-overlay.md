@@ -76,6 +76,9 @@ it and must agree with it on every case in `tests/fixtures/section_overlay/`.
 - **Integers** (`version`, `revision`, `ids`) are defined by value: a finite number with
   no fractional part. `1.0` is the integer 1, as `JSON.parse` reads it, and a reader
   normalises it to an integer; `1.5` is refused.
+- **Finite** means finite as an IEEE double. A literal too large for one (a 400-digit
+  integer, `1e400`) is what `JSON.parse` reads as `Infinity`, so it is refused as
+  non-finite, an integer included. A numeric scale's `hi - lo` must be finite too.
 - `schema`, `version` and `units` are exactly `"apeCAD.section-overlay"`, `1` and `"mm"`.
 - **Coordinates** are world millimetres in the section plane (x right, y up, z = 0), the
   frame of the section-draft. The render tool draws an overlay on the `top` view only, and

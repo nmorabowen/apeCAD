@@ -169,6 +169,28 @@ def test_non_finite_numbers_are_refused(bad: float) -> None:
     assert caught.value.path == "overlay.layers[0].scale.domain[1]"
 
 
+HUGE = [c for c in INVALID if "400_digits" in c["case"]]
+
+
+def test_400_digit_numbers_are_refused_inside_guarded(
+    opened: tuple[LocalTools, str, Path],
+) -> None:
+    """Review of PR #50, finding 3: Python's json reads a 400-digit literal as an int that
+    overflows `float()`, and the OverflowError escaped `guarded`. JSON.parse reads it as
+    Infinity; both readers refuse it as non-finite, with the field's path."""
+    assert len(HUGE) == 5
+    for case in HUGE:
+        text = json.dumps(case["overlay"])
+        assert re.search(r"-?1(0){400}\b", text), case["case"]  # the probe really is there
+        tools, document, _path = opened
+        result = tools.render(document, overlay=case["overlay"])  # never raises
+        assert result["ok"] is False, case["case"]
+        error = cast(Json, result["error"])
+        assert error["code"] == "INVALID_ARGUMENT"
+        assert str(error["message"]).startswith(f"{case['refusal']['path']} ")
+        assert len(str(error["message"])) < 200  # the number is not echoed back
+
+
 def test_a_valued_polyline_is_stroked_and_other_kinds_are_filled() -> None:
     overlay = parse_overlay(cast(Json, _json(FIXTURES / "valid" / "every_token_and_kind.json")))
     line, label = overlay.layers[1].primitives
