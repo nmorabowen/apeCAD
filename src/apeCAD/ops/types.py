@@ -28,6 +28,13 @@ from apeCAD.ops.section import (
     SetMaterial,
     SetTransverse,
 )
+from apeCAD.ops.section_faces import (
+    AddBarsOnCircle,
+    AddCircularTie,
+    AddFaceHole,
+    AddSectionFace,
+    AddSteelShape,
+)
 
 SCHEMA_ID = "apeCAD.document.v1"
 """The schema a Document writes. v1 adds the section-mode ops (ADR 0024 decision 9)."""
@@ -498,4 +505,9 @@ Op = (
     | SetCover
     | AddBarRow
     | AddBarsAlongEdge
+    | AddSectionFace
+    | AddFaceHole
+    | AddSteelShape
+    | AddCircularTie
+    | AddBarsOnCircle
 )
