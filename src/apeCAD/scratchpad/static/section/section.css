@@ -58,6 +58,7 @@
 
 .apecad-section-canvas {
   flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -65,7 +66,9 @@
 }
 
 .apecad-section-sidebar {
+  flex: 0 0 220px; /* the canvas's width attribute must not squeeze the overlay legends out */
   width: 220px;
+  box-sizing: border-box;
   background: #efede8;
   border-left: 1px solid #d8d5cd;
   padding: 8px;
@@ -128,4 +131,86 @@
   font-family: "Cascadia Mono", "Consolas", monospace;
   font-size: 11px;
   white-space: nowrap;
+}
+
+/* Results overlay panel (ADR 0041 D2): layer list, one legend per scale, the stale badge. */
+.apecad-section-overlay {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.apecad-section-overlay-head {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.apecad-section-overlay-stale {
+  padding: 0 5px;
+  border: 1px solid #c64a1a;
+  border-radius: 3px;
+  background: rgba(198, 74, 26, 0.12);
+  color: #7c2808;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.apecad-section-overlay.stale .apecad-section-legend,
+.apecad-section-overlay.stale .apecad-section-overlay-layer {
+  opacity: 0.55;
+}
+
+.apecad-section-overlay-layer.hidden {
+  color: #525860;
+  font-style: italic;
+}
+
+.apecad-section-overlay-refused {
+  padding: 4px 6px;
+  background: rgba(198, 74, 26, 0.12);
+  border-left: 3px solid #c64a1a;
+  color: #7c2808;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.apecad-section-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 4px;
+  border-top: 1px solid #d8d5cd;
+}
+
+.apecad-section-legend-title {
+  font-weight: 600;
+}
+
+.apecad-section-legend-bar {
+  height: 10px;
+  border: 1px solid #c9c5bc;
+}
+
+.apecad-section-legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  color: #525860;
+  font-family: "Cascadia Mono", "Consolas", monospace;
+  font-size: 10px;
+}
+
+.apecad-section-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.apecad-section-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid #c9c5bc;
+  flex: 0 0 auto;
 }

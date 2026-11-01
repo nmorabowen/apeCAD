@@ -1,12 +1,13 @@
-// Embeddable 2-D Canvas section & rebar client (ADR 0026, stages C7 & C9).
+// Embeddable 2-D Canvas section & rebar client (ADR 0026, stages C7 & C9; overlay ADR 0041).
 // Zero CDN URLs, no innerHTML, no module-scope DOM access.
 
 import { createViewport, hitTestSection, renderSectionCanvas } from "./canvas2d.js";
 import { parseInput, snapPoint2D } from "./input-parse.js";
+import { createOverlayController, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
 import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene } from "./transport.js";
 
-export const API_VERSION = 1;
-export { httpTransport, mockTransport, parseInput, snapPoint2D };
+export const API_VERSION = 2;
+export { httpTransport, MAX_OVERLAY_PRIMITIVES, mockTransport, parseInput, parseOverlay, snapPoint2D };
 
 const TOOLS = [
   ["select", "Select"], ["rect", "Rectangle"], ["polygon", "Polygon"], ["opening", "Opening"],
@@ -83,6 +84,7 @@ export function create(container, opts = {}) {
   let panDrag = null;
   let disposed = false;
   let opEpoch = 0;
+  let docRevision = 0; // the transport's `revision` when it sends one, else a count of edits
 
   const params = {
     b_mm: 400, h_mm: 600, thickness_mm: 250, cover_mm: 25, tie_diameter_mm: 10, bar_diameter_mm: 16,
@@ -100,6 +102,7 @@ export function create(container, opts = {}) {
   const sidebar = el(doc, "div", "apecad-section-sidebar");
   const propsBox = el(doc, "div", "apecad-section-props");
   const warnBox = el(doc, "div", "apecad-section-warnings");
+  const overlayBox = el(doc, "div", "apecad-section-overlay");
   const bottomBar = el(doc, "div", "apecad-section-bottom");
   const promptLabel = el(doc, "span", "apecad-section-prompt", "Ready");
   const cmdInput = el(doc, "input", "apecad-section-cmd");
@@ -135,6 +138,7 @@ export function create(container, opts = {}) {
   stage.appendChild(canvas);
   sidebar.appendChild(propsBox);
   sidebar.appendChild(warnBox);
+  sidebar.appendChild(overlayBox);
   stage.appendChild(sidebar);
   bottomBar.appendChild(promptLabel);
   bottomBar.appendChild(cmdInput);
@@ -147,6 +151,9 @@ export function create(container, opts = {}) {
   else container.children = [root];
 
   const view = createViewport(canvas);
+  const overlay = createOverlayController({
+    doc, el, box: overlayBox, getRevision: () => docRevision, onChange: () => redraw(),
+  });
 
   function updateStatusAndProps() {
     const nFaces = (scene.concrete_faces || []).length;
@@ -181,15 +188,19 @@ export function create(container, opts = {}) {
     if (disposed) return;
     renderSectionCanvas(canvas, view, {
       scene, selectedIds, snap: snapState, ghost: ghostState, gridOn: true, gridStepMm: params.gridStepMm,
+      drawOverlay: overlay.active ? (ctx, v) => overlay.paint(ctx, v) : null,
     });
     updateStatusAndProps();
+    overlay.refresh();
   }
 
-  function syncResponse(res, emitChange) {
+  function syncResponse(res, emitChange, edits = emitChange) {
     if (!res || !res.ok) {
       promptLabel.textContent = res?.error?.message || "Operation refused";
       return res;
     }
+    if (Number.isInteger(res.revision)) docRevision = res.revision;
+    else if (edits) docRevision += 1;
     if (res.scene) scene = normalizeScene(res.scene);
     currentDraft = res.draft || buildDraftFromScene(scene, res.document);
     if (res.warnings && !scene.warnings?.length) scene.warnings = res.warnings;
@@ -202,12 +213,17 @@ export function create(container, opts = {}) {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
     opEpoch += 1;
     const list = Array.isArray(opOrOps) ? opOrOps : [opOrOps];
-    let lastRes = null;
+    let lastOk = null;
     for (const op of list) {
-      lastRes = await transport({ action: "apply", op });
-      if (!lastRes || !lastRes.ok) return syncResponse(lastRes, false);
+      const res = await transport({ action: "apply", op });
+      if (!res || !res.ok) {
+        // The ops before the refused one are applied: show them (and move the revision) first.
+        if (lastOk) syncResponse(lastOk, true);
+        return syncResponse(res, false);
+      }
+      lastOk = res;
     }
-    return syncResponse(lastRes, true);
+    return syncResponse(lastOk, true);
   }
 
   async function undo() {
@@ -232,7 +248,7 @@ export function create(container, opts = {}) {
 
   async function loadDraft(payload) {
     opEpoch += 1;
-    const out = syncResponse(await transport({ action: "load", payload }), false);
+    const out = syncResponse(await transport({ action: "load", payload }), false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -240,7 +256,7 @@ export function create(container, opts = {}) {
 
   async function loadSeed(seedPayload) {
     opEpoch += 1;
-    const out = syncResponse(await transport({ action: "seed", payload: seedPayload }), false);
+    const out = syncResponse(await transport({ action: "seed", payload: seedPayload }), false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -478,6 +494,7 @@ export function create(container, opts = {}) {
     loadDraft, load: loadDraft, loadSeed,
     getDraft: () => currentDraft, getScene: () => scene,
     applyOp, undo, redo, setTool, setParam, fitView, resize,
+    setOverlay: (value) => overlay.set(value), getOverlayState: () => overlay.state(),
     dispose() {
       disposed = true;
       canvas.removeEventListener("mousemove", onMouseMove);
@@ -491,5 +508,5 @@ export function create(container, opts = {}) {
   };
 }
 
-export const APECADSection = { API_VERSION, create, httpTransport, mockTransport };
+export const APECADSection = { API_VERSION, MAX_OVERLAY_PRIMITIVES, create, httpTransport, mockTransport, parseOverlay };
 if (typeof globalThis !== "undefined") globalThis.APECADSection = APECADSection;
