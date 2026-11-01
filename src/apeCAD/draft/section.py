@@ -305,9 +305,12 @@ def _store_leg(
     return entity_id
 
 
-def _require_face(state: DraftState, face_id: EntityId) -> ConcreteFace:
+def _require_face(state: DraftState, face_id: EntityId) -> ConcreteFace | SectionFace:
+    """A v1 concrete face, or a v2 face of role concrete (a cover guide or leg needs one)."""
     face = state.entities.get(face_id)
-    if not isinstance(face, ConcreteFace):
+    if isinstance(face, SectionFace) and face.role != "concrete":
+        raise DocumentError(f"entity {face_id} is a {face.role} face, not a concrete face")
+    if not isinstance(face, (ConcreteFace, SectionFace)):
         raise DocumentError(f"entity {face_id} is not a concrete face")
     return face
 
