@@ -363,15 +363,16 @@ def test_void_over_concrete_areas_by_hand() -> None:
 
 
 def test_steel_over_concrete_areas_by_hand() -> None:
-    """A W of 2*200*20 + 260*10 = 10 600 mm² of steel over 500 x 500 = 250 000 mm²: the steel
-    displaces the concrete, 239 400 mm² of it remain; the W keeps its provenance."""
+    """A W310x86 ring of 2*254*16.3 + (310 - 2*16.3)*9.1 = 10 804.74 mm² of steel over
+    500 x 500 = 250 000 mm²: the steel displaces the concrete, 239 195.26 mm² of it remain;
+    the W keeps its provenance."""
     faces = _faces(src_w_in_rect())
     (concrete,), (steel,) = faces["concrete"], faces["steel"]
-    assert W_AREA == 10_600
-    assert _region_area(steel) == float(W_AREA)
-    assert _region_area(concrete) - _region_area(steel) == 239_400.0
+    assert math.isclose(W_AREA, 10_804.74, rel_tol=1e-12)
+    assert math.isclose(_region_area(steel), 10_804.74, rel_tol=1e-12)
+    assert math.isclose(_region_area(concrete) - _region_area(steel), 239_195.26, rel_tol=1e-12)
     assert steel["shape"] == {
-        "catalog": "AISC", "designation": "W300x200", "anchor_mm": [0.0, 0.0], "rotation_deg": 0.0
+        "catalog": "AISC", "designation": "W310x86", "anchor_mm": [0.0, 0.0], "rotation_deg": 0.0
     }  # fmt: skip
     assert section_block(src_w_in_rect(), version=2)["materials_used"] == ["A630", "C40", "S355"]
 

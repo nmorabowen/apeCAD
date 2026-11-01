@@ -36,7 +36,8 @@ def _rect(x0: float, y0: float, x1: float, y1: float) -> list[PointAt]:
 
 def rect_column_ties() -> Document:
     """A 400 x 600 column at (0, 0)-(400, 600): eight Ø20 bars on the bar-centre ring, a
-    perimeter hoop and two crossties across the long sides, Ø10 @ 150."""
+    perimeter hoop and two crossties, Ø10 @ 150: w-e spans the 400 mm short width, s-n the
+    600 mm long one."""
     doc = Document()
     face = doc.add_section_face("concrete", "C30", point_ids=_rect(0, 0, 400, 600))
     doc.set_cover(face.entity_id, 40.0, 10.0, 20.0)
@@ -69,12 +70,18 @@ def t_beam() -> Document:
     return doc
 
 
-# A W 300 x 200, flanges 20 mm, web 10 mm, centred on the origin: area 2*200*20 + 260*10.
+# AISC W310x86 (W12x58), from its nominal plate dimensions with no fillets: d = 310,
+# bf = 254, tf = 16.3, tw = 9.1 mm, centred on the origin. Area 2*254*16.3 +
+# (310 - 2*16.3)*9.1 = 8280.4 + 2524.34 = 10804.74 mm²; the catalog's 11 000 mm² includes
+# the web-to-flange fillets this ring leaves out.
+W_DESIGNATION = "W310x86"
+_D, _BF, _TF, _TW = 310.0, 254.0, 16.3, 9.1
+_X, _Y, _YI, _XW = _BF / 2, _D / 2, _D / 2 - _TF, _TW / 2
 _W_RING = [
-    (-100, -150), (100, -150), (100, -130), (5, -130), (5, 130), (100, 130),
-    (100, 150), (-100, 150), (-100, 130), (-5, 130), (-5, -130), (-100, -130),
+    (-_X, -_Y), (_X, -_Y), (_X, -_YI), (_XW, -_YI), (_XW, _YI), (_X, _YI),
+    (_X, _Y), (-_X, _Y), (-_X, _YI), (-_XW, _YI), (-_XW, -_YI), (-_X, -_YI),
 ]  # fmt: skip
-W_AREA = 2 * 200 * 20 + 260 * 10
+W_AREA = 2 * 254 * 16.3 + (310 - 2 * 16.3) * 9.1
 
 
 def box_with_void() -> Document:
@@ -90,11 +97,14 @@ def box_with_void() -> Document:
 
 
 def src_w_in_rect() -> Document:
-    """500 x 500 concrete with a W over it (steel > concrete) and four corner bars."""
+    """500 x 500 concrete with a W310x86 over it (steel > concrete) and four corner bars.
+
+    The bars at (+-190, +-190), r = 10, clear the W's box (|x| <= 127, |y| <= 155).
+    """
     doc = Document()
     face = doc.add_section_outline(_rect(-250, -250, 250, 250), material="C40")
     doc.add_steel_shape(
-        [_at(x, y) for x, y in _W_RING], "S355", "AISC", "W300x200", (0.0, 0.0), label="W"
+        [_at(x, y) for x, y in _W_RING], "S355", "AISC", W_DESIGNATION, (0.0, 0.0), label="W"
     )
     doc.set_cover(face.entity_id, 40.0, 10.0, 20.0)
     for x, y in ((-190, -190), (190, -190), (190, 190), (-190, 190)):
@@ -124,7 +134,7 @@ def circular_column_spiral() -> Document:
 def bare_w_shape() -> Document:
     doc = Document()
     doc.add_steel_shape(
-        [_at(x, y) for x, y in _W_RING], "S355", "AISC", "W300x200", (0.0, 0.0), rotation_deg=0.0
+        [_at(x, y) for x, y in _W_RING], "S355", "AISC", W_DESIGNATION, (0.0, 0.0), rotation_deg=0.0
     )
     return doc
 

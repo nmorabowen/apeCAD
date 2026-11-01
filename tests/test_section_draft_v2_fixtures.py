@@ -130,7 +130,7 @@ def test_fixture_is_lf_json_with_no_sha(name: str) -> None:
 _PI = math.pi
 _T_AREA = 300 * 450 + 800 * 150  # web + flange = 255 000
 _T_CY = (300 * 450 * 225 + 800 * 150 * 525) / _T_AREA  # 93 375 000 / 255 000
-_W = 2 * 200 * 20 + 260 * 10  # 10 600
+_W = 2 * 254 * 16.3 + (310 - 2 * 16.3) * 9.1  # W310x86 without fillets: 10 804.74
 
 EXPECTED: dict[str, dict[str, tuple[float, float, float]]] = {
     # role: (area mm², centroid x, centroid y)
