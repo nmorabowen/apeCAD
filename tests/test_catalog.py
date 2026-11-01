@@ -36,6 +36,7 @@ def test_error_codes_are_the_spec_table() -> None:
         "DETACHED",
         "UNAVAILABLE",
         "IO_ERROR",
+        "TEMPLATE_LOCKED",
     )
     assert DocumentError.code == REFUSED
     assert OpArgumentError.code == INVALID_ARGUMENT

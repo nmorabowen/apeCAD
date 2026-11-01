@@ -28,6 +28,7 @@ from apeCAD.entities import (
     Polyline,
     RingBoundary,
     SectionFace,
+    SectionTemplate,
     Solid,
     WallLeg,
     section_face_point_ids,
@@ -78,6 +79,11 @@ def referenced_ids(entity: Entity) -> frozenset[EntityId]:
         return frozenset(section_face_point_ids(entity))
     if isinstance(entity, CircularTie):
         return frozenset({entity.center_id})
+    if isinstance(entity, SectionTemplate):
+        # A template references every entity it owns (ADR 0040), so a dangling child is a
+        # guard failure and deleting a child takes the template with it, which the lock
+        # (`draft.templates.check_template_lock`) then refuses.
+        return frozenset(entity.child_ids)
     return frozenset({entity.start_id, entity.mid_id, entity.end_id})
 
 

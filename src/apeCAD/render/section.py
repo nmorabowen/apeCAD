@@ -27,6 +27,7 @@ from apeCAD.entities import (
     Point,
     SectionEntity,
     SectionFace,
+    SectionTemplate,
     WallLeg,
 )
 from apeCAD.render.drawable import Drawable, Path3
@@ -60,8 +61,12 @@ def bar_point_ids(entities: Mapping[EntityId, Entity]) -> set[EntityId]:
 
 
 def section_drawable(
-    entities: Mapping[EntityId, Entity], entity: SectionEntity, tol_mm: float | None
+    entities: Mapping[EntityId, Entity],
+    entity: SectionEntity | SectionTemplate,
+    tol_mm: float | None,
 ) -> Drawable | None:
+    if isinstance(entity, SectionTemplate):
+        return None  # a template draws nothing of its own: its children are drawn (ADR 0040)
     eid, label = entity.entity_id, entity.label
     if isinstance(entity, ConcreteFace):
         ring = _xyz_all(entities, entity.point_ids)

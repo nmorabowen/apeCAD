@@ -7,6 +7,7 @@ hint, a field with a dataclass default is optional and carries that default, and
 
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
 import math
 import types
@@ -104,6 +105,9 @@ def _field_schema(name: str, hint: object) -> Schema:
         else:
             raise TypeError(f"{name}: no JSON schema for union {hint!r}")
         return _nullable(inner) if nullable else inner
+    if origin is collections.abc.Mapping:
+        # A free-form object (a section template's params, ADR 0040): its owner checks it.
+        return {"type": "object"}
     if origin is tuple:
         args = get_args(hint)
         if len(args) == 2 and args[1] is Ellipsis:

@@ -24,6 +24,7 @@ from apeCAD.entities import (
     Line,
     Polyline,
     SectionFace,
+    SectionTemplate,
     Solid,
     WallLeg,
     section_face_point_ids,
@@ -142,6 +143,10 @@ def _children_of(
         return tuple(i for i in (entity.bar_a_id, entity.bar_b_id) if i in entities)
     if isinstance(entity, Bar):
         return (entity.point_id,) if entity.point_id in entities else ()
+    # A section template owns every entity it drew (ADR 0040), so deleting it removes the
+    # whole subtree (ADR 0029) and a template child's root is its template.
+    if isinstance(entity, SectionTemplate):
+        return tuple(i for i in entity.child_ids if i in entities)
     return ()
 
 

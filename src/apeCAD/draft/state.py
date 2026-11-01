@@ -21,6 +21,7 @@ from apeCAD.entities import (
     Point,
     Polyline,
     SectionFace,
+    SectionTemplate,
     Solid,
     WallLeg,
     section_face_point_ids,
@@ -51,6 +52,9 @@ class DraftState:
         self.entities: dict[EntityId, Entity] = {}
         self.labels: dict[str, EntityId] = {}
         self.tags: dict[str, set[EntityId]] = {}
+        # Ids of the SectionTemplate entities, kept by `draft.templates` and `drop_entity`,
+        # so the template lock costs one emptiness test while there are none (ADR 0040).
+        self.template_ids: set[EntityId] = set()
 
     def copy(self) -> DraftState:
         """An independent trial copy. Entities are frozen, so sharing them is safe."""
@@ -59,7 +63,17 @@ class DraftState:
         trial.entities = dict(self.entities)
         trial.labels = dict(self.labels)
         trial.tags = {name: set(members) for name, members in self.tags.items()}
+        trial.template_ids = set(self.template_ids)
         return trial
+
+    def templates(self) -> tuple[SectionTemplate, ...]:
+        """The section templates, by id."""
+        found = (self.entities.get(i) for i in sorted(self.template_ids))
+        return tuple(e for e in found if isinstance(e, SectionTemplate))
+
+    def template_children(self) -> dict[EntityId, EntityId]:
+        """Child id -> the id of the template that owns it (ADR 0040 Errata 4)."""
+        return {child: t.entity_id for t in self.templates() for child in t.child_ids}
 
     def entity(self, entity_id: EntityId) -> Entity:
         try:
@@ -109,6 +123,7 @@ class DraftState:
 
     def drop_entity(self, entity_id: EntityId) -> None:
         entity = self.entities.pop(entity_id)
+        self.template_ids.discard(entity_id)
         if entity.label is not None:
             self.labels.pop(entity.label, None)
         empty_tags: list[str] = []
@@ -130,9 +145,12 @@ class DraftState:
     ) -> tuple[EntityId, bool]:
         """Reuse a point within tolerance, else create an unlabelled one.
 
-        A bar's point is never reused: bars own their points (ADR 0024 decision 5).
+        A bar's point is never reused: bars own their points (ADR 0024 decision 5). Neither
+        is a section template's point: a template owns its children (ADR 0040).
         """
-        owned = self.bar_points()
+        owned: set[EntityId] = set(self.bar_points())
+        if self.template_ids:
+            owned.update(self.template_children())
         for point in self.points():
             if point.entity_id in owned:
                 continue
@@ -211,6 +229,10 @@ class DraftState:
             return (entity.center_id,)
         if isinstance(entity, Arc):
             return (entity.start_id, entity.mid_id, entity.end_id)
+        if isinstance(entity, SectionTemplate):  # its own points: a move reaches the lock
+            return tuple(
+                c for c in entity.child_ids if isinstance(self.entities.get(c), Point)
+            )
         if isinstance(entity, Solid):
             ids = list(self.point_ids_of(self.entity(entity.face_id)))
             if entity.cap_id is not None:

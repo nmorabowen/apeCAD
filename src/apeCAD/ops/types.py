@@ -462,6 +462,8 @@ class SetLabel:
             object.__setattr__(self, "label", _optional_label(raw))
 
 
+# The ops `ops.codec` (and the section codec it asks first) knows. `apeCAD.ops.Op` adds the
+# section-template ops (ops/templates.py), which ops/template_codec.py encodes.
 Op = (
     AddPoint
     | AddLine

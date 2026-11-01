@@ -29,6 +29,7 @@ DRAFT_RANK: dict[str, int] = {
     "topology": 1,
     "invariants": 2,
     "create": 2,
+    "templates": 2,  # section templates (ADR 0040): handlers, materialiser and lock
     "edit": 3,
     "transform": 3,
     "meta": 3,
