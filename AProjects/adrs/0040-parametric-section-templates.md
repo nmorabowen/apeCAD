@@ -91,3 +91,58 @@ it fits ADR 0024 decision 2.
 - The 2-D client gets a template panel driven by the catalog schemas, so a new template needs
   no client code.
 - apeSection's project file stores only the draft. The parameters are inside it.
+
+## Errata (2026-11-01)
+
+Recorded with the pure templates (apeSection#48, stage C3-S1), from the C3 decision record
+(apeSection#2, comment 1089) and the rulings after it. The Decision above is unchanged. These
+points record two owner rulings and the record's readings where the Decision text left a
+question open.
+
+1. **Every template takes a material (owner's ruling Q1, "Add via erratum").** Decision 5's
+   table names no material. Every template also takes `material` (required: the name of its
+   concrete face) and an optional `bar_material` (the name of the bar steel). Without
+   `bar_material` the bars carry no `material`, so the consumer's default applies (ADR 0039
+   decision 6). Names only: apeCAD stores no property and no law.
+2. **Version 1 starts narrow (owner's ruling Q4, "Yes, start narrow").** `polygon_column` v1
+   takes strictly convex rings only (a reflex or a straight vertex is refused), `rect_hollow`
+   v1 places no crossties, and `t_beam` v1 is symmetric. Widening any of them is a new
+   `template_version` (decision 4), never a change to v1.
+3. **Intent is stored, expansion is derived.** A template is a pure function from its
+   parameters to a `Plan` (faces with holes and an optional steel `shape`, bars, hoops,
+   crossties, circular ties, cover guides), kept in `section/templates/` as
+   `TEMPLATES[template][version]`. The committed op records the `params`, the
+   `template_version` (the latest when the op names none) and the `child_ids`. Replay
+   refuses a mismatch, as `AddWallChain` does for its ring.
+4. **Membership lives on one entity.** `SectionTemplate{entity_id, template,
+   template_version, params, child_ids, label}` is the only record of which entities a
+   template owns. Decision 1's "every child records `template_id`" is read as a projection:
+   the draft's `template_id` on a child is found by inverse lookup of `child_ids`, and the
+   child entities themselves carry no field. Explode drops the entity, so every child is
+   freehand again at once. A materialiser builds the children from the `Plan` with fresh
+   points (never reusing an existing point) and no labels.
+5. **The lock is one guard (decision 3).** `TEMPLATE_LOCKED` is a new error code whose
+   exception subclasses `DocumentError` (orchestrator's ruling Q2). It is one op-agnostic
+   check in `dispatch.apply_op`, active only while templates exist: after an op, each
+   surviving template's children must be the identical objects they were, and no new entity
+   may reference one. Tags are allowed.
+6. **Edit, delete and move.** `EditSectionTemplate` replaces `params` whole and expands
+   again with fresh ids. It keeps the template's id, and its `template_version` unless the op
+   names one. Deleting a child is refused (`TEMPLATE_LOCKED`); `Delete{template_id}` removes
+   the whole template through ADR 0029's subtree. A template moves when its `center_mm` is
+   edited.
+7. **Common parameters and refusals.** All lengths are millimetres and every bar is a
+   designation from the closed list (ADR 0039 decision 9). `center_mm` is the centre of the
+   gross bounding box, default `[0, 0]`. A bar centre sits `cover + tie + bar / 2` from the
+   face it rests on (ADR 0024 open q6). A template refuses a missing, unknown or mistyped
+   parameter, an inset that collapses, a point outside the ADR 0032 extent and more than 1000
+   bars, by name: `TemplateParamError` is an `OpArgumentError` (`INVALID_ARGUMENT`) whose
+   message starts `<template>: <param>:`.
+8. **Three readings of the v1 templates (stage C3-S1).**
+   1. *`polygon_column` takes no `center_mm`.* Its `ring` is the placement: the record's
+      oracle keeps the ring where it is given, so the template is moved by editing the ring.
+   2. *`rect_hollow`'s wall rule.* "A wall thinner than 2 d is refused" is read as "a wall
+      must be thicker than 2 d": at exactly 2 d the outer and inner bar rings would coincide.
+   3. *`rect_column` crossties.* They are 135-135 and join the interior bars facing each
+      other across the section. Counted from the corner (index 0) along each face,
+      `alternate` ties the even indices only; the hoop holds the corners.
