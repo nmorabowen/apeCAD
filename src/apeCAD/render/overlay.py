@@ -277,7 +277,7 @@ def _primitive(path: str, value: object, scale: Scale | None) -> Primitive:
 def _style(path: str, value: object, kind: str) -> Paint:
     raw = _object(path, value, {"stroke", "fill", "width_px", "opacity"}, required=set())
     for key in ("fill", "stroke"):
-        if raw.get(key) is not None and key not in _PAINTS[kind]:
+        if key in raw and key not in _PAINTS[kind]:  # null included: the kind has no such key
             raise _refuse(f"{path}.{key}", f"is not taken by a {kind}")
     fill = None if raw.get("fill") is None else _color(f"{path}.fill", raw["fill"])
     stroke = None if raw.get("stroke") is None else _color(f"{path}.stroke", raw["stroke"])

@@ -89,7 +89,8 @@ it and must agree with it on every case in `tests/fixtures/section_overlay/`.
 - **Paint.** A primitive carries exactly one of `style` or `value`. Both, or neither, is
   refused.
   - With `style`, `polygon` and `circle` take `fill`, `stroke` or both; `polyline` takes
-    `stroke` only; `point` and `label` take `fill` only. A paint key the kind does not take
+    `stroke` only; `point` and `label` take `fill` only. A paint key the kind does not take,
+    even with the value `null`,
     is refused, and so is a style that paints nothing. `width_px` (default 1) is the stroke
     width in screen pixels. `opacity` (default 1) applies to the whole primitive.
   - With `value`, the layer must have a `scale`. The colour fills a `polygon`, `circle`,

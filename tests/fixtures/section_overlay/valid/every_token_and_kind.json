@@ -18,7 +18,7 @@
         {"kind": "point", "at": [5, 0], "style": {"fill": "--ink-rebar"}},
         {"kind": "point", "at": [6, 0], "style": {"fill": "--ink-concrete"}},
         {"kind": "point", "at": [7, 0], "style": {"fill": "--ink-section-guide"}},
-        {"kind": "label", "at": [8, 0], "text": "", "style": {"fill": "--fill-concrete", "stroke": null}},
+        {"kind": "label", "at": [8, 0], "text": "", "style": {"fill": "--fill-concrete"}},
         {"kind": "polyline", "points": [[0, 1], [1, 2], [2.5, 1.5]], "style": {"stroke": "#ABC", "width_px": 0.25, "opacity": 0}, "ids": []},
         {"kind": "polygon", "ring": [[0, 0], [1, 0], [0, 1]], "holes": [], "style": {"fill": "#abcdef", "stroke": "#ABCDEF", "opacity": 1}}
       ]
