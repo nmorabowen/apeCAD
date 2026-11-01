@@ -40,11 +40,19 @@ def latest_version(template: str) -> int:
     return max(_versions(template))
 
 
-def expand(template: str, params: Mapping[str, object], version: int | None = None) -> Plan:
-    """The plan of `template` at `version` (the latest when None) for `params`."""
+def expand(template: str, params: Mapping[str, object], version: object = None) -> Plan:
+    """The plan of `template` at `version` (the latest when None) for `params`.
+
+    `version` is typed `object`: it arrives from JSON, and anything but a whole number is
+    refused by name.
+    """
     versions = _versions(template)
-    chosen = max(versions) if version is None else version
-    if isinstance(chosen, bool) or chosen not in versions:
+    chosen: object = max(versions) if version is None else version
+    if isinstance(chosen, bool) or not isinstance(chosen, int):  # 1.0 == 1, but is no version
+        raise TemplateParamError(
+            template, "template_version", f"must be a whole number, got {version!r}"
+        )
+    if chosen not in versions:
         raise TemplateParamError(
             template,
             "template_version",

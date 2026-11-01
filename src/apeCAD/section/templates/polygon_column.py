@@ -7,8 +7,13 @@ mitred edges (`miter_offset`, as `section.cover`); each of its edges takes the f
 intervals no longer than `spacing_max` (`layout.edge_positions`, ADR 0032), so the bars on
 an inclined edge stay exactly collinear and drop out of the hull.
 
-Version 1 is convex only (owner ruling Q4, C3 record): a ring with a reflex or a straight
-(collinear) vertex is refused. A later version may widen it.
+Version 1 is convex only (owner ruling Q4, C3 record): a ring with a reflex vertex is
+refused, and so is a straight (collinear) one (Errata 8.4, the builder's stricter reading). A
+later version may widen it.
+
+Overlapping bars (closer than the mean of their diameters) are refused: two neighbours on an
+edge of several intervals by `spacing_max`, any other pair (a short edge, an acute corner, a
+sliver whose opposite faces come close) by `ring`.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from apeCAD.section.templates.plan import (
     finish,
     hull_of,
     point_value,
+    require_extent,
 )
 
 TEMPLATE = "polygon_column"
@@ -74,6 +80,7 @@ def _convex_ring(p: Params) -> tuple[Point2, ...]:
     points = [point_value(p, f"ring[{i}]", v) for i, v in enumerate(raw)]
     if len(points) < 3:
         raise p.error("ring", f"needs 3 or more vertices, got {len(points)}")
+    require_extent(p.template, "ring", points)
     if not is_simple(points):
         raise p.error("ring", "must be a simple polygon (no repeated vertex, no crossing)")
     ring = ensure_ccw(points)
@@ -101,17 +108,31 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
         raise p.error(
             "ring", f"too small for the bar-centre inset {inset:g} mm: {exc}"
         ) from exc
+    positions: list[Point2] = []
+    edge_of: list[int] = []  # the edge each bar starts
+    intervals: list[int] = []  # per edge
     try:
-        positions: list[Point2] = []
         for edge in range(len(centre_ring)):
-            positions += edge_positions(centre_ring, edge, None, q.spacing_max)[:-1]
-    except DocumentError as exc:
-        raise p.error("ring", str(exc)) from exc
+            placed = edge_positions(centre_ring, edge, None, q.spacing_max)[:-1]
+            positions += placed
+            edge_of += [edge] * len(placed)
+            intervals.append(len(placed))
+    except DocumentError as exc:  # the ring's extent was checked in parse
+        raise p.error("spacing_max", str(exc)) from exc
     bars = tuple(PlanBar(x, y, q.bar, bar_d, q.bar_material) for x, y in positions)
+
+    def overlap(i: int, j: int) -> str:
+        n = len(bars)
+        if (j - i) % n == 1 or (i - j) % n == 1:  # neighbours along one edge
+            first = i if (j - i) % n == 1 else j
+            if intervals[edge_of[first]] > 1:
+                return "spacing_max"
+        return "ring"
+
     plan = Plan(
         faces=(PlanFace("concrete", q.material, PlanRing(q.ring)),),
         bars=bars,
         hoops=(PlanHoop(hull_of(bars, range(len(bars))), q.tie, tie_d, q.tie_spacing),),
         cover_guides=(PlanCoverGuide(0, q.cover, tie_d, bar_d),),
     )
-    return finish(TEMPLATE, plan, placement="ring")
+    return finish(TEMPLATE, plan, placement="ring", count="spacing_max", overlap=overlap)

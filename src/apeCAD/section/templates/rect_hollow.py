@@ -11,8 +11,9 @@ equal intervals no longer than `spacing_max` (`layout.edge_positions`). Bars are
 counter-clockwise from the south-west corner, outer ring first. One hoop on each bar ring's
 strict hull. The cover guide is on the face (its outline); the hole has none of its own.
 
-Version 1 places no crossties (owner ruling Q4, C3 record), and refuses a wall that is not
-thicker than 2 d: its outer and inner bars would meet.
+Version 1 places no crossties (owner ruling Q4, C3 record). Overlapping bars (closer than
+the mean of their diameters) are refused: across a wall, a wall whose bar rings sit less than
+a bar diameter apart (t - 2 d < bar) by `t_x` or `t_y`; along an edge by `spacing_max`.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from apeCAD.section.templates.plan import (
     PlanRing,
     finish,
     hull_of,
+    require_extent,
 )
 
 TEMPLATE = "rect_hollow"
@@ -92,11 +94,11 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
     bar_d, tie_d = DESIGNATIONS[q.bar], DESIGNATIONS[q.tie]
     d = q.cover + tie_d + bar_d / 2.0
     for name, size, wall in (("t_x", q.b, q.t_x), ("t_y", q.h, q.t_y)):
-        if not wall > 2.0 * d:
+        if wall - 2.0 * d < bar_d:
             raise p.error(
                 name,
-                f"a {wall:g} mm wall is not thicker than 2 x {d:g} mm (cover + tie + "
-                "bar / 2 from each face); its outer and inner bars would meet",
+                f"a {wall:g} mm wall puts its outer and inner bars {wall - 2.0 * d:g} mm "
+                f"apart (t - 2 x {d:g} mm), under the {bar_d:g} mm bar: they overlap",
             )
         if not size > 2.0 * wall:
             raise p.error(
@@ -108,6 +110,7 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
     hx0, hx1, hy0, hy1 = x0 + q.t_x, x1 - q.t_x, y0 + q.t_y, y1 - q.t_y
     outer = _rect(x0 + d, y0 + d, x1 - d, y1 - d)
     inner = _rect(hx0 - d, hy0 - d, hx1 + d, hy1 + d)
+    require_extent(TEMPLATE, "center_mm", _rect(x0, y0, x1, y1))
     rings: list[list[Point2]] = []
     try:
         for centre_ring in (outer, inner):
@@ -115,8 +118,8 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
             for edge in range(4):
                 positions += edge_positions(centre_ring, edge, None, q.spacing_max)[:-1]
             rings.append(positions)
-    except DocumentError as exc:
-        raise p.error("center_mm", str(exc)) from exc
+    except DocumentError as exc:  # the extent was checked above
+        raise p.error("spacing_max", str(exc)) from exc
     bars = tuple(
         PlanBar(x, y, q.bar, bar_d, q.bar_material) for ring in rings for x, y in ring
     )
@@ -131,4 +134,11 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
         ),
         cover_guides=(PlanCoverGuide(0, q.cover, tie_d, bar_d),),
     )
-    return finish(TEMPLATE, plan, placement="center_mm")
+
+    def overlap(i: int, j: int) -> str:
+        if (i < n_outer) == (j < n_outer):  # one bar ring
+            return "spacing_max"
+        a, b = bars[i], bars[j]
+        return "t_x" if abs(b.x_mm - a.x_mm) >= abs(b.y_mm - a.y_mm) else "t_y"
+
+    return finish(TEMPLATE, plan, placement="center_mm", count="spacing_max", overlap=overlap)

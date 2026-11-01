@@ -21,7 +21,7 @@ user error.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -261,27 +261,88 @@ def plan_points(plan: Plan) -> list[Point2]:
     return out
 
 
-def finish(template: str, plan: Plan, *, placement: str) -> Plan:
-    """Refuse a plan with too many bars, or a point outside the ADR 0032 extent.
+def overlapping_bars(bars: Sequence[PlanBar]) -> tuple[int, int] | None:
+    """The first pair (i < j) of bars closer than (d_i + d_j) / 2, lint's `bar-overlap` rule.
 
-    `placement` names the parameter that puts the section where it is (`center_mm`, `ring`).
+    A sweep over the bars sorted by x, so a 1000-bar plan is checked quickly; the pair it
+    returns depends only on the bars, so a refusal names the same parameter on every run.
+    """
+    order = sorted(range(len(bars)), key=lambda k: (bars[k].x_mm, bars[k].y_mm, k))
+    widest = max((bar.diameter_mm for bar in bars), default=0.0)
+    found: list[tuple[int, int]] = []
+    for pos, i in enumerate(order):
+        a = bars[i]
+        for j in order[pos + 1 :]:
+            b = bars[j]
+            if b.x_mm - a.x_mm >= widest:
+                break
+            gap = math.hypot(b.x_mm - a.x_mm, b.y_mm - a.y_mm)
+            if gap < (a.diameter_mm + b.diameter_mm) / 2.0:
+                found.append((min(i, j), max(i, j)))
+    return min(found) if found else None
+
+
+def finish(
+    template: str,
+    plan: Plan,
+    *,
+    placement: str,
+    count: str,
+    overlap: Callable[[int, int], str],
+) -> Plan:
+    """Refuse a plan with too many bars, overlapping bars, or a point outside the extent.
+
+    `placement` names the parameter that puts the section where it is (`center_mm`, `ring`),
+    `count` the one that sets how many bars there are, and `overlap(i, j)` the one that set
+    the spacing of two overlapping bars.
     """
     if len(plan.bars) > MAX_TEMPLATE_BARS:
         raise TemplateParamError(
             template,
-            "bars",
+            count,
             f"these parameters place {len(plan.bars)} bars; a template places at most "
             f"{MAX_TEMPLATE_BARS}",
         )
-    for x, y in plan_points(plan):
+    require_extent(template, placement, plan_points(plan))
+    pair = overlapping_bars(plan.bars)
+    if pair is not None:
+        i, j = pair
+        a, b = plan.bars[i], plan.bars[j]
+        raise TemplateParamError(
+            template,
+            overlap(i, j),
+            f"bars {i} at ({a.x_mm:g}, {a.y_mm:g}) and {j} at ({b.x_mm:g}, {b.y_mm:g}) "
+            f"overlap: centres {math.hypot(b.x_mm - a.x_mm, b.y_mm - a.y_mm):g} mm apart, "
+            f"under {(a.diameter_mm + b.diameter_mm) / 2.0:g} mm",
+        )
+    return plan
+
+
+def require_extent(template: str, param: str, points: Iterable[Point2]) -> None:
+    """Refuse, naming `param`, a point outside the ADR 0032 extent (±EXTENT_LIMIT_MM)."""
+    for x, y in points:
         if not (abs(x) <= EXTENT_LIMIT_MM and abs(y) <= EXTENT_LIMIT_MM):
             raise TemplateParamError(
                 template,
-                placement,
+                param,
                 f"the section reaches ({x:g}, {y:g}); sections stay within "
                 f"±{EXTENT_LIMIT_MM:g} mm (ADR 0032)",
             )
-    return plan
+
+
+def require_bar_count(p: Params, counts: Mapping[str, int]) -> None:
+    """Refuse, before anything is built, a bar count over the cap (C3 review finding 1).
+
+    `counts` maps each count parameter to the bars it places; the largest is named.
+    """
+    total = sum(counts.values())
+    if total > MAX_TEMPLATE_BARS:
+        name = max(counts, key=lambda k: counts[k])
+        raise p.error(
+            name,
+            f"these parameters place {total} bars; a template places at most "
+            f"{MAX_TEMPLATE_BARS}",
+        )
 
 
 # --- parameter readers ------------------------------------------------------------------
@@ -300,6 +361,8 @@ class Params:
     ) -> None:
         self.template = template
         self.prefix = prefix
+        if not isinstance(data, Mapping):  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise self.error("params", f"params must be an object, got {type(data).__name__}")
         self._data = data
         unknown = sorted(str(k) for k in data if k not in allowed)
         if unknown:

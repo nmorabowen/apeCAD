@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import time
 from collections.abc import Sequence
 
 import pytest
@@ -283,7 +284,15 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("rect_column", {"center_mm": [2.0**21, 0]}, "center_mm"),
     ("rect_column", {"b": 120}, "b"),  # 120 <= 2 x 60: the inset collapses
     ("rect_column", {"h": 100, "b": 600}, "h"),
-    ("rect_column", {"nx": 600, "b": 100_000}, "bars"),  # 2 x 600 + 2 = 1202 bars > 1000
+    ("rect_column", {"nx": 600, "b": 100_000}, "nx"),  # 2 x 600 + 2 = 1202 bars > 1000
+    # Review of #56. Finding 1: the cap is checked from the params, before anything is built.
+    ("rect_column", {"nx": 10**9}, "nx"),
+    ("rect_column", {"ny": 10**9}, "ny"),
+    # Finding 2: overlapping bars (gap < (da + db) / 2), named by what sets their spacing.
+    ("rect_column", {"b": 121}, "b"),  # the bottom corners sit 1 mm apart
+    ("rect_column", {"nx": 100}, "nx"),  # 280 / 99 = 2.8 mm between Ø20 bars
+    ("rect_column", {"ny": 30}, "ny"),
+    ("rect_column", {"h": 135, "b": 600}, "h"),  # corners 15 mm apart, under Ø20
     ("rect_column", {"spacing": 150}, "spacing"),
     ("polygon_column", {"ring": [[0, 0], [600, 0]]}, "ring"),
     ("polygon_column", {"ring": [[0, 0], [600, 0], [0, 500], [600, 500]]}, "ring"),
@@ -294,7 +303,17 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("polygon_column", {"ring": "square"}, "ring"),
     ("polygon_column", {"spacing_max": -1}, "spacing_max"),
     ("polygon_column", {"center_mm": [0, 0]}, "center_mm"),
-    ("rect_hollow", {"t_x": 116}, "t_x"),  # not thicker than 2 x 58
+    ("polygon_column", {"ring": [[0, 0], [1000, 0], [1000, 130], [0, 121]]}, "ring"),  # sliver
+    ("polygon_column", {"ring": [[0, 0], [2000, 0], [0, 150]]}, "ring"),  # acute corner
+    ("polygon_column", {"spacing_max": 5}, "spacing_max"),  # neighbours 5 mm apart
+    ("polygon_column", {"spacing_max": 0.1}, "spacing_max"),  # finding 4: > 1000 on an edge
+    ("polygon_column", {"ring": [[0, 0], [2.0**21, 0], [0, 500]]}, "ring"),  # extent
+    ("rect_hollow", {"t_x": 116}, "t_x"),  # t - 2d = 0: the bar rings coincide
+    ("rect_hollow", {"t_x": 117, "t_y": 117}, "t_x"),  # t - 2d = 1 mm, under Ø16
+    ("rect_hollow", {"t_y": 131}, "t_y"),  # t - 2d = 15 mm, under Ø16
+    ("rect_hollow", {"spacing_max": 10}, "spacing_max"),  # 484 / 49 = 9.9 mm, under Ø16
+    ("rect_hollow", {"spacing_max": 0.1}, "spacing_max"),  # finding 4: > 1000 on an edge
+    ("rect_hollow", {"center_mm": [2.0**21, 0]}, "center_mm"),
     ("rect_hollow", {"t_y": 100}, "t_y"),
     ("rect_hollow", {"t_x": 300}, "t_x"),  # two 300 mm walls fill b = 600
     ("rect_hollow", {"spacing_max": _DROP}, "spacing_max"),
@@ -312,6 +331,15 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("t_beam", {"bw": 100}, "bottom.bar"),  # 100 <= 2 x 50
     ("t_beam", {"h": 90, "hf": 50}, "h"),
     ("t_beam", {"stirrup": None}, "stirrup"),
+    ("t_beam", {"bottom": {"n": 10**9, "bar": "Ø20"}}, "bottom.n"),  # finding 1
+    ("t_beam", {"slab_bars": {"n": 10**9, "bar": "Ø12"}}, "slab_bars.n"),
+    ("t_beam", {"bottom": {"n": 300, "bar": "Ø20"}}, "bottom.n"),  # finding 2
+    ("t_beam", {"top": {"n": 20, "bar": "Ø16"}}, "top.n"),
+    ("t_beam", {"bw": 119}, "bw"),  # the two bottom end bars 19 mm apart, under Ø20
+    ("t_beam", {"h": 99, "hf": 50}, "hf"),  # the slab rule fires first (2 x 30 + 12 = 72)
+    ("t_beam", {"h": 99, "hf": 50, "slab_bars": _DROP}, "h"),  # rows 1 mm apart
+    ("t_beam", {"hf": 45}, "hf"),  # finding 3: 3 mm under the slab bars
+    ("t_beam", {"hf": 71.9}, "hf"),
 ]
 
 
@@ -331,9 +359,45 @@ def test_unknown_template_and_version_are_refused_by_name() -> None:
     assert {name: latest_version(name) for name in TEMPLATES} == dict.fromkeys(ORACLES, 1)
     with pytest.raises(TemplateParamError, match="^box_column: template: unknown template"):
         expand("box_column", {})
-    for version in (0, 2, True):
+    for version in (0, 2):
         with pytest.raises(TemplateParamError, match="template_version: unknown version"):
             expand("rect_column", RECT_COLUMN, version=version)
+    for bad in (True, 1.0, "1"):  # finding 4: 1.0 == 1 but is not a version
+        with pytest.raises(TemplateParamError, match="template_version: must be a whole"):
+            expand("rect_column", RECT_COLUMN, version=bad)
+
+
+@pytest.mark.parametrize("template", sorted(ORACLES))
+@pytest.mark.parametrize("params", [[1, 2], "b=400", None, 7])
+def test_params_that_are_not_an_object_are_refused(template: str, params: object) -> None:
+    with pytest.raises(TemplateParamError, match=f"^{template}: params: params must be an obj"):
+        expand(template, params)  # pyright: ignore[reportArgumentType]
+
+
+def test_the_bar_cap_refuses_before_building() -> None:
+    # Finding 1: 10**9 bars used to run out of memory; the refusal must be immediate.
+    start = time.perf_counter()
+    for template, changes in (("rect_column", {"nx": 10**9}), ("t_beam", {"bottom": {
+            "n": 10**9, "bar": "Ø20"}})):  # fmt: skip
+        with pytest.raises(TemplateParamError, match="a template places at most 1000"):
+            expand(template, _with(ORACLES[template], **changes))
+    assert time.perf_counter() - start < 1.0
+
+
+def test_hf_at_the_slab_rule_limit_is_accepted() -> None:
+    plan = expand("t_beam", _with(T_BEAM, hf=72))  # 2 x 30 + 12: the bars touch both covers
+    slab = plan.bars[5:]
+    assert {bar.xy[1] for bar in slab} == {564.0}
+    assert 600.0 - 72.0 == 564.0 - 6.0 - 30.0  # soffit cover is exactly 30 mm
+
+
+@pytest.mark.parametrize("template", sorted(ORACLES))
+def test_no_oracle_expansion_has_overlapping_bars(template: str) -> None:
+    plan = expand(template, ORACLES[template])
+    bars = plan.bars
+    for i, a in enumerate(bars):
+        for b in bars[i + 1 :]:
+            assert math.dist(a.xy, b.xy) >= (a.diameter_mm + b.diameter_mm) / 2.0
 
 
 # --- the Plan carries C4's forms (circles, holes, steel shapes, circular ties) -----------

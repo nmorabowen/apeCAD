@@ -15,6 +15,11 @@ Bars, listed in this order:
 
 One stirrup on the strict hull of the bottom and top rows. The cover guide is on the face.
 Version 1 is symmetric only (owner ruling Q4, C3 record).
+
+With slab bars, the flange must hold them under cover from both its faces:
+`hf >= 2 cover + bar`. Overlapping bars (closer than the mean of their diameters) are
+refused: within a row by its `n` (`bottom.n`, `top.n`, `slab_bars.n`), or by `bw` when even
+the row's two end bars overlap; across rows by `h`.
 """
 
 from __future__ import annotations
@@ -34,6 +39,7 @@ from apeCAD.section.templates.plan import (
     PlanRing,
     finish,
     hull_of,
+    require_bar_count,
 )
 
 TEMPLATE = "t_beam"
@@ -86,6 +92,11 @@ def parse(data: Mapping[str, object]) -> TBeamParams:
     bottom = _row(p, "bottom", 2, required=True)
     top = _row(p, "top", 2, required=True)
     assert bottom is not None and top is not None
+    slab = _row(p, "slab_bars", 1, required=False)
+    counts = {"bottom.n": bottom.n, "top.n": top.n}
+    if slab is not None:
+        counts["slab_bars.n"] = 2 * slab.n
+    require_bar_count(p, counts)
     q = TBeamParams(
         material=p.material("material"),
         bar_material=p.optional_material("bar_material"),
@@ -97,7 +108,7 @@ def parse(data: Mapping[str, object]) -> TBeamParams:
         cover=p.length("cover"),
         bottom=bottom,
         top=top,
-        slab_bars=_row(p, "slab_bars", 1, required=False),
+        slab_bars=slab,
         stirrup=p.designation("stirrup")[0],
         stirrup_spacing=p.length("stirrup_spacing"),
     )
@@ -141,8 +152,12 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
     if q.slab_bars is not None:
         slab_d = DESIGNATIONS[q.slab_bars.bar]
         y_slab = y1 - q.cover - slab_d / 2.0
-        if not y_slab - slab_d / 2.0 > yf:
-            raise p.error("hf", f"a {q.hf:g} mm flange cannot hold the slab bars under cover")
+        if q.hf < 2.0 * q.cover + slab_d:
+            raise p.error(
+                "hf", f"a {q.hf:g} mm flange cannot hold {q.slab_bars.bar} slab bars under "
+                f"{q.cover:g} mm cover from both faces (needs 2 x cover + bar = "
+                f"{2.0 * q.cover + slab_d:g} mm)"
+            )
         strip = (f - w) / q.slab_bars.n
         if strip / 2.0 < q.cover + slab_d / 2.0:
             raise p.error(
@@ -162,4 +177,16 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
         hoops=(PlanHoop(hull_of(bars, range(web)), q.stirrup, s_d, q.stirrup_spacing),),
         cover_guides=(PlanCoverGuide(0, q.cover, s_d, bot_d),),
     )
-    return finish(TEMPLATE, plan, placement="center_mm")
+    n_bot = q.bottom.n
+
+    def overlap(i: int, j: int) -> str:
+        rows = [("bottom", 0, n_bot, bot_d), ("top", n_bot, web, top_d)]
+        if q.slab_bars is not None:
+            rows.append(("slab_bars", web, len(bars), DESIGNATIONS[q.slab_bars.bar]))
+        for name, lo, hi, d in rows:
+            if lo <= i < hi and lo <= j < hi:  # one row
+                ends = bars[hi - 1].x_mm - bars[lo].x_mm
+                return "bw" if name != "slab_bars" and ends < d else f"{name}.n"
+        return "slab_bars.n" if j >= web else "h"
+
+    return finish(TEMPLATE, plan, placement="center_mm", count="bottom.n", overlap=overlap)

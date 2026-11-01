@@ -105,7 +105,7 @@ question open.
    `bar_material` the bars carry no `material`, so the consumer's default applies (ADR 0039
    decision 6). Names only: apeCAD stores no property and no law.
 2. **Version 1 starts narrow (owner's ruling Q4, "Yes, start narrow").** `polygon_column` v1
-   takes strictly convex rings only (a reflex or a straight vertex is refused), `rect_hollow`
+   is convex only (a reflex vertex is refused; see 8.4 for straight vertices), `rect_hollow`
    v1 places no crossties, and `t_beam` v1 is symmetric. Widening any of them is a new
    `template_version` (decision 4), never a change to v1.
 3. **Intent is stored, expansion is derived.** A template is a pure function from its
@@ -134,15 +134,27 @@ question open.
 7. **Common parameters and refusals.** All lengths are millimetres and every bar is a
    designation from the closed list (ADR 0039 decision 9). `center_mm` is the centre of the
    gross bounding box, default `[0, 0]`. A bar centre sits `cover + tie + bar / 2` from the
-   face it rests on (ADR 0024 open q6). A template refuses a missing, unknown or mistyped
-   parameter, an inset that collapses, a point outside the ADR 0032 extent and more than 1000
-   bars, by name: `TemplateParamError` is an `OpArgumentError` (`INVALID_ARGUMENT`) whose
-   message starts `<template>: <param>:`.
-8. **Three readings of the v1 templates (stage C3-S1).**
-   1. *`polygon_column` takes no `center_mm`.* Its `ring` is the placement: the record's
-      oracle keeps the ring where it is given, so the template is moved by editing the ring.
-   2. *`rect_hollow`'s wall rule.* "A wall thinner than 2 d is refused" is read as "a wall
-      must be thicker than 2 d": at exactly 2 d the outer and inner bar rings would coincide.
-   3. *`rect_column` crossties.* They are 135-135 and join the interior bars facing each
-      other across the section. Counted from the corner (index 0) along each face,
-      `alternate` ties the even indices only; the hoop holds the corners.
+   face it rests on (ADR 0024 open q6). A template refuses, by name, parameters that are not
+   an object; a missing, unknown or mistyped parameter; a `template_version` that is not a
+   whole number; an inset that collapses; a point outside the ADR 0032 extent; more than 1000
+   bars, counted from the parameters before anything is built; and two bars closer than the
+   mean of their diameters (lint's `bar-overlap` rule), named by the parameter that sets their
+   spacing. `TemplateParamError` is an `OpArgumentError` (`INVALID_ARGUMENT`) whose message
+   starts `<template>: <param>:`.
+8. **Four readings of the v1 templates (stage C3-S1), ruled on in the review of apeCAD #56.**
+   1. *`polygon_column` takes no `center_mm` (approved).* Its `ring` is the placement: the
+      record's oracle keeps the ring where it is given, so the template is moved by editing
+      the ring.
+   2. *`rect_hollow`'s wall rule (superseded).* "A wall thinner than 2 d is refused" was first
+      read as "a wall must be thicker than 2 d". The review replaced it with point 7's
+      no-overlap rule: the outer and inner bar rings, `t - 2 d` apart, must be at least a bar
+      diameter apart. `t_beam` likewise needs `hf >= 2 cover + bar` when it has slab bars, so
+      they keep cover to the flange soffit as well as to its top.
+   3. *`rect_column` crossties (approved).* They are 135-135 and join the interior bars facing
+      each other across the section. Counted from the corner (index 0) along each face,
+      `alternate` ties the even indices only; the hoop holds the corners. So with `nx = 3`
+      `alternate` ties nothing in that direction, the same as `none`, and an even `nx` gives
+      a pattern that is not symmetric about the centre.
+   4. *`polygon_column` refuses a straight vertex too.* The owner's Q4 ruling says convex
+      only. Refusing a collinear vertex as well (strictly convex) is the builder's stricter
+      reading, kept by the review: a later version may accept one.

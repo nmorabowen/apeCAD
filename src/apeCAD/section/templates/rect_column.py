@@ -12,7 +12,15 @@ Crossties are 135-135 and join the two interior bars facing each other across th
 each interior column of the bottom face with the same column of the top face, then each
 interior row of the right face with the same row of the left face. Bar positions along a
 face are counted from the corner (index 0), so `alternate` ties the even indices only, and
-`none` ties nothing; the hoop holds the corners.
+`none` ties nothing; the hoop holds the corners (Errata 8.3). Two consequences follow:
+with `nx = 3` (or `ny = 3`) the one interior bar has index 1, so `alternate` ties nothing in
+that direction, the same as `none`; and with an even `nx` the last interior index `nx - 2`
+is even while the first is odd, so the tied columns are not symmetric about the centre
+(`nx = 6` ties columns 2 and 4 of 0..5).
+
+Overlapping bars (closer than the mean of their diameters, lint's `bar-overlap` rule) are
+refused: along a face by `nx` or `ny`, or by `b` or `h` when even that face's two corner
+bars overlap.
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ from apeCAD.section.templates.plan import (
     PlanRing,
     finish,
     hull_of,
+    require_bar_count,
 )
 
 TEMPLATE = "rect_column"
@@ -66,6 +75,8 @@ class RectColumnParams:
 def parse(data: Mapping[str, object]) -> RectColumnParams:
     """Read and check a `rect_column` parameter mapping; each fault is refused by name."""
     p = Params(TEMPLATE, data, FIELDS)
+    nx, ny = p.count("nx", 2), p.count("ny", 2)
+    require_bar_count(p, {"nx": 2 * nx - 2, "ny": 2 * ny - 2})
     return RectColumnParams(
         material=p.material("material"),
         bar_material=p.optional_material("bar_material"),
@@ -73,8 +84,8 @@ def parse(data: Mapping[str, object]) -> RectColumnParams:
         b=p.length("b"),
         h=p.length("h"),
         cover=p.length("cover"),
-        nx=p.count("nx", 2),
-        ny=p.count("ny", 2),
+        nx=nx,
+        ny=ny,
         bar=p.designation("bar")[0],
         corner_bar=p.designation("corner_bar")[0] if p.has("corner_bar") else None,
         tie=p.designation("tie")[0],
@@ -137,4 +148,11 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
         crossties=tuple(PlanCrosstie(a, b, q.tie, tie_d, q.tie_spacing) for a, b in pairs),
         cover_guides=(PlanCoverGuide(0, q.cover, tie_d, bar_d),),
     )
-    return finish(TEMPLATE, plan, placement="center_mm")
+
+    def overlap(i: int, j: int) -> str:
+        a, b = bars[i], bars[j]
+        if abs(b.y_mm - a.y_mm) <= abs(b.x_mm - a.x_mm):  # apart along a horizontal face
+            return "b" if xb - xa < corner_d else "nx"
+        return "h" if yb - ya < corner_d else "ny"
+
+    return finish(TEMPLATE, plan, placement="center_mm", count="nx", overlap=overlap)
