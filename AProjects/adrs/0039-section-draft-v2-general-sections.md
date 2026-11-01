@@ -117,3 +117,60 @@ area" means to a v1 reader. That is a changed meaning.
 - apeConcrete's wall reader (`io/apecad.py`) keeps v1 and refuses v2 by name. Its general
   reader is new (apeConcrete ADR-0026).
 - `AGENTS.md`'s cross-repo table and `memory/coupling-map.md` gain apeSection as a consumer.
+
+## Errata (2026-11-01)
+
+Recorded while writing [`specs/section-draft-v2.md`](../specs/section-draft-v2.md)
+(apeSection#25, stage C1-S1). The Decision above is unchanged. These points record one owner
+ruling and the apeSection program orchestrator's rulings where the Decision text left a
+question open.
+
+1. **Hosts request v2 explicitly (owner's ruling, "Explicit version arg").** The transport's
+   `action: "draft"` and the MCP and CLI `get_section_draft` take an optional `version`, 1 or
+   2, default 1; any other value is refused by name. A host that asks for nothing still gets
+   v1, so ape-web-tools HA-04 is unchanged. This carries decision 1's
+   `section_draft(document, *, version=1 | 2)` to the hosts.
+2. **`more-than-one-solid-face` and `face-without-wall-leg` apply to v1 drafts only.** Many
+   faces are normal in v2, and decision 6 makes a face without a leg a question the consumer
+   asks only for a wall. A v2 draft carries the other seven v1 codes and the seven of
+   decision 7.
+3. **The live `FaceRole "solid"` maps to the v2 role `"concrete"`.** A v1 `ConcreteFace`
+   (`entities.py`, role `"solid"`) is written in v2 as a `role: "concrete"` ring face with no
+   holes. v1 drafts keep writing `"solid"`.
+4. **`template_id` is declared here and emitted by ADR 0040 (stage C3).** The v2 block
+   declares the optional `template_id` on every section entity now, so the contract's hash
+   does not move when templates land. Until C3, no entity carries it.
+5. **`templates[]` is declared with it, and a seed carries neither (orchestrator's ruling).**
+   ADR 0040 decision 7 adds `templates[] = {id, template, template_version, params}` to the v2
+   block. The block declares it now: always present, and empty until C3. `apeCAD.section-seed`
+   v2 carries no `templates[]`, no `template_id` and no `materials_used`. A seed replays into
+   plain entities (ADR 0040 Context, option 2), and `materials_used` is derived.
+6. **Two nulls (orchestrator's ruling).** A `void` face has `material: null`: it has no
+   material. A steel face with a `shape` may have `boundary: null` only in a draft or seed
+   that arrives unresolved. The `AddSteelShape` op always requires a ring, so
+   `steel-shape-unresolved` (decision 7, "a `shape` with no ring") fires only on imported or
+   seed content. Every other face has a boundary.
+7. **Ring orientation and mirroring (orchestrator's ruling).** A `boundary` ring follows v1's
+   rule: CCW and simple. A hole ring is stored with the opposite orientation (CW), and the op
+   that adds a ring normalises it. The contract block states both. Mirroring a face that
+   carries steel `shape` provenance is refused by name, because the stored `designation`,
+   `anchor_mm` and `rotation_deg` would describe the wrong outline for an asymmetric shape.
+8. **Five readings from the review of apeCAD PR #48 (orchestrator's rulings).** The spec
+   states each one outside its hashed block, so the contract's SHA-256 is unchanged.
+   1. *A steel face with no ring.* Seed v2 refuses a designation-only steel face, by name:
+      the host resolves the outline before it seeds. With `AddSteelShape` requiring a ring,
+      no path writes `boundary: null`, so `steel-shape-unresolved` is retired as a
+      **reserved** code that is never emitted. This supersedes the `boundary: null` half of
+      point 6. The block still admits null, and a reader refuses it by name.
+   2. *`version=1` and v2-only fields.* A document whose bars carry `material`, or whose
+      entities carry `template_id`, is refused by name for `version=1`, the same as a v2-only
+      entity. Fields are never dropped to fit.
+   3. *The kept v1 codes on many faces.* `face-without-cover-guide` applies to concrete faces
+      only. A bar gets one location code at most, by precedence `bar-in-void` >
+      `bar-in-steel` > `bar-outside-concrete`. A hole, which has no entity id, is identified
+      as `(face_id, hole_index)`, the pair the hole ops record (C1-S2).
+   4. *`material` on solid faces.* Required and non-null on `concrete` and `steel` faces;
+      only a `void` face has null, and `SetMaterial` refuses a void (C1-S2).
+   5. *`shape.anchor_mm`.* The point, in section coordinates, where the shape's catalog
+      origin (its centroid) is placed. Reopen compares it as a length (warn beyond rel 1e-9),
+      not structurally.

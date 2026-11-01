@@ -13,6 +13,7 @@ Cursor / Agents (human + agent)
         ├─ to_gmsh(g)                   → apeGmsh session (labels + OCC builders; not implemented)
         ├─ to_frame()                   → apeSteel (nodes, axes, section ids; implemented)
         ├─ section_draft() / from_seed  → apeConcrete (`apeCAD.section-draft` v1 & `apeCAD.section-seed` v1; implemented)
+        ├─ section_draft(version=2)     → apeSection, via apeConcrete (`apeCAD.section-draft` v2 & seed v2; specified)
         ├─ transport.handle / assets    → ape-web-tools HA-04 (`apeCAD.scratchpad.transport.handle`, `section_assets`; implemented)
         ├─ render_svg / render_png / dxf → SVG, PNG (`apeCAD[png]`), DXF (`apeCAD[dxf]`; implemented)
         └─ snapshot                     → Studio host (pick / show by name)
@@ -23,6 +24,7 @@ Cursor / Agents (human + agent)
 | **apeGmsh** | Labels + points/curves/faces/solids realized through `g.model.geometry` | Do not hand STL and hope Gmsh heals it (`to_gmsh` not implemented yet). |
 | **apeSteel** | Frame graph in N-mm-tonne-s (`Document.to_frame()`) | Implemented. apeCAD stores mm internally ([ADR 0006](../adrs/0006-one-source-of-truth.md)). |
 | **apeConcrete** | `apeCAD.section-draft` v1 (`apeCAD.section_draft.section_draft` / `document_from_draft`), `section` block only ([spec](../specs/section-draft.md), ADR 0025); writes `apeCAD.section-seed` v1 back (`document_from_seed`) | Implemented. Never imports apeCAD (its ADR-0025 D8); copies fixtures at a pinned apeCAD sha. |
+| **apeSection** | `apeCAD.section-draft` v2 ([spec](../specs/section-draft-v2.md), [ADR 0039](../adrs/0039-section-draft-v2-general-sections.md)), asked for explicitly with `version=2` (default stays 1); seed v2 back; templates ([ADR 0040](../adrs/0040-parametric-section-templates.md)); the results overlay ([ADR 0041](../adrs/0041-section-results-overlay.md), planned) | Specified (C1-S1); writer and reader planned. Reads v2 through apeConcrete's general reader (its ADR-0026), which copies the block and fixtures at a pinned apeCAD sha. |
 | **ape-web-tools** | `apeCAD.scratchpad.transport.handle` behind `POST /api/cad/transport`; the 2-D client from `apeCAD.scratchpad.section_assets.client_files()` (ADR 0026) | Implemented. HA-04 Geometria tab; stores the draft in a run (its ADR-0006). |
 | **Agents (MCP & CLI)** | `python -m apeCAD.mcp` (`apeCAD.mcp`) and `python -m apeCAD.cli` (`apeCAD.cli`) tools over the op catalog; `render` writes SVG or PNG (`apeCAD[png]`) and `export_dxf` writes DXF (`apeCAD[dxf]`) into apeWorkbench `pictures/` via `save_to` ([ADR 0028](../adrs/0028-agent-surface-mcp.md), [ADR 0034](../adrs/0034-dxf-export.md), [spec](../specs/agent-surface-mcp.md)) | Implemented (stages S1–S7, D5). Attach mode targets one instance by `/api/identity` (ADR 0019) and never falls back. |
 | **Studio** | Names-first selection envelope | Studio never write-backs the document ([ADR 0005](../adrs/0005-studio-is-consumer.md)). |
