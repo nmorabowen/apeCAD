@@ -118,14 +118,20 @@ INVALID = cast(list[Json], _json(FIXTURES / "invalid.json"))
 def test_invalid_fixtures_are_refused_naming_the_field(case: Json) -> None:
     with pytest.raises(OverlayError) as caught:
         parse_overlay(case["overlay"])
-    assert caught.value.code == case["refusal"]["code"]
-    assert case["refusal"]["message_contains"] in str(caught.value)
+    assert (caught.value.code, caught.value.path) == (
+        case["refusal"]["code"], case["refusal"]["path"]
+    )
+    assert str(caught.value).startswith(f"{caught.value.path} ")  # people read the path first
 
 
-def test_invalid_cases_are_distinct_and_each_refuses_one_thing() -> None:
+def test_invalid_cases_are_distinct_and_carry_no_message_text() -> None:
+    """The oracle is `{code, path}` compared exactly; wording is free (review of PR #50)."""
     names = [c["case"] for c in INVALID]
     assert len(names) == len(set(names))
     assert {tuple(sorted(c)) for c in INVALID} == {("case", "overlay", "refusal")}
+    assert {tuple(sorted(c["refusal"])) for c in INVALID} == {("code", "path")}
+    for case in INVALID:
+        assert re.fullmatch(r"overlay(\.[a-z_]+|\[\d+\])*", case["refusal"]["path"]), case
 
 
 COLORS = cast(list[Json], _json(FIXTURES / "colors.json"))
@@ -141,12 +147,14 @@ def test_scale_lookups_match_the_hand_worked_colours(case: Json) -> None:
 @pytest.mark.parametrize("bad", [float("nan"), float("inf"), -float("inf")])
 def test_non_finite_numbers_are_refused(bad: float) -> None:
     """JSON files cannot carry these, so they are built here (spec "Fixtures")."""
-    with pytest.raises(OverlayError, match=r"primitives\[0\]\.at\[0\] must be finite"):
+    with pytest.raises(OverlayError) as caught:
         parse_overlay(_one({"kind": "point", "at": [bad, 0], "style": {"fill": "#000"}}))
+    assert caught.value.path == "overlay.layers[0].primitives[0].at[0]"
     scale = {"kind": "sequential", "domain": [0, bad], "colors": ["#000", "#fff"],
              "unit": "", "title": ""}
-    with pytest.raises(OverlayError, match=r"scale\.domain\[1\] must be finite"):
+    with pytest.raises(OverlayError) as caught:
         parse_overlay(_one({"kind": "point", "at": [0, 0], "value": 0}, scale))
+    assert caught.value.path == "overlay.layers[0].scale.domain[1]"
 
 
 def test_a_valued_polyline_is_stroked_and_other_kinds_are_filled() -> None:
@@ -176,7 +184,7 @@ def test_cap_plus_one_is_refused_before_any_primitive_is_read() -> None:
     refuses first, so a huge overlay costs nothing to refuse."""
     with pytest.raises(OverlayError) as caught:
         parse_overlay(_many(MAX_OVERLAY_PRIMITIVES + 1, None))
-    assert caught.value.code == "TOO_LARGE"
+    assert (caught.value.code, caught.value.path) == ("TOO_LARGE", "overlay.layers")
     assert str(MAX_OVERLAY_PRIMITIVES + 1) in str(caught.value)
 
 
@@ -334,22 +342,22 @@ def test_tool_render_draws_and_stores_nothing(opened: tuple[LocalTools, str, Pat
 
 
 @pytest.mark.parametrize(
-    ("overlay", "code", "fragment"),
+    ("overlay", "code", "path"),
     [
-        ("not an object", "INVALID_ARGUMENT", "overlay must be an object"),
-        (INVALID[-1]["overlay"], "INVALID_ARGUMENT", INVALID[-1]["refusal"]["message_contains"]),
-        (_many(MAX_OVERLAY_PRIMITIVES + 1, None), "TOO_LARGE", "never truncated"),
+        ("not an object", "INVALID_ARGUMENT", "overlay"),
+        (INVALID[-1]["overlay"], "INVALID_ARGUMENT", INVALID[-1]["refusal"]["path"]),
+        (_many(MAX_OVERLAY_PRIMITIVES + 1, None), "TOO_LARGE", "overlay.layers"),
     ],
     ids=["not_an_object", "bad_value", "too_large"],
 )
 def test_tool_render_refusals(
-    opened: tuple[LocalTools, str, Path], overlay: object, code: str, fragment: str
+    opened: tuple[LocalTools, str, Path], overlay: object, code: str, path: str
 ) -> None:
     tools, document, _path = opened
     result = tools.render(document, overlay=overlay)
     assert result["ok"] is False
     error = cast(Json, result["error"])
-    assert error["code"] == code and fragment in error["message"]
+    assert error["code"] == code and str(error["message"]).startswith(f"{path} ")
     assert result["revision"] == 0
 
 

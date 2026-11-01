@@ -58,6 +58,21 @@ it and must agree with it on every case in `tests/fixtures/section_overlay/`.
   number that is not finite. Any new field or value is `version` 2. This differs from
   section-draft rule 6, which allows additive v1 fields: a reader that drew an overlay while
   ignoring a field it did not know could show a result wrongly, which is worse than refusing.
+- **Refusals** carry a `code` and the `path` of the refused field: dotted keys and `[i]`
+  list indices from the root `overlay`, e.g. `overlay.layers[0].primitives[2].style.fill`.
+  - A field with a wrong type or value is its own path.
+  - An unknown key, or a missing required key, is the path of that key
+    (`overlay.layers[0].scale.title`). Unknown keys are reported before missing ones,
+    each the first in sorted order.
+  - A rule over several fields of one object names the object: both or neither of
+    `style` and `value` names the primitive; a style that paints nothing names the
+    `style`. A repeated layer id or category names the later occurrence. A categorical
+    scale whose colour count differs from its categories names `colors`. The cap names
+    `overlay.layers`.
+  - A primitive whose `kind` is missing or unknown names its `kind`, before any other key.
+  - Each fixture case has exactly one fault. With several, which one is named is not
+    specified. The message is for people: it starts with the path, and its wording is
+    free.
 - `schema`, `version` and `units` are exactly `"apeCAD.section-overlay"`, `1` and `"mm"`.
 - **Coordinates** are world millimetres in the section plane (x right, y up, z = 0), the
   frame of the section-draft. The render tool draws an overlay on the `top` view only, and
@@ -129,10 +144,9 @@ document's: the overlay never moves the view.
 client (stage C2-S2):
 
 - `valid/*.json` are overlays that must be accepted.
-- `invalid.json` is a list of `{"case", "overlay", "refusal": {"code", "message_contains"}}`
-  that must be refused with that code. `message_contains` is the path of the refused field
-  (for example `overlay.layers[0].primitives[0].style`), so the two readers agree on which
-  field they name without agreeing on wording.
+- `invalid.json` is a list of `{"case", "overlay", "refusal": {"code", "path"}}`. Each
+  reader must refuse the overlay with exactly that `code` and exactly that `path` (rule
+  "Refusals"). The fixtures carry no message text: wording is free.
 - `colors.json` lists scale lookups `{case, scale, value, color}` that both readers must
   reproduce exactly. Each expected colour was worked by hand from the formula above.
 - JSON cannot carry a non-finite number or the cap plus one in a file of sensible size, so

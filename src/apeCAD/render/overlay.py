@@ -1,9 +1,10 @@
 """The `apeCAD.section-overlay` v1 contract: validate it, colour it, draw it (ADR 0041).
 
-`parse_overlay` is the one reader (spec `AProjects/specs/section-overlay.md`). It refuses,
-naming the field, anything the contract does not allow, and never truncates. `overlay_svg`
-draws a parsed overlay as one SVG group for `render_svg`. An overlay is display data a host
-computed: apeCAD stores none of it and computes nothing from it (ADR 0024 decision 2).
+`parse_overlay` is the one reader (spec `AProjects/specs/section-overlay.md`). It refuses
+anything the contract does not allow, with the exact `path` of the refused field, and never
+truncates. `overlay_svg` draws a parsed overlay as one SVG group for `render_svg`. An overlay
+is display data a host computed: apeCAD stores none of it and computes nothing from it
+(ADR 0024 decision 2).
 """
 
 from __future__ import annotations
@@ -67,11 +68,18 @@ _Px = Callable[[Vec2], Vec2]
 
 class OverlayError(ValueError):
     """An overlay the contract refuses. `code` is `INVALID_ARGUMENT`, or `TOO_LARGE` for
-    the cap; the message names the field. `render_svg` re-raises it as a render error."""
+    the cap. `path` is the refused field exactly (`overlay.layers[0].scale.domain`), the
+    missing or unknown key included; the message starts with it and is for people only.
+    `render_svg` re-raises it as a render error."""
 
-    def __init__(self, message: str, code: str = INVALID_ARGUMENT) -> None:
+    def __init__(self, path: str, message: str, code: str = INVALID_ARGUMENT) -> None:
         super().__init__(message)
+        self.path = path
         self.code = code
+
+
+def _refuse(path: str, text: str, code: str = INVALID_ARGUMENT) -> OverlayError:
+    return OverlayError(path, f"{path} {text}", code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,15 +136,15 @@ class Overlay:
 
 
 def parse_overlay(value: object) -> Overlay:
-    """The overlay, validated, or `OverlayError` naming what the contract refuses."""
+    """The overlay, validated, or `OverlayError` with the path of what it refuses."""
     top = _object("overlay", value, {"schema", "version", "units", "revision", "layers"})
     if top["schema"] != OVERLAY_SCHEMA:
-        raise OverlayError(f"overlay.schema must be {OVERLAY_SCHEMA!r}, got {top['schema']!r}")
+        raise _refuse("overlay.schema", f"must be {OVERLAY_SCHEMA!r}, got {top['schema']!r}")
     version = top["version"]
     if isinstance(version, bool) or not isinstance(version, int) or version != 1:
-        raise OverlayError(f"overlay.version must be {OVERLAY_SCHEMA_VERSION}, got {version!r}")
+        raise _refuse("overlay.version", f"must be {OVERLAY_SCHEMA_VERSION}, got {version!r}")
     if top["units"] != "mm":
-        raise OverlayError(f"overlay.units must be 'mm', got {top['units']!r}")
+        raise _refuse("overlay.units", f"must be 'mm', got {top['units']!r}")
     revision = _int("overlay.revision", top["revision"])
     raw_layers = _list("overlay.layers", top["layers"])
     shells = [
@@ -149,9 +157,10 @@ def parse_overlay(value: object) -> Overlay:
     ]
     total = sum(len(items) for items in raw_primitives)
     if total > MAX_OVERLAY_PRIMITIVES:
-        raise OverlayError(
-            f"overlay has {total} primitives, more than MAX_OVERLAY_PRIMITIVES "
-            f"({MAX_OVERLAY_PRIMITIVES}); it is refused, never truncated",
+        raise _refuse(
+            "overlay.layers",
+            f"hold {total} primitives, more than MAX_OVERLAY_PRIMITIVES "
+            f"({MAX_OVERLAY_PRIMITIVES}); the overlay is refused, never truncated",
             TOO_LARGE,
         )
     layers: list[Layer] = []
@@ -164,14 +173,14 @@ def parse_overlay(value: object) -> Overlay:
 def _layer(path: str, shell: dict[str, object], items: list[object], seen: set[str]) -> Layer:
     layer_id = _str(f"{path}.id", shell["id"])
     if not layer_id:
-        raise OverlayError(f"{path}.id must not be empty")
+        raise _refuse(f"{path}.id", "must not be empty")
     if layer_id in seen:
-        raise OverlayError(f"{path}.id {layer_id!r} is used by another layer")
+        raise _refuse(f"{path}.id", f"{layer_id!r} is used by another layer")
     seen.add(layer_id)
     label = _str(f"{path}.label", shell["label"])
     visible = shell["visible"]
     if not isinstance(visible, bool):
-        raise OverlayError(f"{path}.visible must be true or false, got {visible!r}")
+        raise _refuse(f"{path}.visible", f"must be true or false, got {visible!r}")
     raw_scale = shell["scale"]
     scale = None if raw_scale is None else _scale(f"{path}.scale", raw_scale)
     primitives = tuple(
@@ -184,34 +193,36 @@ def _scale(path: str, value: object) -> Scale:
     raw = _object(path, value, {"kind", "domain", "colors", "unit", "title"})
     kind = raw["kind"]
     if not isinstance(kind, str) or kind not in SCALE_KINDS:
-        raise OverlayError(f"{path}.kind must be one of {', '.join(SCALE_KINDS)}, got {kind!r}")
+        raise _refuse(f"{path}.kind", f"must be one of {', '.join(SCALE_KINDS)}, got {kind!r}")
     raw_colors = _list(f"{path}.colors", raw["colors"])
     colors = tuple(_color(f"{path}.colors[{i}]", c) for i, c in enumerate(raw_colors))
     if len(colors) < 2:
-        raise OverlayError(f"{path}.colors needs at least 2 colours, got {len(colors)}")
+        raise _refuse(f"{path}.colors", f"needs at least 2 colours, got {len(colors)}")
     items = _list(f"{path}.domain", raw["domain"])
     domain: tuple[float, ...] | tuple[str, ...]
     if kind == "categorical":
         names = tuple(_str(f"{path}.domain[{i}]", c) for i, c in enumerate(items))
-        if len(set(names)) != len(names):
-            raise OverlayError(f"{path}.domain categories must be distinct")
+        for i, name in enumerate(names):
+            if name in names[:i]:
+                raise _refuse(f"{path}.domain[{i}]", f"repeats the category {name!r}")
         if len(names) != len(colors):
-            raise OverlayError(
-                f"{path}: a categorical scale needs one colour per category, got "
-                f"{len(names)} categories and {len(colors)} colours"
+            raise _refuse(
+                f"{path}.colors",
+                f"needs one colour per category: {len(names)} categories, "
+                f"{len(colors)} colours",
             )
         domain = names
     else:
         bounds = tuple(_number(f"{path}.domain[{i}]", c) for i, c in enumerate(items))
         want = 2 if kind == "sequential" else 3
         if len(bounds) != want:
-            raise OverlayError(f"{path}.domain of a {kind} scale needs {want} numbers")
+            raise _refuse(f"{path}.domain", f"of a {kind} scale needs {want} numbers")
         if any(a >= b for a, b in zip(bounds, bounds[1:])):
-            raise OverlayError(f"{path}.domain must increase strictly, got {list(bounds)}")
+            raise _refuse(f"{path}.domain", f"must increase strictly, got {list(bounds)}")
         if kind == "diverging" and len(colors) % 2 == 0:
-            raise OverlayError(
-                f"{path}.colors of a diverging scale must be an odd number, at least 3, "
-                f"got {len(colors)}"
+            raise _refuse(
+                f"{path}.colors",
+                f"of a diverging scale must be an odd number, at least 3, got {len(colors)}",
             )
         domain = bounds
     unit = _str(f"{path}.unit", raw["unit"])
@@ -220,16 +231,16 @@ def _scale(path: str, value: object) -> Scale:
 
 def _primitive(path: str, value: object, scale: Scale | None) -> Primitive:
     if not isinstance(value, dict):
-        raise OverlayError(f"{path} must be an object, got {type(value).__name__}")
+        raise _refuse(path, f"must be an object, got {type(value).__name__}")
     shell = cast(dict[object, object], value)
     kind = shell.get("kind")
     if not isinstance(kind, str) or kind not in PRIMITIVE_KINDS:
-        raise OverlayError(f"{path}.kind must be one of {', '.join(PRIMITIVE_KINDS)}, got {kind!r}")
+        raise _refuse(f"{path}.kind", f"must be one of {', '.join(PRIMITIVE_KINDS)}, got {kind!r}")
     allowed = set(_SHAPE_KEYS[kind] | _PRIMITIVE_KEYS)
     raw = _object(path, shell, allowed, set(_REQUIRED_SHAPE_KEYS[kind]) | {"kind"})
     has_style, has_value = "style" in raw, "value" in raw
     if has_style == has_value:
-        raise OverlayError(f"{path} must carry exactly one of style or value")
+        raise _refuse(path, "must carry exactly one of style or value")
     holes: tuple[tuple[Vec2, ...], ...] = ()
     radius = 0.0
     text = ""
@@ -242,7 +253,7 @@ def _primitive(path: str, value: object, scale: Scale | None) -> Primitive:
         points = (_xy(f"{path}.center", raw["center"]),)
         radius = _number(f"{path}.radius", raw["radius"])
         if radius <= 0.0:
-            raise OverlayError(f"{path}.radius must be positive, got {radius!r}")
+            raise _refuse(f"{path}.radius", f"must be positive, got {radius!r}")
     elif kind == "polyline":
         points = _points(f"{path}.points", raw["points"], 2)
     else:
@@ -265,17 +276,17 @@ def _style(path: str, value: object, kind: str) -> Paint:
     raw = _object(path, value, {"stroke", "fill", "width_px", "opacity"}, required=set())
     for key in ("fill", "stroke"):
         if raw.get(key) is not None and key not in _PAINTS[kind]:
-            raise OverlayError(f"{path}.{key}: a {kind} takes no {key}")
+            raise _refuse(f"{path}.{key}", f"is not taken by a {kind}")
     fill = None if raw.get("fill") is None else _color(f"{path}.fill", raw["fill"])
     stroke = None if raw.get("stroke") is None else _color(f"{path}.stroke", raw["stroke"])
     if fill is None and stroke is None:
-        raise OverlayError(f"{path} paints nothing: give a {' or '.join(sorted(_PAINTS[kind]))}")
+        raise _refuse(path, f"paints nothing: give a {' or '.join(sorted(_PAINTS[kind]))}")
     width = _number(f"{path}.width_px", raw["width_px"]) if "width_px" in raw else 1.0
     if width <= 0.0:
-        raise OverlayError(f"{path}.width_px must be positive, got {width!r}")
+        raise _refuse(f"{path}.width_px", f"must be positive, got {width!r}")
     opacity = _number(f"{path}.opacity", raw["opacity"]) if "opacity" in raw else 1.0
     if not 0.0 <= opacity <= 1.0:
-        raise OverlayError(f"{path}.opacity must be between 0 and 1, got {opacity!r}")
+        raise _refuse(f"{path}.opacity", f"must be between 0 and 1, got {opacity!r}")
     return Paint(fill, stroke, width, opacity)
 
 
@@ -283,15 +294,15 @@ def _valued(
     path: str, value: object, kind: str, scale: Scale | None
 ) -> tuple[float | str, Paint]:
     if scale is None:
-        raise OverlayError(f"{path}: a primitive with a value needs a layer scale")
+        raise _refuse(path, "needs a layer scale")
     data: float | str
     if scale.kind == "categorical":
         if not isinstance(value, str):
-            raise OverlayError(f"{path} must be a category of a categorical scale, got {value!r}")
+            raise _refuse(path, f"must be a category of a categorical scale, got {value!r}")
         data = value
     else:
         if isinstance(value, str):
-            raise OverlayError(f"{path} must be a number on a {scale.kind} scale, got {value!r}")
+            raise _refuse(path, f"must be a number on a {scale.kind} scale, got {value!r}")
         data = _number(path, value)
     color = scale_color(scale, data, path)
     if kind == "polyline":
@@ -314,12 +325,13 @@ def resolve_color(value: str) -> str | None:
 
 def _color(path: str, value: object) -> str:
     if not isinstance(value, str):
-        raise OverlayError(f"{path} must be a colour string, got {value!r}")
+        raise _refuse(path, f"must be a colour string, got {value!r}")
     resolved = resolve_color(value)
     if resolved is None:
-        raise OverlayError(
-            f"{path} must be #rgb, #rrggbb or a design token "
-            f"({', '.join(COLOR_TOKENS)}), got {value!r}"
+        raise _refuse(
+            path,
+            f"must be #rgb, #rrggbb or a design token ({', '.join(COLOR_TOKENS)}), "
+            f"got {value!r}",
         )
     return resolved
 
@@ -342,7 +354,7 @@ def scale_color(scale: Scale, value: float | str, path: str = "value") -> str:
     if scale.kind == "categorical":
         names = cast(tuple[str, ...], scale.domain)
         if not isinstance(value, str) or value not in names:
-            raise OverlayError(f"{path} {value!r} is not a category of the layer scale")
+            raise _refuse(path, f"{value!r} is not a category of the layer scale")
         return scale.colors[names.index(value)]
     x = float(value)
     stops = scale_stops(scale)
@@ -369,60 +381,61 @@ def _mix(c0: str, c1: str, t: float) -> str:
 def _object(
     path: str, value: object, allowed: set[str], required: set[str] | None = None
 ) -> dict[str, object]:
-    """A JSON object with string keys, none unknown, every required one present."""
+    """A JSON object with string keys, none unknown, every required one present. An unknown
+    key is refused before a missing one, each the first in sorted order, at `path.key`."""
     if not isinstance(value, dict):
-        raise OverlayError(f"{path} must be an object, got {type(value).__name__}")
+        raise _refuse(path, f"must be an object, got {type(value).__name__}")
     raw = cast(dict[object, object], value)
     for key in raw:
         if not isinstance(key, str):
-            raise OverlayError(f"{path} keys must be strings, got {key!r}")
+            raise _refuse(path, f"keys must be strings, got {key!r}")
     typed = cast(dict[str, object], raw)
     extra = sorted(set(typed) - allowed)
     if extra:
-        raise OverlayError(f"{path} has unknown key {extra[0]!r}")
+        raise _refuse(f"{path}.{extra[0]}", "is an unknown key")
     missing = sorted((allowed if required is None else required) - set(typed))
     if missing:
-        raise OverlayError(f"{path} needs {missing[0]!r}")
+        raise _refuse(f"{path}.{missing[0]}", "is missing")
     return typed
 
 
 def _list(path: str, value: object) -> list[object]:
     if not isinstance(value, list):
-        raise OverlayError(f"{path} must be a list, got {type(value).__name__}")
+        raise _refuse(path, f"must be a list, got {type(value).__name__}")
     return cast(list[object], value)
 
 
 def _str(path: str, value: object) -> str:
     if not isinstance(value, str):
-        raise OverlayError(f"{path} must be a string, got {value!r}")
+        raise _refuse(path, f"must be a string, got {value!r}")
     return value
 
 
 def _int(path: str, value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise OverlayError(f"{path} must be a non-negative integer, got {value!r}")
+        raise _refuse(path, f"must be a non-negative integer, got {value!r}")
     return value
 
 
 def _number(path: str, value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise OverlayError(f"{path} must be a number, got {value!r}")
+        raise _refuse(path, f"must be a number, got {value!r}")
     if not math.isfinite(value):
-        raise OverlayError(f"{path} must be finite, got {value!r}")
+        raise _refuse(path, f"must be finite, got {value!r}")
     return float(value)
 
 
 def _xy(path: str, value: object) -> Vec2:
     items = _list(path, value)
     if len(items) != 2:
-        raise OverlayError(f"{path} must be [x, y] in mm, got {len(items)} values")
+        raise _refuse(path, f"must be [x, y] in mm, got {len(items)} values")
     return _number(f"{path}[0]", items[0]), _number(f"{path}[1]", items[1])
 
 
 def _points(path: str, value: object, least: int) -> tuple[Vec2, ...]:
     points = tuple(_xy(f"{path}[{i}]", p) for i, p in enumerate(_list(path, value)))
     if len(points) < least:
-        raise OverlayError(f"{path} needs at least {least} points, got {len(points)}")
+        raise _refuse(path, f"needs at least {least} points, got {len(points)}")
     return points
 
 
