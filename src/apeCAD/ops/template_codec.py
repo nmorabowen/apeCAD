@@ -25,7 +25,7 @@ def template_op_to_dict(op: TemplateOp) -> dict[str, object]:
             "op": "AddSectionTemplate",
             "template": op.template,
             "template_version": op.template_version,
-            "params": thaw_params(op.params),
+            "template_params": thaw_params(op.template_params),
             "label": op.label,
             "entity_id": op.entity_id,
             "child_ids": list(op.child_ids),
@@ -35,7 +35,7 @@ def template_op_to_dict(op: TemplateOp) -> dict[str, object]:
             "op": "EditSectionTemplate",
             "template_id": op.template_id,
             "template_version": op.template_version,
-            "params": thaw_params(op.params),
+            "template_params": thaw_params(op.template_params),
             "child_ids": list(op.child_ids),
         }
     return {"op": "ExplodeSectionTemplate", "template_id": op.template_id}
@@ -46,7 +46,7 @@ def parse_template_op(kind: object, payload: dict[str, object]) -> TemplateOp | 
     if kind == "AddSectionTemplate":
         return AddSectionTemplate(
             template=_as_template(payload["template"]),
-            params=_as_params(payload["params"]),
+            template_params=_as_params(payload["template_params"]),
             template_version=_as_version(payload.get("template_version")),
             label=as_optional_str(payload.get("label")),
             entity_id=as_optional_entity_id(payload.get("entity_id")),
@@ -55,7 +55,7 @@ def parse_template_op(kind: object, payload: dict[str, object]) -> TemplateOp | 
     if kind == "EditSectionTemplate":
         return EditSectionTemplate(
             template_id=as_entity_id("template_id", payload["template_id"]),
-            params=_as_params(payload["params"]),
+            template_params=_as_params(payload["template_params"]),
             template_version=_as_version(payload.get("template_version")),
             child_ids=as_id_tuple("child_ids", payload.get("child_ids", [])),
         )
@@ -74,7 +74,7 @@ def _as_template(value: object) -> str:
 
 def _as_params(value: object) -> dict[str, object]:
     if not isinstance(value, dict):
-        raise DocumentError(f"params must be an object, got {value!r}")
+        raise DocumentError(f"template_params must be an object, got {value!r}")
     return value  # pyright: ignore[reportUnknownVariableType]
 
 

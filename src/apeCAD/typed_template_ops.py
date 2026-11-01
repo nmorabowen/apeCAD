@@ -21,28 +21,33 @@ class TemplateTypedOps(TypedOps):
     def add_section_template(
         self,
         template: str,
-        params: Mapping[str, object],
+        template_params: Mapping[str, object],
         *,
         template_version: int | None = None,
         label: str | None = None,
     ) -> SectionTemplate:
         """Draw a template (the latest version unless one is named); returns its entity."""
         op = AddSectionTemplate(
-            template=template, params=params, template_version=template_version, label=label
+            template=template,
+            template_params=template_params,
+            template_version=template_version,
+            label=label,
         )
         return self._require_produced(self._apply(op), SectionTemplate)
 
     def edit_section_template(
         self,
         template_id: EntityId,
-        params: Mapping[str, object],
+        template_params: Mapping[str, object],
         *,
         template_version: int | None = None,
     ) -> SectionTemplate:
         """Replace a template's params whole and draw it again; returns the template."""
         self._apply(
             EditSectionTemplate(
-                template_id=template_id, params=params, template_version=template_version
+                template_id=template_id,
+                template_params=template_params,
+                template_version=template_version,
             )
         )
         return self._template(template_id)

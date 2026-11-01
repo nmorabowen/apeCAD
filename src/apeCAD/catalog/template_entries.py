@@ -1,7 +1,8 @@
 """Catalog entries for the section-template ops (ADR 0040). `entries.CATALOG` merges them.
 
 An agent lists the templates, fills in the params and sends one op; it never computes a
-bar position (ADR 0040 decision 6). The params schema here is an object: each template
+bar position (ADR 0040 decision 6). The field is `template_params`, because the request
+envelope already uses `params` (ADR 0040 Errata 9). Its schema is an object: each template
 checks its own params when it expands, and refuses a bad one by name with
 `INVALID_ARGUMENT` (`TemplateParamError`). Stage C3-S3 lists each template's params.
 """
@@ -39,13 +40,13 @@ TEMPLATE_ENTRIES: tuple[OpSpec, ...] = (
         "entity",
         {
             "template": _TEMPLATE,
-            "params": _PARAMS,
+            "template_params": _PARAMS,
             "template_version": _VERSION,
             "label": LABEL,
             "entity_id": OUTPUT_ID,
             "child_ids": _CHILDREN,
         },
-        {"template": "rect_column", "params": _EXAMPLE_PARAMS},
+        {"template": "rect_column", "template_params": _EXAMPLE_PARAMS},
         outputs=("entity_id", "child_ids"),
     ),
     entry(
@@ -55,11 +56,11 @@ TEMPLATE_ENTRIES: tuple[OpSpec, ...] = (
         "entities",
         {
             "template_id": _TEMPLATE_ID,
-            "params": _PARAMS + " They replace the old params whole.",
+            "template_params": _PARAMS + " They replace the old params whole.",
             "template_version": _VERSION.replace("the latest", "keep the template's version"),
             "child_ids": _CHILDREN,
         },
-        {"template_id": 1, "params": {**_EXAMPLE_PARAMS, "b": 450}},
+        {"template_id": 1, "template_params": {**_EXAMPLE_PARAMS, "b": 450}},
         outputs=("child_ids",),
     ),
     entry(

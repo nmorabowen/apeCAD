@@ -17,6 +17,7 @@ import pytest
 
 from apeCAD import Document
 from apeCAD.draft.dispatch import HANDLERS
+from apeCAD.draft.state import RecordingEntities
 from apeCAD.draft.topology import referenced_ids
 from apeCAD.entities import Bar, Hoop, Point, SectionFace, SectionTemplate
 from apeCAD.errors import TEMPLATE_LOCKED, DocumentError, TemplateLockedError
@@ -52,6 +53,7 @@ from test_atomic_ops import (
     _hostile_ops,  # pyright: ignore[reportPrivateUsage]
     _snapshot,  # pyright: ignore[reportPrivateUsage]
 )
+from test_section_template_ops import interleaved_best
 
 RECT: dict[str, object] = {
     "material": "C30", "b": 400, "h": 600, "center_mm": [200, 300], "cover": 40, "nx": 3,
@@ -174,6 +176,47 @@ def test_a_delete_of_one_template_leaves_another_locked() -> None:
     assert doc.section_templates() == (second,)
     with pytest.raises(TemplateLockedError):
         doc.delete([second.child_ids[0]])
+
+
+def test_a_changed_freehand_entity_cannot_take_a_child() -> None:
+    # Rule 3 on an existing entity: sewing a freehand line's end onto a template point
+    # rewires the line (a write the recording map sees), not the child.
+    doc, ids = _fresh()
+    a = doc.add_point(0.3, 0.0, 0.0).entity_id  # 0.3 mm from the template's corner point
+    line = doc.add_line(a, doc.add_point(-500.0, 0.0, 0.0).entity_id)
+    json_before = doc.to_json()
+    for selection in ((a, ids.points[0]), (line.entity_id, ids.points[0])):
+        with pytest.raises(TemplateLockedError, match=f"line {line.entity_id} would use point"):
+            doc.apply(Sew(selection, 1.0))
+        assert doc.to_json() == json_before
+
+
+def test_the_recording_map_keeps_the_first_old_value_of_each_write() -> None:
+    entities = RecordingEntities({1: Point(1, XYZ(0, 0, 0)), 2: Point(2, XYZ(1, 0, 0))})
+    first = entities[1]
+    entities[1] = Point(1, XYZ(5, 0, 0))
+    entities[1] = Point(1, XYZ(6, 0, 0))
+    entities[3] = Point(3, XYZ(7, 0, 0))
+    entities.pop(2)
+    assert entities.written == {1: first, 3: None, 2: Point(2, XYZ(1, 0, 0))}
+    entities.reset()
+    assert entities.written == {}
+    del entities[3]
+    assert entities.written == {3: Point(3, XYZ(7, 0, 0))}
+    with pytest.raises(NotImplementedError):
+        entities.clear()
+
+
+def test_the_lock_cost_does_not_grow_with_the_draft() -> None:
+    # Review of #57, finding 4: the lock looks at an op's writes, not at the whole draft.
+    doc = Document()
+    doc.add_section_template("rect_column", {**RECT, "center_mm": [-5000, 300]})
+    for k in range(1500):
+        doc.add_line(doc.add_point(k, 0, 0).entity_id, doc.add_point(k, 50, 0).entity_id)
+    payload = doc.to_dict()
+
+    guarded, bare = interleaved_best(payload, rounds=5)
+    assert guarded < bare * 1.6, (guarded, bare)  # 1.15x measured at 6000 ops; 2.4x before
 
 
 def test_the_lock_names_the_child_and_its_template() -> None:

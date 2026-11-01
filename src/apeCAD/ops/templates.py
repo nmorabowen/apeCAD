@@ -1,6 +1,7 @@
 """Section-template ops (ADR 0040, stage C3-S2): add, edit and explode a template.
 
-A template's intent is its `template`, its `template_version` and its `params`; the
+A template's intent is its `template`, its `template_version` and its `template_params`
+(named so, not `params`, because the op catalog's request envelope uses `params`); the
 entities it draws are derived (`section.templates`, a pure function to a `Plan`, and
 `draft.templates`, which builds the entities). The committed op records the version it ran
 and the `child_ids` it allocated, so replay rebuilds the same ids and refuses a log whose
@@ -97,7 +98,7 @@ class AddSectionTemplate:
     """
 
     template: str
-    params: Mapping[str, object]
+    template_params: Mapping[str, object]
     template_version: int | None = None
     label: str | None = None
     entity_id: EntityId | None = None
@@ -106,7 +107,9 @@ class AddSectionTemplate:
     def __post_init__(self) -> None:
         require_template(self.template)
         require_version(self.template, self.template_version)
-        object.__setattr__(self, "params", freeze_params(self.params))
+        object.__setattr__(
+            self, "template_params", freeze_params(self.template_params, "template_params")
+        )
         object.__setattr__(self, "label", optional_label(self.label))
         _require_child_ids(self.child_ids)
 
@@ -121,7 +124,7 @@ class EditSectionTemplate:
     """
 
     template_id: EntityId
-    params: Mapping[str, object]
+    template_params: Mapping[str, object]
     template_version: int | None = None
     child_ids: tuple[EntityId, ...] = ()
 
@@ -132,7 +135,9 @@ class EditSectionTemplate:
                 "template", "template_version",
                 f"must be a whole number, got {self.template_version!r}",
             )  # fmt: skip
-        object.__setattr__(self, "params", freeze_params(self.params))
+        object.__setattr__(
+            self, "template_params", freeze_params(self.template_params, "template_params")
+        )
         _require_child_ids(self.child_ids)
 
 

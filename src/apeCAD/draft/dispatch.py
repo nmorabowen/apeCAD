@@ -1,8 +1,9 @@
 """One table from op type to handler. A new op adds one row here (ADR 0023).
 
 `apply_op` is also where the section-template lock runs (ADR 0040 decision 3): while the
-draft holds a template, it compares the state before and after the op
-(`templates.check_template_lock`), whatever the op. With no template it costs one test.
+draft holds a template, the entity map records what the op writes (`RecordingEntities`)
+and `templates.check_template_lock` checks those writes, whatever the op. With no template
+it costs one test and the map stays a plain dict.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ from collections.abc import Callable
 from typing import Any
 
 from apeCAD.draft import create, edit, meta, rebar, section, templates, transform
-from apeCAD.draft.state import DraftState
+from apeCAD.draft.state import DraftState, RecordingEntities
 from apeCAD.errors import DocumentError
 from apeCAD.ops import (
     AddArc,
@@ -129,9 +130,14 @@ def apply_op(state: DraftState, op: Op) -> Op:
     if handler is None:
         raise DocumentError(f"internal error: no handler for {type(op).__name__}")
     if not state.template_ids:
+        if isinstance(state.entities, RecordingEntities):  # the last template went
+            state.entities = dict(state.entities)
         return handler(state, op)
-    before = dict(state.entities)
+    if not isinstance(state.entities, RecordingEntities):
+        state.entities = RecordingEntities(state.entities)
+    entities = state.entities
+    entities.reset()
     before_templates = frozenset(state.template_ids)
     committed = handler(state, op)
-    templates.check_template_lock(before, before_templates, state)
+    templates.check_template_lock(entities.written, before_templates, state)
     return committed

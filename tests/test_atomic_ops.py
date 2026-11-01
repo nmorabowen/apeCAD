@@ -178,7 +178,7 @@ def _value(
         return rng.choice(_TEMPLATES)
     if name == "template_version":
         return rng.choice(_VERSIONS)
-    if name == "params":
+    if name == "template_params":
         pick = rng.random()
         if pick < 0.4:
             return dict(_GOOD_PARAMS)

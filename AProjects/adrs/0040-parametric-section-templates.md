@@ -161,3 +161,8 @@ question open.
    4. *`polygon_column` refuses a straight vertex too.* The owner's Q4 ruling says convex
       only. Refusing a collinear vertex as well (strictly convex) is the builder's stricter
       reading, kept by the review: a later version may accept one.
+9. **The ops carry their params as `template_params` (review of apeCAD #57).** The op
+   catalog's request envelope already uses `params` (`{"op", "params"}`), so
+   `AddSectionTemplate` and `EditSectionTemplate` name the field `template_params`, and the
+   flat request form stays usable. The `SectionTemplate` entity and the draft's
+   `templates[]` keep `params`.
