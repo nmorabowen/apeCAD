@@ -354,4 +354,35 @@ def compare_sections_v2(stored: object, fresh: Json) -> list[Json]:
             f"section.materials_used is {stored_used!r} in the draft; the replayed "
             f"document has {fresh['materials_used']!r}"
         )
-    return compare_sections(block, fresh, lists=SECTION_LISTS_V2)
+    warnings = compare_sections(block, fresh, lists=SECTION_LISTS_V2)
+    _refuse_stored_v2_fields(block, fresh)
+    return warnings
+
+
+_V2_OPTIONAL_FIELDS: Mapping[str, tuple[str, ...]] = {
+    "faces": ("shape", "template_id"),
+    "bars": ("material", "template_id"),
+}
+"""The optional v2 fields per list (`?` in the block). `template_id` may sit on any item."""
+
+
+def _refuse_stored_v2_fields(block: Json, fresh: Json) -> None:
+    """A stored optional v2 field that the replay does not write differs: refuse it by name.
+
+    `compare_sections` walks the replayed keys only, so it cannot see a `bars[].material`, a
+    `faces[].shape` or a `template_id` the stored item has and the replay lacks. Other keys a
+    reader does not write stay ignored (ADR 0025 rule 6). Runs after `compare_sections`, so
+    both lists are well formed and match id for id.
+    """
+    for name in SECTION_LISTS_V2:
+        fields = _V2_OPTIONAL_FIELDS.get(name, ("template_id",))
+        replayed = {cast(int, item["id"]): item for item in cast(list[Json], fresh[name])}
+        for raw in cast(list[object], block[name]):
+            item = cast(Json, raw)
+            entity_id = cast(int, item["id"])
+            for key in fields:
+                if key in item and key not in replayed[entity_id]:
+                    raise DocumentError(
+                        f"section.{name}[id={entity_id}].{key} is {item[key]!r} in the draft; "
+                        "the replayed document has none"
+                    )

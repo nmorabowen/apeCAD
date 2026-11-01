@@ -3,9 +3,11 @@
 The v1 helpers (`locate`, `edge_distance`, `segment_inside`) are exact float predicates on a
 ring, moved here unchanged from `apeCAD.section.lint`. The v2 part reads a face as a
 `Region`: inside its boundary (a ring or an exact circle), outside each of its holes.
-Point tests are exact. `boundary_probes` samples a circle as chords only to place probe
-points beside every boundary piece; the probes are then tested exactly, so an overlap found
-is real, and a sliver thinner than the probe offset can be missed. Lint is advisory.
+Point tests are exact. `boundary_probes` places probe points beside every boundary piece,
+off segments by their normal and off circles radially at a point on the true arc, at a
+distance of 1e-7 of the probed regions' extent; the probes are then tested exactly. So an
+overlap found is real, and a region thinner than that offset can be missed. Lint is
+advisory.
 """
 
 from __future__ import annotations
@@ -106,8 +108,11 @@ def segment_probes(a: Point2, b: Point2, ring: Sequence[Point2]) -> list[Point2]
     return [(a[0] + t * rx, a[1] + t * ry) for t in probes]
 
 
-_CIRCLE_PROBE_SIDES = 64
-"""A circle is sampled as this many chords for overlap probes only; tests stay exact."""
+_CIRCLE_ARCS = 64
+"""A circle is probed at the mid-angle of at least this many arcs, besides its cuts."""
+
+_PROBE_OFFSET = 1e-7
+"""Probe distance from a boundary piece, as a fraction of the probed regions' extent."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,14 +135,9 @@ class Curve:
             return edge_distance(p, self.ring)
         return abs(distance(p, self.center) - self.radius)
 
-    def polygon(self) -> tuple[Point2, ...]:
-        if self.ring:
-            return self.ring
-        n, (cx, cy), r = _CIRCLE_PROBE_SIDES, self.center, self.radius
-        return tuple(
-            (cx + r * math.cos(2 * math.pi * k / n), cy + r * math.sin(2 * math.pi * k / n))
-            for k in range(n)
-        )
+    def edges(self) -> list[tuple[Point2, Point2]]:
+        n = len(self.ring)
+        return [(self.ring[k], self.ring[(k + 1) % n]) for k in range(n)] if n >= 2 else []
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,28 +201,30 @@ def _segment_against(a: Point2, b: Point2, curve: Curve, *, inside: bool) -> boo
 def boundary_probes(regions: Sequence[Region]) -> list[Point2]:
     """Points just either side of the middle of every boundary piece of these regions.
 
-    Every edge of every curve (circles as chords) is cut where it meets another edge; each
-    piece's midpoint is pushed off the edge both ways. Two regions whose interiors meet have
-    a piece of boundary between them, and a probe next to it lies in both.
+    Every segment and every circle is cut where it meets another curve. A segment piece's
+    midpoint is pushed off along its normal; a circle piece is probed at its mid-angle on the
+    true arc, at radius r +- the offset. Two regions whose interiors meet have a piece of
+    boundary between them, and a probe next to it lies in both.
     """
-    edges = [
-        (poly[k], poly[(k + 1) % len(poly)])
-        for r in regions
-        for poly in (c.polygon() for c in (r.boundary, *r.holes))
-        if len(poly) >= 2
-        for k in range(len(poly))
-    ]
-    xs = [p[0] for edge in edges for p in edge] or [0.0]
-    ys = [p[1] for edge in edges for p in edge] or [0.0]
-    eps = 1e-7 * max(1.0, max(xs) - min(xs), max(ys) - min(ys))
+    curves = [c for r in regions for c in (r.boundary, *r.holes)]
+    segments = [edge for c in curves for edge in c.edges()]
+    circles = [c for c in curves if not c.ring and c.radius > 0.0]
+    xs = [p[0] for a, b in segments for p in (a, b)]
+    ys = [p[1] for a, b in segments for p in (a, b)]
+    for c in circles:
+        xs += [c.center[0] - c.radius, c.center[0] + c.radius]
+        ys += [c.center[1] - c.radius, c.center[1] + c.radius]
+    if not xs:
+        return []
+    eps = _PROBE_OFFSET * max(1.0, max(xs) - min(xs), max(ys) - min(ys))
     out: list[Point2] = []
-    for a, b in edges:
+    for a, b in segments:
         rx, ry = b[0] - a[0], b[1] - a[1]
         length = math.hypot(rx, ry)
         if length == 0.0:
             continue
         cuts = {0.0, 1.0}
-        for c, d in edges:
+        for c, d in segments:
             sx, sy = d[0] - c[0], d[1] - c[1]
             den = rx * sy - ry * sx
             if den != 0.0:
@@ -230,12 +232,58 @@ def boundary_probes(regions: Sequence[Region]) -> list[Point2]:
                 u = ((c[0] - a[0]) * ry - (c[1] - a[1]) * rx) / den
                 if 0.0 < t < 1.0 and 0.0 <= u <= 1.0:
                     cuts.add(t)
+        for circle in circles:
+            cuts.update(t for t in _segment_circle(a, b, circle) if 0.0 < t < 1.0)
         ordered = sorted(cuts)
         nx, ny = -ry / length * eps, rx / length * eps
         for s, e in zip(ordered, ordered[1:], strict=False):
             mx, my = a[0] + (s + e) / 2.0 * rx, a[1] + (s + e) / 2.0 * ry
             out.extend(((mx + nx, my + ny), (mx - nx, my - ny)))
+    for circle in circles:
+        (cx, cy), r = circle.center, circle.radius
+        angles = {2.0 * math.pi * k / _CIRCLE_ARCS for k in range(_CIRCLE_ARCS)}
+        for a, b in segments:
+            for t in _segment_circle(a, b, circle):
+                if 0.0 <= t <= 1.0:
+                    x, y = a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])
+                    angles.add(math.atan2(y - cy, x - cx) % (2.0 * math.pi))
+        for other in circles:
+            angles.update(_circle_circle(circle, other))
+        ordered = sorted(angles)
+        for s, e in zip(ordered, [*ordered[1:], ordered[0] + 2.0 * math.pi], strict=True):
+            mid = (s + e) / 2.0
+            for radius in (r - eps, r + eps):
+                out.append((cx + radius * math.cos(mid), cy + radius * math.sin(mid)))
     return out
+
+
+def _segment_circle(a: Point2, b: Point2, circle: Curve) -> list[float]:
+    """Parameters t (any value) where the line a + t(b - a) meets the circle."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    fx, fy = a[0] - circle.center[0], a[1] - circle.center[1]
+    qa = dx * dx + dy * dy
+    qb = 2.0 * (fx * dx + fy * dy)
+    qc = fx * fx + fy * fy - circle.radius * circle.radius
+    disc = qb * qb - 4.0 * qa * qc
+    if qa == 0.0 or disc < 0.0:
+        return []
+    root = math.sqrt(disc)
+    return [(-qb - root) / (2.0 * qa), (-qb + root) / (2.0 * qa)]
+
+
+def _circle_circle(circle: Curve, other: Curve) -> list[float]:
+    """Angles on `circle` (0 to 2 pi) of the points where `other` crosses it."""
+    (x1, y1), r1 = circle.center, circle.radius
+    (x2, y2), r2 = other.center, other.radius
+    d = math.hypot(x2 - x1, y2 - y1)
+    if d == 0.0 or d > r1 + r2 or d < abs(r1 - r2):
+        return []
+    along = (r1 * r1 - r2 * r2 + d * d) / (2.0 * d)
+    half = math.sqrt(max(0.0, r1 * r1 - along * along))
+    ux, uy = (x2 - x1) / d, (y2 - y1) / d
+    base = math.atan2(uy, ux)
+    spread = math.atan2(half, along)
+    return [(base + spread) % (2.0 * math.pi), (base - spread) % (2.0 * math.pi)]
 
 
 def curve_strictly_inside(inner: Curve, outer: Curve) -> bool:

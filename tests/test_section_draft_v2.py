@@ -824,3 +824,76 @@ def test_get_section_draft_version_2_over_the_mcp_sdk() -> None:
     structured, refused, is_error = anyio.run(run)
     validate_v2(_obj(_obj(structured)["draft"]))
     assert is_error and _obj(_obj(refused)["error"])["code"] == REFUSED
+
+
+# --- review of #51: stored optional fields, and attach's default call ------------------------
+
+
+def _stored_bar_material(d: Json) -> None:
+    _items(_section(d)["bars"])[0]["material"] = "A630"
+
+
+def _stored_face_shape(d: Json) -> None:
+    _items(_section(d)["faces"])[0]["shape"] = {
+        "catalog": "AISC", "designation": "W14x90", "anchor_mm": [0, 0], "rotation_deg": 0
+    }  # fmt: skip
+
+
+def _stored_template_id(name: str) -> Callable[[Json], None]:
+    def patch(d: Json) -> None:
+        _items(_section(d)[name])[0]["template_id"] = 7
+
+    return patch
+
+
+@pytest.mark.parametrize(
+    ("patch", "match"),
+    [
+        (_stored_bar_material, r"section\.bars\[id=\d+\]\.material is 'A630' in the draft"),
+        (_stored_face_shape, r"section\.faces\[id=\d+\]\.shape is .* in the draft"),
+        (_stored_template_id("faces"), r"section\.faces\[id=\d+\]\.template_id is 7"),
+        (_stored_template_id("bars"), r"section\.bars\[id=\d+\]\.template_id is 7"),
+        (_stored_template_id("hoops"), r"section\.hoops\[id=\d+\]\.template_id is 7"),
+        (_stored_template_id("cover_guides"), r"section\.cover_guides\[id=\d+\]\.template_id"),
+    ],
+)
+def test_a_stored_v2_field_the_replay_lacks_is_refused(
+    patch: Callable[[Json], None], match: str
+) -> None:
+    """Review of #51, finding 1: v1's comparison walks the replayed keys only."""
+    draft = section_draft(box_with_void(), version=2, commit=None)
+    patch(draft)
+    with pytest.raises(DocumentError, match=match):
+        document_from_draft(draft)
+
+
+def test_attach_sends_no_version_on_the_default_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review of #51, finding 4: the default call carries no `version` key, so a scratchpad
+    older than the argument (which allows no keys) still answers it."""
+    from threading import Thread
+
+    from apeCAD.agent import hosted
+    from apeCAD.agent.attach import AttachTools, connect
+    from apeCAD.scratchpad.server import ScratchpadServer
+
+    sent: list[dict[str, object]] = []
+    real_call = AttachTools._call  # pyright: ignore[reportPrivateUsage]
+
+    def spy(self: AttachTools, tool: str, arguments: dict[str, object]) -> object:
+        sent.append(dict(arguments))
+        return real_call(self, tool, arguments)
+
+    monkeypatch.setattr(AttachTools, "_call", spy)
+    old = (frozenset[str](), hosted.HOSTED["get_section_draft"][1])
+    monkeypatch.setitem(hosted.HOSTED, "get_section_draft", old)
+    server = ScratchpadServer(("127.0.0.1", 0), rect_boundary_hoops())
+    Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        attached = connect(f"http://127.0.0.1:{server.server_address[1]}")
+        envelope = attached.get_section_draft(attached.document_id)
+        assert envelope["ok"] is True, envelope
+        assert _obj(envelope["draft"])["version"] == 1
+        assert sent[-1] == {}
+    finally:
+        server.shutdown()
+        server.server_close()

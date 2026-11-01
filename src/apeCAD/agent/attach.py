@@ -160,7 +160,9 @@ class AttachTools:
         return self._on(document, "get_document", {})
 
     def get_section_draft(self, document: object, version: object = None) -> Envelope:
-        return self._on(document, "get_section_draft", {"version": version})
+        # A scratchpad older than the version argument refuses the key: send it only when set.
+        arguments: dict[str, object] = {} if version is None else {"version": version}
+        return self._on(document, "get_section_draft", arguments)
 
     def render(self, document: object, **params: object) -> Envelope:
         """Render a snapshot of the scratchpad's document, at the scratchpad's revision."""

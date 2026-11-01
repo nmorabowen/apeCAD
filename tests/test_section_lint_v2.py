@@ -305,3 +305,20 @@ def test_v1_lint_is_unchanged_for_v2_entities() -> None:
     doc = Document()
     _column(doc)
     assert lint_section({i: doc.entity(i) for i in doc.entity_ids()}) == doc.section_lint()
+
+
+def test_a_void_circle_just_larger_than_its_concrete_circle_warns() -> None:
+    """Review of #51, finding 2: probes on chord midpoints sat ~0.0012 r inside the circle,
+    so a void sticking out by 0.2 mm went unseen. Probes now sit on the true arc."""
+    doc = Document()
+    face = doc.add_section_face("concrete", "C30", center_id=_at(0, 0), radius_mm=300.0)
+    doc.set_cover(face.entity_id, 40.0, 10.0, 20.0)
+    void = doc.add_section_face("void", None, center_id=_at(0, 0), radius_mm=300.2)
+    assert _only(doc, "void-outside-solid").ids == (void.entity_id,)
+
+
+def test_two_circles_overlapping_by_a_hair_warn() -> None:
+    doc = Document()
+    doc.add_section_face("steel", "S355", center_id=_at(0, 0), radius_mm=100.0)
+    doc.add_section_face("steel", "S355", center_id=_at(200.0 - 0.01, 0), radius_mm=100.0)
+    assert _codes(doc) == ["same-role-overlap"]

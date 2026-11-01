@@ -8,9 +8,10 @@ the gate for what it refuses (a face without a leg, an inclined leg).
 
 `lint_section_v2(entities)` is the lint of a v2 draft (ADR 0039 decision 7, Errata 2 and 8.3):
 the seven v1 codes that keep their meaning, read on many faces with holes and circles, then
-the v2 codes, in `LINT_CODES_V2` order. Its region tests are exact for points; overlap and
-cover are probed next to every boundary edge (`apeCAD.section.regions`), so a found overlap
-is real and a sliver thinner than the probe offset can be missed.
+the v2 codes, in `LINT_CODES_V2` order. Its region tests are exact for points. Overlap and
+cover are probed beside every boundary piece, on the true arc for a circle, 1e-7 of the
+regions' extent away (`apeCAD.section.regions`): a found overlap is real, and a region
+thinner than that offset can be missed.
 """
 
 from __future__ import annotations
