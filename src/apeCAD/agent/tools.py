@@ -150,14 +150,16 @@ def get_document(session: Session) -> Envelope:
     )
 
 
-def get_section_draft(session: Session) -> Envelope:
-    """`{ok, revision, draft}`: the `apeCAD.section-draft` v1 of the document (ADR 0025).
+def get_section_draft(session: Session, version: object = None) -> Envelope:
+    """`{ok, revision, draft}`: the `apeCAD.section-draft` of the document (ADR 0025, 0039).
 
-    Read-only. `draft.warnings` is the section lint; it is advisory and never an error.
+    Read-only. `version` is 1 (the default, also for None) or 2; any other value is
+    `INVALID_ARGUMENT`, and a document v1 cannot say is `REFUSED` for version 1 (ADR 0039
+    Errata 1). `draft.warnings` is the section lint; it is advisory and never an error.
     """
     return guarded(
         lambda: session.revision,
-        lambda: _ok(session, {"draft": section_draft(session.document)}),
+        lambda: _ok(session, {"draft": section_draft(session.document, version=version)}),
     )
 
 

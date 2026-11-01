@@ -32,7 +32,7 @@ from apeCAD.entities import (
     SectionFace,
     WallLeg,
 )
-from apeCAD.errors import DocumentError
+from apeCAD.errors import DocumentError, OpArgumentError
 from apeCAD.section.draft import (
     DRAFT_FRAME,
     DRAFT_SCHEMA,
@@ -283,11 +283,12 @@ def require_v1_expressible(entities: Mapping[EntityId, Entity], what: str) -> No
 
 
 def require_draft_version(value: object) -> int:
-    """The `version` a writer or host asked for: None means 1; anything but 1 or 2 is refused."""
+    """The `version` a writer or host asked for: None means 1; anything but 1 or 2 is refused
+    by name, as `INVALID_ARGUMENT` (ADR 0039 Errata 1)."""
     if value is None:
         return 1
     if type(value) is not int or value not in DRAFT_VERSIONS:
-        raise DocumentError(f"version must be 1 or 2, got {value!r}")
+        raise OpArgumentError(f"version must be 1 or 2, got {value!r}")
     return value
 
 
