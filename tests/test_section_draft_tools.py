@@ -47,7 +47,7 @@ def test_hosted_and_mcp_tables_name_the_tool() -> None:
     refused = call_hosted(session, {"tool": "get_section_draft", "arguments": {"x": 1}})
     assert refused["ok"] is False
     tool = TOOLS["get_section_draft"]
-    assert tool.required == ("document",) and set(tool.properties) == {"document"}
+    assert tool.required == ("document",) and set(tool.properties) == {"document", "version"}
 
 
 def test_http_route_serves_the_draft() -> None:

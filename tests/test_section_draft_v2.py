@@ -720,14 +720,33 @@ def test_transport_version_1_refuses_a_v2_document_and_version_is_draft_only() -
     assert "version belongs to action 'draft'" in cast(str, _obj(scene["error"])["message"])
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    strict=True,
-    reason="scratchpad/payload.py _cover_guide asserts a ConcreteFace, so the scene of a "
-    "cover guide on a v2 face fails; payload.py is outside C1-S3 (reported to apeSection#27)",
-)
-def test_transport_scene_of_a_cover_guide_on_a_v2_face() -> None:
+def test_the_scene_draws_a_cover_guide_on_a_v2_ring_and_circle_face() -> None:
+    """Regression (comment 880): `_cover_guide` asserted a v1 face, so the scene of a cover
+    guide on a v2 face raised and every transport response with it."""
+    from apeCAD.scratchpad.payload import scene_payload
+
     assert _obj(_transport_draft(box_with_void(), version=2)["draft"])["version"] == 2
+    ring = _items(scene_payload(box_with_void())["cover_guides"])[0]
+    inset = [[-160.0, -260.0], [160.0, -260.0], [160.0, 260.0], [-160.0, 260.0]]
+    assert ring["cover_ring_mm"] == inset  # the 400 x 600 outline inset by 40 mm
+    circle = _items(scene_payload(circular_column_spiral())["cover_guides"])[0]
+    cover = cast(list[list[float]], circle["cover_ring_mm"])
+    centres = cast(list[list[float]], circle["bar_centre_ring_mm"])
+    assert circle["reason"] is None and cover[0] == [260.0, 0.0]
+    assert all(math.isclose(math.hypot(x, y), 260.0, rel_tol=1e-12) for x, y in cover)
+    assert all(math.isclose(math.hypot(x, y), 240.0, rel_tol=1e-12) for x, y in centres)
+    assert _signed_area(cover) > 0  # CCW, as the ring insets are
+
+
+def test_a_collapsed_circle_cover_ring_gives_its_reason() -> None:
+    from apeCAD.scratchpad.payload import scene_payload
+
+    doc = Document()
+    face = doc.add_section_face("concrete", "C30", center_id=_at(0, 0), radius_mm=50.0)
+    doc.set_cover(face.entity_id, 40.0, 10.0, 20.0)
+    guide = _items(scene_payload(doc)["cover_guides"])[0]
+    assert guide["cover_ring_mm"] is not None and guide["bar_centre_ring_mm"] is None
+    assert "bar-centre ring at 60 mm collapses" in cast(str, guide["reason"])
 
 
 def test_local_hosted_and_mcp_table_take_the_version() -> None:
