@@ -123,7 +123,7 @@ How the kept v1 codes read on many faces (Errata 8.3):
 - `face-without-cover-guide` applies to **concrete** faces only. A steel or void face never
   raises it, and neither does a concrete face lying wholly inside a hole of a steel face (a
   CFT core, which the tube confines and which has no cover to draw; Errata 9.2). A concrete
-  face with a hole of its own, or one not under a steel face's hole, still raises it.
+  face not under a steel face's hole still raises it, with or without holes of its own.
 - A bar gets **one location code** at most, the first that holds in the order
   `bar-in-void` > `bar-in-steel` > `bar-outside-concrete`. It follows the overlap
   precedence: a bar in a void inside concrete is `bar-in-void` alone.

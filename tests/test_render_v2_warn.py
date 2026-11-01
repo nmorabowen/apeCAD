@@ -1,8 +1,9 @@
 """Stage C1-S5 (apeSection#39): `render` warns `not-drawn` for v2 entities it skips.
 
-v2 faces and circular ties are drawn in stage C5. Until then the envelope names each one
-it leaves out, instead of a silent ok. The expected ids come from the committed fixtures'
-op logs (the ops that create v2 entities), not from the code under test.
+v2 faces, circular ties and cover guides on v2 faces are drawn in stage C5. Until then the
+envelope names each one it leaves out, instead of a silent ok. The expected ids come from the
+committed fixtures' op logs (the ops that create v2 entities, and the `SetCover` ops whose
+face is one of them), not from the code under test.
 """
 
 from __future__ import annotations
@@ -25,13 +26,17 @@ from apeCAD.ops import PointAt
 from test_render import _fake_png  # pyright: ignore[reportPrivateUsage]
 
 Json = dict[str, object]
-V2_OPS = {"AddSectionFace", "AddSteelShape", "AddCircularTie"}
+V2_FACE_OPS = {"AddSectionFace", "AddSteelShape"}
 
 
 def _expected(name: str) -> list[int]:
     draft = cast(Json, json.loads(fixture_path_v2(name).read_text(encoding="utf-8")))
     ops = cast(list[Json], cast(Json, draft["document"])["ops"])
-    return sorted(cast(int, op["entity_id"]) for op in ops if op["op"] in V2_OPS)
+    faces = {cast(int, op["entity_id"]) for op in ops if op["op"] in V2_FACE_OPS}
+    ties = {cast(int, op["entity_id"]) for op in ops if op["op"] == "AddCircularTie"}
+    covers = [op for op in ops if op["op"] == "SetCover"]
+    guides = {cast(int, op["entity_id"]) for op in covers if op["face_id"] in faces}
+    return sorted(faces | ties | guides)
 
 
 def _warnings(envelope: Json) -> list[Json]:
@@ -61,9 +66,16 @@ def test_rendering_a_v2_fixture_names_exactly_its_v2_entities(
 
 def test_the_fixture_oracle_covers_faces_and_circular_ties() -> None:
     """Guard the oracle itself: v2 fixtures hold both kinds, and two have none."""
-    assert _expected("circular_column_spiral") == [2, 19]  # a circle face and a spiral
+    assert _expected("circular_column_spiral") == [2, 19, 20]  # circle face, spiral, guide
     assert len(_expected("cft_round")) == 2
     assert _expected("rect_boundary_hoops") == []  # v1's wall: ConcreteFace only
+    assert _expected("src_w_in_rect") == [18]  # the W only: its guide is on a v1 face
+    # The review's undrawn guides: 6, 20, 11 and 10 on these four fixtures.
+    for name, guide in (
+        ("rect_column_ties", 6), ("circular_column_spiral", 20), ("box_with_void", 11),
+        ("t_beam", 10),
+    ):  # fmt: skip
+        assert guide in _expected(name), name
 
 
 @pytest.mark.parametrize("name", sorted(BUILDERS))
@@ -97,3 +109,16 @@ def test_local_tools_and_mcp_structured_content_carry_it() -> None:
 
     structured = cast(Json, tool_result("render", envelope).structured_content)
     assert structured["warnings"] == envelope["warnings"] and "svg" not in structured
+
+
+def test_a_cover_guide_on_a_v2_face_is_named_when_drawn_alone() -> None:
+    """Review of #53, finding 1: `ids=[20]` drew nothing and answered a silent ok."""
+    (warning,) = _warnings(render(Session(BUILDERS_V2["circular_column_spiral"]()), ids=[20]))
+    assert warning["ids"] == [20]
+    assert "cover guides on v2 faces" in cast(str, warning["message"])
+
+
+def test_a_cover_guide_on_a_v1_face_is_drawn_and_not_named() -> None:
+    doc = BUILDERS_V2["src_w_in_rect"]()
+    guide = doc.cover_guides()[0].entity_id
+    assert _warnings(render(Session(doc), ids=[guide])) == []

@@ -41,10 +41,17 @@ NOT_DRAWN = "not-drawn"
 
 
 def not_drawn(entities: Mapping[EntityId, Entity], draw_ids: Iterable[EntityId]) -> list[EntityId]:
-    """The v2 faces and circular ties among `draw_ids`, ascending: not drawn until C5."""
-    return sorted(
-        i for i in draw_ids if isinstance(entities.get(i), (SectionFace, CircularTie))
-    )
+    """What `section_drawable` skips among `draw_ids`, ascending: v2 faces, circular ties,
+    and cover guides whose face is not a v1 `ConcreteFace` (`_cover` draws only those)."""
+    skipped: list[EntityId] = []
+    for i in draw_ids:
+        entity = entities.get(i)
+        if isinstance(entity, (SectionFace, CircularTie)) or (
+            isinstance(entity, CoverGuide)
+            and not isinstance(entities.get(entity.face_id), ConcreteFace)
+        ):
+            skipped.append(i)
+    return sorted(skipped)
 
 
 def bar_point_ids(entities: Mapping[EntityId, Entity]) -> set[EntityId]:

@@ -173,8 +173,9 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
     without the extra it fails `UNAVAILABLE` and never falls back to SVG. `overlay` is an
     `apeCAD.section-overlay` v1 object (ADR 0041 decision 3), drawn and never stored; the
     envelope then carries its `overlay_revision` beside `revision`. When the drawing holds
-    v2 faces or circular ties, which are not drawn yet (stage C5), the envelope carries
-    `warnings: [{code: "not-drawn", ids, message}]` naming each one; otherwise no `warnings`.
+    v2 faces, circular ties or cover guides on v2 faces, which are not drawn yet (stage C5),
+    the envelope carries `warnings: [{code: "not-drawn", ids, message}]` naming each one;
+    otherwise it has no `warnings`.
     """
 
     def body() -> Envelope:
@@ -247,8 +248,8 @@ def _with_not_drawn(
     if not skipped:
         return fields
     message = (
-        f"{len(skipped)} v2 face(s) or circular tie(s) {skipped} are not drawn yet "
-        "(stage C5); the rest of the drawing is"
+        f"{len(skipped)} entities {skipped} are not drawn yet (stage C5): v2 faces, "
+        "circular ties and cover guides on v2 faces; the rest of the drawing is"
     )
     return {**fields, "warnings": [{"code": NOT_DRAWN, "ids": skipped, "message": message}]}
 

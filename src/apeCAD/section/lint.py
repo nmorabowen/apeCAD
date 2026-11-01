@@ -386,7 +386,10 @@ def _face_without_cover_guide_v2(view: _View, regions: Sequence[Region]) -> list
     concrete face lying wholly inside a steel face's hole, a CFT core: the tube confines it
     and there is no cover to draw (ADR 0039 Errata 9)."""
     owners = {guide.face_id for guide in view.guides}
-    holes = [h for r in regions if r.role == "steel" for h in r.holes]
+    # A hole counts only inside its own steel face: one that is not is hole-outside-face.
+    holes = [
+        h for r in regions if r.role == "steel" for h in r.holes if curve_within(h, r.boundary)
+    ]
     return [
         LintWarning(
             "face-without-cover-guide",

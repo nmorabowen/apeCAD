@@ -378,3 +378,19 @@ def test_a_concrete_face_inside_a_void_or_concrete_hole_still_warns() -> None:
     doc.add_face_hole(outer.entity_id, center_id=_at(0, 0), radius_mm=100.0)
     inner = doc.add_section_face("concrete", "C50", center_id=_at(0, 0), radius_mm=100.0)
     assert _only(doc, "face-without-cover-guide").ids == (inner.entity_id,)
+
+
+@pytest.mark.parametrize("case", ["square_elsewhere", "tube_hole_outside"])
+def test_a_steel_hole_outside_its_own_face_exempts_nothing(case: str) -> None:
+    """Review of #53, finding 2: a hole counts only when it lies within its steel face."""
+    doc = Document()
+    if case == "square_elsewhere":
+        core = doc.add_section_face("concrete", "C50", point_ids=_rect(-100, -100, 100, 100))
+        steel = doc.add_section_face("steel", "S355", point_ids=_rect(1000, 1000, 1100, 1100))
+        doc.add_face_hole(steel.entity_id, point_ids=_rect(-150, -150, 150, 150))
+    else:
+        core = doc.add_section_face("concrete", "C50", center_id=_at(0, 0), radius_mm=250.0)
+        steel = doc.add_section_face("steel", "S355", center_id=_at(0, 0), radius_mm=200.0)
+        doc.add_face_hole(steel.entity_id, center_id=_at(0, 0), radius_mm=260.0)
+    assert _only(doc, "face-without-cover-guide").ids == (core.entity_id,)
+    assert _only(doc, "hole-outside-face").ids == (steel.entity_id,)

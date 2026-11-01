@@ -182,6 +182,7 @@ question open.
       with the `more-than-one-solid-face` warning, so HA-04 is unchanged.
    2. *The CFT-core exemption.* `face-without-cover-guide` does not fire for a concrete face
       that lies wholly inside a hole of a steel face (touching or equal to the hole counts as
-      inside): a CFT core is confined by the tube and has no cover to draw. A concrete face
-      not under a steel face's hole still raises it, holes of its own or not. The
+      inside): a CFT core is confined by the tube and has no cover to draw. Only a hole that
+      lies within its own steel face counts; one that does not is `hole-outside-face`. A
+      concrete face not under such a hole still raises it, holes of its own or not. The
       `cft_round` fixture loses its one warning; no other fixture changes.
