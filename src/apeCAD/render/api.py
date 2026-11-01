@@ -11,7 +11,9 @@ from typing import Any
 
 from apeCAD.document import Document
 from apeCAD.entities import Box, EntityId, Solid
+from apeCAD.errors import TOO_LARGE
 from apeCAD.render.annotate import plan_layout, section_notes
+from apeCAD.render.overlay import Overlay, OverlayError, as_overlay, overlay_svg
 from apeCAD.render.scene import Drawable, closure, drawables, entity_map
 from apeCAD.render.svg import TextOptions, Viewport, write_svg
 from apeCAD.render.views import VIEW_NAMES, VIEWS, Vec2, Vec3, View, ViewName
@@ -35,6 +37,12 @@ class PngUnavailableError(RenderArgumentError):
     code = "UNAVAILABLE"
 
 
+class OverlayTooLargeError(RenderArgumentError):
+    """An overlay over `MAX_OVERLAY_PRIMITIVES`: `TOO_LARGE`, never truncated (ADR 0041)."""
+
+    code = TOO_LARGE
+
+
 @dataclass(frozen=True, slots=True)
 class RenderResult:
     svg: str
@@ -46,6 +54,8 @@ class RenderResult:
     extents_mm: dict[str, list[float]]
     entities: int
     path: str | None = None
+    # The drawn overlay's `revision` (ADR 0041 decision 3); the caller judges staleness.
+    overlay_revision: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +68,7 @@ class PngResult:
     extents_mm: dict[str, list[float]]
     entities: int
     path: str | None = None
+    overlay_revision: int | None = None
 
 
 def render_svg(
@@ -75,6 +86,7 @@ def render_svg(
     save_to: str | None = None,
     root: Path | None = None,
     annotate: bool = True,
+    overlay: Overlay | Mapping[str, object] | None = None,
 ) -> RenderResult:
     """Orthographic wireframe SVG of the draft (spec agent-surface-mcp §4 `render`).
 
@@ -84,7 +96,10 @@ def render_svg(
     `annotate` draws a plan of a section at a standard scale with tags, overall dimensions
     and a scale note (spec ape-design §4 D4); they are drawn, never stored. Off, with a
     `window`, or when no standard scale leaves room, the bare drawing is fitted as before.
+    `overlay` (spec section-overlay, ADR 0041) is drawn above the section on the `top` view
+    only; it never moves the fit and is never stored.
     """
+    shown = None if overlay is None else _overlay(overlay)
     width_px = _clamp_size("width", width)
     height_px = _clamp_size("height", height)
     margin_frac = _clamp_margin(margin)
@@ -101,6 +116,10 @@ def render_svg(
         else closure(known_ids("highlight", highlight, entities), children) & draw_ids
     )
     chosen = _choose_view(view, entities, draw_ids)
+    if shown is not None and chosen.name != "top":
+        raise RenderArgumentError(
+            f"overlay is drawn on the top view only, got view {chosen.name!r}"
+        )
     coarse = drawables(entities, draw_ids, None)
     bounds = _window_bounds(chosen, window) if window is not None else _bounds(chosen, coarse)
     notes = (
@@ -116,7 +135,10 @@ def render_svg(
     else:  # exactly the standard scale the layout chose
         viewport = Viewport(width_px, height_px, layout.scale_px_per_mm, layout.centre_mm)
     items = drawables(entities, draw_ids, CHORD_ERROR_PX / viewport.scale)
-    svg = write_svg(chosen, viewport, items, marked, TextOptions(labels, show_ids), layout)
+    painted = () if shown is None else overlay_svg(shown, chosen, viewport)
+    svg = write_svg(
+        chosen, viewport, items, marked, TextOptions(labels, show_ids), layout, painted
+    )
     path = None if save_to is None else save_text(svg, save_to, root)
     low, high = viewport.extents_mm()
     return RenderResult(
@@ -128,7 +150,18 @@ def render_svg(
         extents_mm={"min": [low[0], low[1]], "max": [high[0], high[1]]},
         entities=len(items),
         path=path,
+        overlay_revision=None if shown is None else shown.revision,
     )
+
+
+def _overlay(value: object) -> Overlay:
+    """The overlay parsed, its refusal re-raised as a render error with the same code."""
+    try:
+        return as_overlay(value)
+    except OverlayError as exc:
+        if exc.code == TOO_LARGE:
+            raise OverlayTooLargeError(str(exc)) from exc
+        raise RenderArgumentError(str(exc)) from exc
 
 
 def _clamp_size(name: str, value: object) -> int:
@@ -245,6 +278,7 @@ def render_png(
     save_to: str | None = None,
     root: Path | None = None,
     annotate: bool = True,
+    overlay: Overlay | Mapping[str, object] | None = None,
 ) -> PngResult:
     """Orthographic wireframe PNG of the draft (spec agent-surface-mcp §4 `render`, stage S7).
 
@@ -271,6 +305,7 @@ def render_png(
         save_to=None,
         root=root,
         annotate=annotate,
+        overlay=overlay,
     )
     png = bytes(
         resvg_py.svg_to_bytes(
@@ -287,6 +322,7 @@ def render_png(
         extents_mm=rendered.extents_mm,
         entities=rendered.entities,
         path=path,
+        overlay_revision=rendered.overlay_revision,
     )
 
 

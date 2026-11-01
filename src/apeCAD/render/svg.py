@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from xml.sax.saxutils import escape
 
@@ -91,7 +91,10 @@ def write_svg(
     highlight: set[EntityId],
     text: TextOptions,
     layout: Layout | None = None,
+    overlay: Sequence[str] = (),
 ) -> str:
+    """The whole SVG. `overlay` is the drawn `apeCAD.section-overlay` group (`overlay.py`,
+    ADR 0041 decision 3): above the geometry, below the annotation, highlight and text."""
     w, h = viewport.width, viewport.height
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
@@ -119,6 +122,7 @@ def write_svg(
         _group(d, view, viewport, "data-id", _dot_body(POINT_RADIUS_PX, point_ink)) for d in points
     )
     out.append("</g>")
+    out.extend(overlay)
     if layout is not None:
         out.extend(notes_svg(layout, viewport.to_px, num, clean_text))
     marked = [d for d in items if d.entity_id in highlight]

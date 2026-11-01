@@ -157,6 +157,12 @@ def cmd_render(args: argparse.Namespace) -> Envelope:
     if args.window is not None:
         corners = _numbers("--window", args.window, 6)
         params["window"] = {"min": corners[:3], "max": corners[3:]}
+    if args.overlay is not None:  # an apeCAD.section-overlay v1 file (ADR 0041)
+        try:
+            overlay_text = Path(args.overlay).read_text(encoding="utf-8")
+        except OSError as exc:
+            return failure(IO_ERROR, f"cannot read --overlay {args.overlay}: {exc}", None)
+        params["overlay"] = _json_arg("--overlay", overlay_text)
 
     def call(tools: LocalTools, document: str) -> Envelope:
         rendered = tools.render(document, **params)
@@ -273,6 +279,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="no tags, dimensions or scale note on a plan of a section",
     )
     render.add_argument("--show-ids", action="store_true")
+    render.add_argument(
+        "--overlay", metavar="OVERLAY.json",
+        help="draw this apeCAD.section-overlay v1 file above the section (top view)",
+    )
     render.set_defaults(run=cmd_render)
 
     export = sub.add_parser("export-dxf", help="write FILE's plan as DXF (export_dxf, ADR 0034)")

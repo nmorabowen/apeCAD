@@ -128,10 +128,15 @@ document's: the overlay never moves the view.
 `tests/fixtures/section_overlay/` holds the shared cases, the Python/JS parity oracle for the
 client (stage C2-S2):
 
-- `valid/*.json` must be accepted.
-- `invalid/*.json` must be refused. Each file is `{"case", "overlay", "refusal": {"code",
-  "message_contains"}}`.
-- `colors.json` lists scale lookups `{scale, value, color}` that both readers must reproduce
-  exactly.
+- `valid/*.json` are overlays that must be accepted.
+- `invalid.json` is a list of `{"case", "overlay", "refusal": {"code", "message_contains"}}`
+  that must be refused with that code. `message_contains` is the path of the refused field
+  (for example `overlay.layers[0].primitives[0].style`), so the two readers agree on which
+  field they name without agreeing on wording.
+- `colors.json` lists scale lookups `{case, scale, value, color}` that both readers must
+  reproduce exactly. Each expected colour was worked by hand from the formula above.
+- JSON cannot carry a non-finite number or the cap plus one in a file of sensible size, so
+  `tests/test_render_overlay.py` builds those cases in code. The client's tests must do the
+  same.
 
 The golden SVG is `tests/fixtures/render/section_overlay_top.svg`.

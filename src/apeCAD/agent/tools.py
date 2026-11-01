@@ -49,6 +49,7 @@ RENDER_DEFAULTS: dict[str, object] = {
     "window": None,
     "format": "svg",
     "save_to": None,
+    "overlay": None,
 }
 
 
@@ -165,7 +166,9 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
     the MCP content block).
 
     `save_to` resolves under `root`. `format: "png"` uses `render_png` (`apeCAD[png]`);
-    without the extra it fails `UNAVAILABLE` and never falls back to SVG.
+    without the extra it fails `UNAVAILABLE` and never falls back to SVG. `overlay` is an
+    `apeCAD.section-overlay` v1 object (ADR 0041 decision 3), drawn and never stored; the
+    envelope then carries its `overlay_revision` beside `revision`.
     """
 
     def body() -> Envelope:
@@ -187,6 +190,7 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
             "window": _render_window(values["window"]),
             "save_to": opt_str("save_to", values["save_to"]),
             "root": root,
+            "overlay": values["overlay"],  # validated by render/overlay.py, named on refusal
         }
         if fmt == "png":
             png_result = render_png(session.document, **kwargs)
@@ -201,6 +205,8 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
             }
             if png_result.path is not None:
                 fields["path"] = png_result.path
+            if png_result.overlay_revision is not None:
+                fields["overlay_revision"] = png_result.overlay_revision
             return _ok(session, fields)
         result = render_svg(session.document, **kwargs)
         fields = {
@@ -214,6 +220,8 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
         }
         if result.path is not None:
             fields["path"] = result.path
+        if result.overlay_revision is not None:
+            fields["overlay_revision"] = result.overlay_revision
         return _ok(session, fields)
 
     return guarded(lambda: session.revision, body)
