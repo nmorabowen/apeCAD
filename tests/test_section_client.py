@@ -202,13 +202,15 @@ def _node() -> str:
 
 def _mutations(value: object) -> Iterator[object]:
     """Every overlay one edit away from `value`: each key dropped, an unknown key added to
-    each object, and each node replaced by each probe."""
+    each object, and each node replaced by each probe. Plus, per object, a key dropped and
+    an unknown one added: the spec names the unknown key first ("Refusals")."""
     yield from (probe for probe in _PROBES)
     if isinstance(value, dict):
         typed = cast(dict[str, object], value)
         yield {**typed, "zz_unknown": 1}
         for key in typed:
             yield {k: v for k, v in typed.items() if k != key}
+            yield {**{k: v for k, v in typed.items() if k != key}, "zz_unknown": 1}
             for child in _mutations(typed[key]):
                 yield {**typed, key: child}
     elif isinstance(value, list):

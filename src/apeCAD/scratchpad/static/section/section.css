@@ -58,6 +58,7 @@
 
 .apecad-section-canvas {
   flex: 1 1 auto;
+  min-width: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -65,7 +66,9 @@
 }
 
 .apecad-section-sidebar {
+  flex: 0 0 220px; /* the canvas's width attribute must not squeeze the overlay legends out */
   width: 220px;
+  box-sizing: border-box;
   background: #efede8;
   border-left: 1px solid #d8d5cd;
   padding: 8px;
