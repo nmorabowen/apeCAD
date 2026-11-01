@@ -66,9 +66,11 @@ function readObject(path, value, allowed, required = allowed) {
   return value;
 }
 
+// A dense copy: a hole in a sparse array reads as `undefined` and is refused at its own path,
+// as Python refuses `null` there (`.map` would skip it and store the hole).
 function readList(path, value) {
   if (!Array.isArray(value)) throw new OverlayError(path, `must be a list, got ${typeName(value)}`);
-  return value;
+  return Array.from(value);
 }
 
 function readStr(path, value) {
@@ -300,18 +302,6 @@ export function scaleColor(scale, value, tokens = OVERLAY_TOKENS) {
   return mix(colors[i], colors[i + 1], (value - stops[i]) / (stops[i + 1] - stops[i]));
 }
 
-/** The token table of the live theme: a role the page defines as hex, else its light value. */
-export function liveTokens(node) {
-  const out = { ...OVERLAY_TOKENS };
-  const style = node && typeof globalThis.getComputedStyle === "function" ? globalThis.getComputedStyle(node) : null;
-  if (!style || typeof style.getPropertyValue !== "function") return out;
-  for (const name of TOKEN_NAMES) {
-    const color = normalizeColor(String(style.getPropertyValue(name) || "").trim());
-    if (color !== null && !TOKEN_NAMES.has(color)) out[name] = color;
-  }
-  return out;
-}
-
 // --- painting ------------------------------------------------------------------------------
 
 function paintOf(p, scale, tokens) {
@@ -405,14 +395,18 @@ function legendNode(doc, el, layer, tokens) {
 /**
  * The overlay state of one editor. `getRevision()` is the live document revision; `onChange`
  * redraws. Everything it writes to the page goes through `el(...)`, which sets `textContent`.
+ * Tokens resolve to their light values: the client canvas is light-only (`PALETTE.bg`), so a
+ * dark host's `--text` would vanish on it.
  */
-export function createOverlayController({ doc, el, box, getRevision, onChange, tokensOf }) {
+export function createOverlayController({ doc, el, box, getRevision, onChange }) {
   let overlay = null;
   let refusal = null;
   let generation = 0; // bumped by every set; the panel is rebuilt only when it or staleness moves
   let shown = "";
-  const isStale = () => overlay !== null && getRevision() > overlay.revision;
-  const tokens = () => (typeof tokensOf === "function" ? tokensOf() : OVERLAY_TOKENS);
+  // Any other revision is stale: behind it the document moved on; ahead of it the overlay was
+  // stamped for a document this client has not seen.
+  const isStale = () => overlay !== null && getRevision() !== overlay.revision;
+  const tokens = () => OVERLAY_TOKENS;
 
   function state() {
     return {

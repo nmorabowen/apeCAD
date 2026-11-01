@@ -13,7 +13,7 @@ import {
   OVERLAY_EXAMPLE_SCALES, OVERLAY_TOKENS, PALETTE, createViewport, renderSectionCanvas,
 } from "../../src/apeCAD/scratchpad/static/section/canvas2d.js";
 import {
-  MAX_OVERLAY_PRIMITIVES, OverlayError, STALE_ALPHA, liveTokens, paintOverlay, parseOverlay, scaleColor,
+  MAX_OVERLAY_PRIMITIVES, OverlayError, STALE_ALPHA, paintOverlay, parseOverlay, scaleColor,
 } from "../../src/apeCAD/scratchpad/static/section/overlay.js";
 import { contrastRatio, oklabDistance, simulateCvdHex } from "../../src/apeCAD/scratchpad/static/js/theme.js";
 
@@ -251,23 +251,93 @@ test("one legend per visible layer with a scale: title, unit and domain ticks", 
   assert.equal(stress.children[0].textContent, "Stress (MPa)");
   assert.match(stress.children[1].style.background, /^linear-gradient\(to right, #2166ac 0%, #f7f7f7 6\.97674%, #b2182b 100%\)$/);
   assert.deepEqual(stress.children[2].children.map((n) => n.textContent), ["-30", "0", "400"]);
+  const bars = legends[1];
+  assert.equal(bars.children[0].textContent, "Bars");
+  assert.deepEqual(bars.children.slice(1).map((row) => row.children[1].textContent), ["elastic", "yielded"]);
+  assert.deepEqual(bars.children.slice(1).map((row) => row.children[0].style.background), ["#1a9850", "#d73027"]);
   const layers = editor.getOverlayState().layers.map((l) => [l.id, l.visible]);
   assert.deepEqual(layers, results.layers.map((l) => [l.id, l.visible]));
   assert.ok(texts(panel).some((t) => t.endsWith("(hidden)")));
   editor.dispose();
 });
 
-test("tokens resolve from the live theme when the page defines them, else the light value", () => {
+test("a dark host still gets the light token values: the client canvas is light-only", async () => {
   const saved = globalThis.getComputedStyle;
-  globalThis.getComputedStyle = () => ({ getPropertyValue: (name) => (name === "--accent" ? " #3D8FCE " : name === "--signal" ? "var(--x)" : "") });
+  const dark = { "--text": "#e6e9ec", "--signal": "#e07a4f", "--accent": "#3d8fce" };
+  globalThis.getComputedStyle = () => ({ getPropertyValue: (name) => dark[name] || "" });
   try {
-    const tokens = liveTokens({});
-    assert.equal(tokens["--accent"], "#3d8fce");
-    assert.equal(tokens["--signal"], OVERLAY_TOKENS["--signal"]);
+    const { editor, rec } = await editorWithRecorder();
+    const overlay = one({ kind: "label", at: [0, 0], text: "NA", style: { fill: "--text" } });
+    overlay.layers[0].primitives.push({ kind: "polyline", points: [[0, 0], [1, 1]], style: { stroke: "--signal" } });
+    overlay.revision = editor.getOverlayState().revision;
+    rec.log.length = 0;
+    assert.equal(editor.setOverlay(overlay).ok, true);
+    assert.ok(rec.log.some((e) => e[0] === "text" && e[2] === OVERLAY_TOKENS["--text"]));
+    assert.ok(rec.log.some((e) => e[0] === "stroke" && e[1] === OVERLAY_TOKENS["--signal"]));
+    assert.equal(rec.log.some((e) => Object.values(dark).includes(e[1]) || Object.values(dark).includes(e[2])), false);
+    assert.ok(contrastRatio(OVERLAY_TOKENS["--text"], PALETTE.bg) >= 4.5);
+    editor.dispose();
   } finally {
     globalThis.getComputedStyle = saved;
   }
-  assert.deepEqual(liveTokens(null), { ...OVERLAY_TOKENS });
+});
+
+// --- review of #54 ------------------------------------------------------------------------
+
+test("a hole in a sparse list is refused at its path, as Python refuses null there", async () => {
+  const point = { kind: "point", at: [0, 0], style: { fill: "#000" } };
+  const holed = one(point);
+  holed.layers[0].primitives = [, point];
+  assert.deepEqual(refusalOf(holed), { code: "INVALID_ARGUMENT", path: "overlay.layers[0].primitives[0]" });
+  const ring = one({ kind: "polygon", ring: [[0, 0], , [1, 1], [0, 1]], style: { fill: "#000" } });
+  assert.deepEqual(refusalOf(ring), { code: "INVALID_ARGUMENT", path: "overlay.layers[0].primitives[0].ring[1]" });
+  const layers = one(point);
+  layers.layers = [, layers.layers[0]];
+  assert.deepEqual(refusalOf(layers), { code: "INVALID_ARGUMENT", path: "overlay.layers[0]" });
+  const scale = { kind: "categorical", domain: ["a", "b"], colors: ["#000", , "#fff"], unit: "", title: "" };
+  assert.deepEqual(refusalOf(one(point, scale)), { code: "INVALID_ARGUMENT", path: "overlay.layers[0].scale.colors[1]" });
+  // Through the editor: refused, nothing stored, and the next redraw does not throw.
+  const { editor } = await editorWithRecorder();
+  const res = editor.setOverlay(holed);
+  assert.deepEqual([res.ok, res.error.path], [false, "overlay.layers[0].primitives[0]"]);
+  assert.equal(editor.getOverlayState().active, false);
+  editor.fitView();
+  editor.dispose();
+});
+
+test("an overlay stamped ahead of the live revision is stale, never current", async () => {
+  const { editor, rec } = await editorWithRecorder();
+  assert.equal(editor.getOverlayState().revision, 1);
+  rec.log.length = 0;
+  const res = editor.setOverlay(one({ kind: "point", at: [0, 0], style: { fill: "#123456" } }, null, 7));
+  assert.deepEqual([res.ok, res.stale, res.overlay_revision], [true, true, 7]);
+  assert.ok(rec.log.some((e) => e[1] === "#123456" && e[2] === STALE_ALPHA));
+  editor.dispose();
+});
+
+test("an op list refused partway shows the ops applied before it and stales the overlay", async () => {
+  const { editor, rec } = await editorWithRecorder();
+  editor.setOverlay(one({ kind: "point", at: [0, 0], style: { fill: "#123456" } }, null, editor.getOverlayState().revision));
+  const before = editor.getOverlayState().revision;
+  const res = await editor.applyOp([{ op: "AddBar", x_mm: 60, y_mm: 60, designation: "Ø16" }, { op: "NoSuchOp" }]);
+  assert.equal(res.ok, false);
+  assert.equal(editor.getScene().bars.length, 1, "the applied bar is shown");
+  assert.equal(editor.getDraft().bars.length, 1);
+  const state = editor.getOverlayState();
+  assert.ok(state.revision > before);
+  assert.equal(state.stale, true);
+  assert.ok(rec.log.some((e) => e[1] === "#123456" && e[2] === STALE_ALPHA));
+  editor.dispose();
+});
+
+test("an undo after an overlay set on a later edit leaves it stale", async () => {
+  const { editor } = await editorWithRecorder();
+  await editor.applyOp({ op: "AddBar", x_mm: 60, y_mm: 60, designation: "Ø16" });
+  editor.setOverlay(one({ kind: "point", at: [0, 0], style: { fill: "#000" } }, null, editor.getOverlayState().revision));
+  assert.equal(editor.getOverlayState().stale, false);
+  await editor.undo();
+  assert.equal(editor.getOverlayState().stale, true);
+  editor.dispose();
 });
 
 // --- ADR 0038: the example scales pass the contrast and CVD gates -------------------------

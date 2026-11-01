@@ -326,3 +326,48 @@ def test_overlay_goes_stale_over_the_stateless_python_transport(
         check=False,
     )
     assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_stateless_transport_partial_op_list_and_load_stale_the_overlay(
+    server: ScratchpadServer,
+) -> None:
+    """Review of #54, findings 3 and 5: an op list refused partway still shows (and counts)
+    the ops applied before the refusal; a `loadDraft` is an edit too."""
+    node = _node()
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/api/section/transport"
+    entry = SECTION_DIR.joinpath("apecad-section.js").as_uri()
+    script = f"""
+    import assert from "node:assert/strict";
+    import {{ create, httpTransport }} from {entry!r};
+    const ed = create({{}}, {{ transport: httpTransport({url!r}) }});
+    await new Promise((r) => setTimeout(r, 50));
+    const overlayAt = (revision) => ({{ schema: "apeCAD.section-overlay", version: 1,
+      units: "mm", revision, layers: [{{ id: "a", label: "A", visible: true, scale: null,
+        primitives: [{{ kind: "point", at: [0, 0], style: {{ fill: "#000" }} }}] }}] }});
+
+    const rev = ed.getOverlayState().revision;
+    assert.equal(ed.setOverlay(overlayAt(rev)).stale, false);
+    const res = await ed.applyOp([
+      {{ op: "AddBar", x_mm: 10, y_mm: 10, designation: "Ø16" }}, {{ op: "NoSuchOp" }},
+    ]);
+    assert.equal(res.ok, false);
+    assert.equal(ed.getScene().bars.length, 1, "the bar applied before the refusal shows");
+    assert.equal(ed.getOverlayState().revision, rev + 1);
+    assert.equal(ed.getOverlayState().stale, true);
+
+    const now = ed.getOverlayState().revision;
+    assert.equal(ed.setOverlay(overlayAt(now)).stale, false);
+    await ed.loadDraft({{ schema: "apeCAD.document.v1", units: "mm", ops: [] }});
+    assert.equal(ed.getOverlayState().revision, now + 1);
+    assert.equal(ed.getOverlayState().stale, true, "a load is an edit");
+    ed.dispose();
+    """
+    res = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert res.returncode == 0, res.stdout + res.stderr

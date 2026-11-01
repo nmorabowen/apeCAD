@@ -3,7 +3,7 @@
 
 import { createViewport, hitTestSection, renderSectionCanvas } from "./canvas2d.js";
 import { parseInput, snapPoint2D } from "./input-parse.js";
-import { createOverlayController, liveTokens, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
+import { createOverlayController, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
 import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene } from "./transport.js";
 
 export const API_VERSION = 2;
@@ -152,7 +152,7 @@ export function create(container, opts = {}) {
 
   const view = createViewport(canvas);
   const overlay = createOverlayController({
-    doc, el, box: overlayBox, getRevision: () => docRevision, onChange: () => redraw(), tokensOf: () => liveTokens(root),
+    doc, el, box: overlayBox, getRevision: () => docRevision, onChange: () => redraw(),
   });
 
   function updateStatusAndProps() {
@@ -213,12 +213,17 @@ export function create(container, opts = {}) {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
     opEpoch += 1;
     const list = Array.isArray(opOrOps) ? opOrOps : [opOrOps];
-    let lastRes = null;
+    let lastOk = null;
     for (const op of list) {
-      lastRes = await transport({ action: "apply", op });
-      if (!lastRes || !lastRes.ok) return syncResponse(lastRes, false);
+      const res = await transport({ action: "apply", op });
+      if (!res || !res.ok) {
+        // The ops before the refused one are applied: show them (and move the revision) first.
+        if (lastOk) syncResponse(lastOk, true);
+        return syncResponse(res, false);
+      }
+      lastOk = res;
     }
-    return syncResponse(lastRes, true);
+    return syncResponse(lastOk, true);
   }
 
   async function undo() {

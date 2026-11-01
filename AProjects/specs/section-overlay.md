@@ -101,7 +101,8 @@ it and must agree with it on every case in `tests/fixtures/section_overlay/`.
 - **Colours** are `#rgb` or `#rrggbb` in either case, written back as lower-case `#rrggbb`,
   or one of the tokens above. The tokens name the ADR 0031 roles of `static/css/app.css`.
   The render tool resolves a token to its light-theme value, because the SVG is drawn on
-  white; the client resolves it from the live theme. Anything else (`#rrggbbaa`, `red`,
+  white. The section client does the same while its canvas is light-only (`PALETTE.bg`): a
+  dark host's `--text` would be about 1.1:1 on it (review of PR #54). Anything else (`#rrggbbaa`, `red`,
   `rgb(...)`, `var(--x)`, an unknown token) is refused.
 - **Scales.** `colors` has at least 2 entries.
   - `sequential`: `domain = [lo, hi]` with `lo < hi`. The colours are evenly spaced stops
@@ -127,6 +128,8 @@ it and must agree with it on every case in `tests/fixtures/section_overlay/`.
   not, is refused (`TOO_LARGE`), and nothing is drawn. The count is checked before any
   primitive is read. An overlay is never truncated.
 - **Staleness** belongs to the client (ADR 0041 decision 2), which knows the live revision.
+  The client marks stale any overlay whose `revision` differs from the live one, ahead of it
+  included: it was stamped for a document this client has not seen (review of PR #54).
   The render tool does not judge it. It draws the overlay as given and returns
   `overlay_revision` next to the envelope's `revision`, so the caller can compare them.
 

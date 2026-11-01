@@ -67,9 +67,12 @@ the same `code` and `path` as `apeCAD.render.overlay.parse_overlay`.
   is the live document revision; `scale` is the scale's kind or `null`.
 - **Revision.** When a transport response carries an integer `revision` (the mock transport
   does), the client takes it. The stateless Python transport sends none, so the client counts
-  its own edits: each successful `apply`, `undo`, `redo`, `load` and `seed` adds 1. A host
-  stamps an overlay with `getOverlayState().revision` read when it took the draft.
-- **Stale.** When `revision > overlay_revision`, the client paints the overlay at
+  its own edits: each successful `apply`, `undo`, `redo`, `load` and `seed` adds 1. An op
+  list refused partway first shows the ops applied before the refusal, and counts them. A
+  host stamps an overlay with `getOverlayState().revision` read when it took the draft.
+  The counter restarts at 0 with each editor, so it identifies a revision only within one
+  editor session; a document identity that survives sessions is an open owner question.
+- **Stale.** When `revision !== overlay_revision` (behind or ahead), the client paints the overlay at
   `STALE_ALPHA` (0.35) of its opacity, dims its legends and shows a `stale` badge. It never
   hides it and never recomputes it. An undo is an edit, so it does not make an overlay current.
 - **Draw order.** Section, then the overlay, then the selection, stroked again on top. The
@@ -80,9 +83,9 @@ the same `code` and `path` as `apeCAD.render.overlay.parse_overlay`.
   values (numeric scales) or a swatch per category.
 - **Text and colour.** Every overlay string reaches the page through `textContent` and the
   canvas through `fillText`, never as markup. Colours are validated by the reader. A token
-  resolves from the live theme (the host page's CSS custom property, when it is a hex colour)
-  and otherwise to its light value, `canvas2d.js::OVERLAY_TOKENS`, which equals
-  `apeCAD.render.overlay.COLOR_TOKENS`.
+  resolves to its light value, `canvas2d.js::OVERLAY_TOKENS` (equal to
+  `apeCAD.render.overlay.COLOR_TOKENS`), whatever the host theme: the client canvas is
+  light-only (`PALETTE.bg`), so a dark host's `--text` would not show on it.
 - **Example scales.** `canvas2d.js::OVERLAY_EXAMPLE_SCALES` (`stress` diverging, `strain`
   sequential, `bar_state` categorical) pass the ADR 0038 gates on the client canvas
   (`tests/js/section-overlay.test.mjs`): the marking colours (every category, and both ends
