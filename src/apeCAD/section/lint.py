@@ -5,6 +5,12 @@
 `LINT_CODES`, then by the entity ids involved. They feed the `warnings[]` of the
 section-draft (ADR 0025): advisory, and no consumer gates on them. apeConcrete's reader is
 the gate for what it refuses (a face without a leg, an inclined leg).
+
+`lint_section_v2(entities)` is the lint of a v2 draft (ADR 0039 decision 7, Errata 2 and 8.3):
+the seven v1 codes that keep their meaning, read on many faces with holes and circles, then
+the v2 codes, in `LINT_CODES_V2` order. Its region tests are exact for points; overlap and
+cover are probed next to every boundary edge (`apeCAD.section.regions`), so a found overlap
+is real and a sliver thinner than the probe offset can be missed.
 """
 
 from __future__ import annotations
@@ -15,6 +21,7 @@ from dataclasses import dataclass
 
 from apeCAD.entities import (
     Bar,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
@@ -25,6 +32,18 @@ from apeCAD.entities import (
     WallLeg,
 )
 from apeCAD.section.geometry import Point2
+from apeCAD.section.regions import (
+    Region,
+    boundary_probes,
+    circle_in_region,
+    curve_strictly_inside,
+    distance,
+    edge_distance,
+    locate,
+    regions_of,
+    segment_in_region,
+    segment_inside,
+)
 
 LINT_CODES = (
     "bar-overlap",
@@ -37,6 +56,26 @@ LINT_CODES = (
     "tie-mismatch-in-core",
     "more-than-one-solid-face",
 )
+
+LINT_CODES_V2 = (
+    "bar-overlap",
+    "bar-outside-concrete",
+    "hoop-bar-not-in-face",
+    "crosstie-crosses-outside",
+    "face-without-cover-guide",
+    "inclined-wall-leg",
+    "tie-mismatch-in-core",
+    "same-role-overlap",
+    "hole-outside-face",
+    "void-outside-solid",
+    "bar-in-void",
+    "bar-in-steel",
+    "circular-tie-outside-face",
+    "steel-shape-unresolved",
+)
+"""A v2 draft's codes, in order (specs/section-draft-v2.md "Lint codes"). The two v1-only codes
+are absent (Errata 2); `steel-shape-unresolved` is reserved and never emitted (Errata 8.1)."""
+RESERVED_LINT_CODES_V2 = ("steel-shape-unresolved",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,7 +132,7 @@ def _bar_overlap(view: _View) -> list[LintWarning]:
     out: list[LintWarning] = []
     for k, a in enumerate(view.bars):
         for b in view.bars[k + 1 :]:
-            gap = _distance(view.bar_xy[a.entity_id], view.bar_xy[b.entity_id])
+            gap = distance(view.bar_xy[a.entity_id], view.bar_xy[b.entity_id])
             if gap < (a.diameter_mm + b.diameter_mm) / 2.0:
                 out.append(
                     LintWarning(
@@ -112,7 +151,7 @@ def _bar_outside_concrete(view: _View) -> list[LintWarning]:
         p = view.bar_xy[bar.entity_id]
         radius = bar.diameter_mm / 2.0
         inside = any(
-            _locate(p, ring) > 0 and _edge_distance(p, ring) >= radius
+            locate(p, ring) > 0 and edge_distance(p, ring) >= radius
             for ring in view.rings.values()
         )
         if not inside:
@@ -133,7 +172,7 @@ def _hoop_bar_not_in_face(view: _View) -> list[LintWarning]:
         members = [i for i in hoop.bar_ids if i in view.bar_xy]
         best: list[EntityId] = members
         for ring in view.rings.values():
-            outside = [i for i in members if _locate(view.bar_xy[i], ring) < 0]
+            outside = [i for i in members if locate(view.bar_xy[i], ring) < 0]
             if len(outside) < len(best):
                 best = outside
         if best:
@@ -155,7 +194,7 @@ def _crosstie_crosses_outside(view: _View) -> list[LintWarning]:
         b = view.bar_xy.get(tie.bar_b_id)
         if a is None or b is None:
             continue
-        if not any(_segment_inside(a, b, ring) for ring in view.rings.values()):
+        if not any(segment_inside(a, b, ring) for ring in view.rings.values()):
             out.append(
                 LintWarning(
                     "crosstie-crosses-outside",
@@ -209,7 +248,7 @@ def _tie_mismatch_in_core(view: _View) -> list[LintWarning]:
         for tie in view.ties:
             a = view.bar_xy.get(tie.bar_a_id)
             b = view.bar_xy.get(tie.bar_b_id)
-            if a is None or b is None or _locate(a, core) < 0 or _locate(b, core) < 0:
+            if a is None or b is None or locate(a, core) < 0 or locate(b, core) < 0:
                 continue
             if tie.designation != hoop.designation or tie.spacing_mm != hoop.spacing_mm:
                 out.append(
@@ -237,81 +276,204 @@ def _more_than_one_solid_face(view: _View) -> list[LintWarning]:
     ]
 
 
-def _cross(o: Point2, a: Point2, b: Point2) -> float:
-    return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+def _fmt(p: Point2) -> str:
+    return f"({p[0]:g}, {p[1]:g})"
 
 
-def _distance(a: Point2, b: Point2) -> float:
-    return math.hypot(a[0] - b[0], a[1] - b[1])
+# --- v2 (ADR 0039 decision 7) ---------------------------------------------------------------
 
 
-def _on_segment(p: Point2, a: Point2, b: Point2) -> bool:
+def lint_section_v2(entities: Mapping[EntityId, Entity]) -> tuple[LintWarning, ...]:
+    """Every v2 section warning, in `LINT_CODES_V2` order; empty for a clean section."""
+    view = _View(entities)
+    regions = regions_of(entities, view.xy)
+    concrete = [r for r in regions if r.role == "concrete"]
+    located = {b.entity_id: _bar_location(view.bar_xy[b.entity_id], regions) for b in view.bars}
     return (
-        _cross(a, b, p) == 0.0
-        and min(a[0], b[0]) <= p[0] <= max(a[0], b[0])
-        and min(a[1], b[1]) <= p[1] <= max(a[1], b[1])
+        *_bar_overlap(view),
+        *_bar_outside_concrete_v2(view, regions, located),
+        *_hoop_bar_not_in_face_v2(view, concrete),
+        *_crosstie_crosses_outside_v2(view, concrete),
+        *_face_without_cover_guide_v2(view, concrete),
+        *_inclined_wall_leg(view),
+        *_tie_mismatch_in_core(view),
+        *_same_role_overlap(regions),
+        *_hole_outside_face(regions),
+        *_void_outside_solid(regions),
+        *_bar_in(view, located, "void"),
+        *_bar_in(view, located, "steel"),
+        *_circular_tie_outside_face(entities, view.xy, concrete),
     )
 
 
-def _locate(p: Point2, ring: Sequence[Point2]) -> int:
-    """1 inside, 0 on the boundary, -1 outside (even-odd rule)."""
-    n = len(ring)
-    if n < 3:
-        return -1
-    inside = False
-    for i in range(n):
-        a, b = ring[i], ring[(i + 1) % n]
-        if _on_segment(p, a, b):
-            return 0
-        if (a[1] > p[1]) != (b[1] > p[1]):
-            x = a[0] + (p[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])
-            if x > p[0]:
-                inside = not inside
-    return 1 if inside else -1
+def _bar_location(p: Point2, regions: Sequence[Region]) -> str | None:
+    """Where the precedence puts a bar centre: "void" > "steel" > None (concrete or nothing)."""
+    for role in ("void", "steel"):
+        if any(r.role == role and r.contains(p) for r in regions):
+            return role
+    return None
 
 
-def _edge_distance(p: Point2, ring: Sequence[Point2]) -> float:
-    """Shortest distance from p to the ring's edges."""
-    best = math.inf
-    n = len(ring)
-    for i in range(n):
-        a, b = ring[i], ring[(i + 1) % n]
-        dx, dy = b[0] - a[0], b[1] - a[1]
-        length2 = dx * dx + dy * dy
-        t = 0.0 if length2 == 0.0 else ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2
-        t = min(1.0, max(0.0, t))
-        best = min(best, _distance(p, (a[0] + t * dx, a[1] + t * dy)))
-    return best
+def _bar_outside_concrete_v2(
+    view: _View, regions: Sequence[Region], located: Mapping[EntityId, str | None]
+) -> list[LintWarning]:
+    """v1's test on the concrete regions, for a bar not already in a void or steel face; the
+    bar's disc must also stay clear of every void and steel face (precedence, Errata 8.3)."""
+    out: list[LintWarning] = []
+    for bar in view.bars:
+        if located[bar.entity_id] is not None:
+            continue
+        p, radius = view.bar_xy[bar.entity_id], bar.diameter_mm / 2.0
+        inside = any(
+            r.role == "concrete" and r.contains(p) and r.clearance(p) >= radius for r in regions
+        ) and all(r.clearance(p) >= radius for r in regions if r.role != "concrete")
+        if not inside:
+            out.append(
+                LintWarning(
+                    "bar-outside-concrete",
+                    (bar.entity_id,),
+                    f"bar {bar.entity_id} ({bar.designation} at {_fmt(p)}) is not wholly "
+                    "inside a concrete face",
+                )
+            )
+    return out
 
 
-def _segment_inside(a: Point2, b: Point2, ring: Sequence[Point2]) -> bool:
-    """Segment ab stays inside the ring or on its boundary.
-
-    Cut ab where it meets an edge or passes a vertex; it is inside when both ends and the
-    midpoint of every piece between cuts are inside or on the boundary. The cut points
-    themselves are not probed: they lie on an edge, where rounding may put them outside.
-    """
-    cuts = {0.0, 1.0}
-    n = len(ring)
-    rx, ry = b[0] - a[0], b[1] - a[1]
-    for i in range(n):
-        c, d = ring[i], ring[(i + 1) % n]
-        sx, sy = d[0] - c[0], d[1] - c[1]
-        denominator = rx * sy - ry * sx
-        if denominator != 0.0:
-            t = ((c[0] - a[0]) * sy - (c[1] - a[1]) * sx) / denominator
-            u = ((c[0] - a[0]) * ry - (c[1] - a[1]) * rx) / denominator
-            if 0.0 <= t <= 1.0 and 0.0 <= u <= 1.0:
-                cuts.add(t)
-        length2 = rx * rx + ry * ry
-        if length2 > 0.0:
-            t = ((c[0] - a[0]) * rx + (c[1] - a[1]) * ry) / length2
-            if 0.0 <= t <= 1.0:
-                cuts.add(t)  # a vertex the segment may graze
-    ordered = sorted(cuts)
-    probes = [0.0, 1.0, *((s + e) / 2.0 for s, e in zip(ordered, ordered[1:], strict=False))]
-    return all(_locate((a[0] + t * rx, a[1] + t * ry), ring) >= 0 for t in probes)
+def _hoop_bar_not_in_face_v2(view: _View, concrete: Sequence[Region]) -> list[LintWarning]:
+    out: list[LintWarning] = []
+    for hoop in view.hoops:
+        members = [i for i in hoop.bar_ids if i in view.bar_xy]
+        best: list[EntityId] = members
+        for region in concrete:
+            outside = [i for i in members if not region.covers(view.bar_xy[i])]
+            if len(outside) < len(best):
+                best = outside
+        if best:
+            out.append(
+                LintWarning(
+                    "hoop-bar-not-in-face",
+                    (hoop.entity_id, *best),
+                    f"hoop {hoop.entity_id} has bars {list(best)} outside the concrete face "
+                    "that holds the rest; a hoop lies in one face",
+                )
+            )
+    return out
 
 
-def _fmt(p: Point2) -> str:
-    return f"({p[0]:g}, {p[1]:g})"
+def _crosstie_crosses_outside_v2(view: _View, concrete: Sequence[Region]) -> list[LintWarning]:
+    out: list[LintWarning] = []
+    for tie in view.ties:
+        a = view.bar_xy.get(tie.bar_a_id)
+        b = view.bar_xy.get(tie.bar_b_id)
+        if a is None or b is None:
+            continue
+        if not any(segment_in_region(a, b, region) for region in concrete):
+            out.append(
+                LintWarning(
+                    "crosstie-crosses-outside",
+                    (tie.entity_id, tie.bar_a_id, tie.bar_b_id),
+                    f"crosstie {tie.entity_id} from bar {tie.bar_a_id} to bar {tie.bar_b_id} "
+                    "leaves the concrete",
+                )
+            )
+    return out
+
+
+def _face_without_cover_guide_v2(view: _View, concrete: Sequence[Region]) -> list[LintWarning]:
+    """Concrete faces only: a steel or void face never raises it (Errata 8.3)."""
+    owners = {guide.face_id for guide in view.guides}
+    return [
+        LintWarning(
+            "face-without-cover-guide",
+            (r.face_id,),
+            f"concrete face {r.face_id} has no cover guide",
+        )
+        for r in concrete
+        if r.face_id not in owners
+    ]
+
+
+def _same_role_overlap(regions: Sequence[Region]) -> list[LintWarning]:
+    out: list[LintWarning] = []
+    for k, a in enumerate(regions):
+        for b in regions[k + 1 :]:
+            if a.role != b.role:
+                continue
+            if any(a.contains(q) and b.contains(q) for q in boundary_probes((a, b))):
+                out.append(
+                    LintWarning(
+                        "same-role-overlap",
+                        (a.face_id, b.face_id),
+                        f"{a.role} faces {a.face_id} and {b.face_id} overlap; the consumer "
+                        "decides whether to merge them or refuse",
+                    )
+                )
+    return out
+
+
+def _hole_outside_face(regions: Sequence[Region]) -> list[LintWarning]:
+    """A hole is named `(face_id, hole_index)`: the face's id in `ids`, the index in the text."""
+    return [
+        LintWarning(
+            "hole-outside-face",
+            (r.face_id,),
+            f"hole_index {k} of face {r.face_id} is not strictly inside the face's boundary",
+        )
+        for r in regions
+        for k, hole in enumerate(r.holes)
+        if not curve_strictly_inside(hole, r.boundary)
+    ]
+
+
+def _void_outside_solid(regions: Sequence[Region]) -> list[LintWarning]:
+    solids = [r for r in regions if r.role != "void"]
+    out: list[LintWarning] = []
+    for void in (r for r in regions if r.role == "void"):
+        probes = boundary_probes((void, *solids))
+        if any(void.contains(q) and not any(s.covers(q) for s in solids) for q in probes):
+            out.append(
+                LintWarning(
+                    "void-outside-solid",
+                    (void.face_id,),
+                    f"void face {void.face_id} is not covered by a concrete or steel face",
+                )
+            )
+    return out
+
+
+def _bar_in(view: _View, located: Mapping[EntityId, str | None], role: str) -> list[LintWarning]:
+    return [
+        LintWarning(
+            f"bar-in-{role}",
+            (bar.entity_id,),
+            f"bar {bar.entity_id} ({bar.designation} at {_fmt(view.bar_xy[bar.entity_id])}) "
+            f"lies where a {role} face wins",
+        )
+        for bar in view.bars
+        if located[bar.entity_id] == role
+    ]
+
+
+def _circular_tie_outside_face(
+    entities: Mapping[EntityId, Entity],
+    xy: Mapping[EntityId, Point2],
+    concrete: Sequence[Region],
+) -> list[LintWarning]:
+    out: list[LintWarning] = []
+    for e in (entities[i] for i in sorted(entities)):
+        if not isinstance(e, CircularTie) or e.center_id not in xy:
+            continue
+        center = xy[e.center_id]
+        if not any(circle_in_region(center, e.centerline_radius_mm, r) for r in concrete):
+            out.append(
+                LintWarning(
+                    "circular-tie-outside-face",
+                    (e.entity_id,),
+                    f"circular tie {e.entity_id} ({e.kind}, centreline radius "
+                    f"{e.centerline_radius_mm:g} mm at {_fmt(center)}) is not inside a "
+                    "concrete face",
+                )
+            )
+    return out
+
+

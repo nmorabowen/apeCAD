@@ -1,10 +1,14 @@
-"""The `apeCAD.section-draft` v1 and `apeCAD.section-seed` v1 of a `Document` (ADR 0025, C4/C10).
+"""The `apeCAD.section-draft` and `apeCAD.section-seed`, v1 and v2, of a `Document`.
 
 `section_block(document)` is the derived `section` block; `section_draft(document)` is the
 whole draft a consumer stores (apeConcrete reads `section`, apeCAD replays `document`);
 `document_from_draft(draft)` reopens it under rule P9: numbers warn, structure refuses.
 `section_seed(document)` and `document_from_section_seed(seed)` convert between a `Document`
-and the id-free `apeCAD.section-seed` v1 that apeConcrete emits (stage C10).
+and the id-free `apeCAD.section-seed` that apeConcrete emits (stage C10).
+
+Each writer takes `version=1` (the default, ADR 0025) or `version=2` (ADR 0039,
+specs/section-draft-v2.md); version 1 refuses by name what it cannot say. Each reader reads
+either version.
 
 This module sits above `document.py` because it needs the ops log and `Document.from_dict`.
 `apeCAD.section` (pure geometry, below the handlers) holds the projection itself and may not
@@ -44,6 +48,18 @@ from apeCAD.section.draft import (
     require_header,
     require_seed_header,
 )
+from apeCAD.section.draft_v2 import (
+    DRAFT_SCHEMA_VERSION_V2,
+    SEED_SCHEMA_VERSION_V2,
+    compare_sections_v2,
+    project_section_v2,
+    project_seed_section_v2,
+    require_draft_version,
+    require_header_v2,
+    require_seed_header_v2,
+    require_v1_expressible,
+)
+from apeCAD.section.lint import lint_section_v2
 
 Json = dict[str, object]
 
@@ -55,21 +71,41 @@ def _entities(document: Document) -> Mapping[EntityId, Entity]:
     return {entity_id: document.entity(entity_id) for entity_id in document.entity_ids()}
 
 
-def section_block(document: Document) -> Json:
-    """The draft's `section` block: a pure function of the document (ADR 0025 decision 2)."""
-    return project_section(_entities(document))
+def section_block(document: Document, *, version: object = 1) -> Json:
+    """The draft's `section` block: a pure function of the document (ADR 0025 decision 2).
 
-
-def section_draft(document: Document, *, commit: str | None | Literal["auto"] = "auto") -> Json:
-    """The whole `apeCAD.section-draft` v1 (specs/section-draft.md).
-
-    `commit="auto"` takes `APECAD_COMMIT`, else the sha of the git checkout this package
-    runs from, else null. Pass `None` for output that must not depend on the checkout
-    (the committed fixtures do).
+    Version 1 refuses, by name, a document holding what v1 cannot say (ADR 0039 decision 1).
     """
+    entities = _entities(document)
+    if require_draft_version(version) == DRAFT_SCHEMA_VERSION_V2:
+        return project_section_v2(entities)
+    require_v1_expressible(entities, DRAFT_SCHEMA)
+    return project_section(entities)
+
+
+def section_draft(
+    document: Document,
+    *,
+    version: object = 1,
+    commit: str | None | Literal["auto"] = "auto",
+) -> Json:
+    """The whole `apeCAD.section-draft`, v1 (specs/section-draft.md) or v2 (section-draft-v2.md).
+
+    `version` is 1 (the default) or 2; anything else is refused by name. `commit="auto"`
+    takes `APECAD_COMMIT`, else the sha of the git checkout this package runs from, else
+    null. Pass `None` for output that must not depend on the checkout (the committed
+    fixtures do). v1's `warnings[]` is `Document.section_lint()`; v2's is the v2 lint, which
+    drops the two v1-only codes (ADR 0039 Errata 2).
+    """
+    chosen = require_draft_version(version)
+    section = section_block(document, version=chosen)
+    if chosen == DRAFT_SCHEMA_VERSION_V2:
+        warnings = lint_section_v2(_entities(document))
+    else:
+        warnings = document.section_lint()
     return {
         "schema": DRAFT_SCHEMA,
-        "version": DRAFT_SCHEMA_VERSION,
+        "version": DRAFT_SCHEMA_VERSION if chosen == 1 else DRAFT_SCHEMA_VERSION_V2,
         "units": DRAFT_UNITS,
         "frame": dict(DRAFT_FRAME),
         "producer": {
@@ -77,13 +113,13 @@ def section_draft(document: Document, *, commit: str | None | Literal["auto"] = 
             "apeCAD_commit": producer_commit() if commit == "auto" else commit,
         },
         "document": document.to_dict(),
-        "section": section_block(document),
-        "warnings": [warning.to_dict() for warning in document.section_lint()],
+        "section": section,
+        "warnings": [warning.to_dict() for warning in warnings],
     }
 
 
 def document_from_draft(draft: Mapping[str, object]) -> tuple[Document, list[Json]]:
-    """Reopen a draft by replaying its `document` (ADR 0025 decision 3, P9).
+    """Reopen a v1 or v2 draft by replaying its `document` (ADR 0025 decision 3, P9).
 
     Returns the document and the reopen warnings, `{code, ids, message}`, one per stored
     item whose numbers differ from the replay beyond rel 1e-9. Raises `DocumentError` for
@@ -91,7 +127,12 @@ def document_from_draft(draft: Mapping[str, object]) -> tuple[Document, list[Jso
     difference between the stored `section` and the recomputed one. The stored
     `warnings[]` are advisory and not compared; `Document.section_lint()` recomputes them.
     """
-    require_header(draft)
+    version = draft.get("version")
+    v2 = draft.get("schema") == DRAFT_SCHEMA and type(version) is int and version == 2
+    if v2:
+        require_header_v2(draft)
+    else:
+        require_header(draft)
     raw = draft.get("document")
     if not isinstance(raw, dict):
         raise DocumentError("a section-draft needs a document object (the ops log)")
@@ -102,30 +143,49 @@ def document_from_draft(draft: Mapping[str, object]) -> tuple[Document, list[Jso
         raise DocumentError(f"the draft's document does not replay: {exc}") from exc
     if "section" not in draft:
         raise DocumentError("a section-draft needs its section block")
+    if v2:
+        fresh = section_block(document, version=DRAFT_SCHEMA_VERSION_V2)
+        return document, compare_sections_v2(draft["section"], fresh)
     warnings = compare_sections(draft["section"], section_block(document))
     return document, warnings
 
 
-def section_seed(document: Document) -> Json:
-    """The `apeCAD.section-seed` v1 of `document`: 0-based list indices in place of entity ids."""
+def section_seed(document: Document, *, version: object = 1) -> Json:
+    """The `apeCAD.section-seed` v1 or v2 of `document`: 0-based indices in place of ids.
+
+    Version 1 refuses, by name, what it cannot say, as `section_draft` does.
+    """
+    entities = _entities(document)
+    if require_draft_version(version) == DRAFT_SCHEMA_VERSION_V2:
+        number, block = SEED_SCHEMA_VERSION_V2, project_seed_section_v2(entities)
+    else:
+        require_v1_expressible(entities, SEED_SCHEMA)
+        number, block = SEED_SCHEMA_VERSION, project_seed_section(entities)
     return {
         "schema": SEED_SCHEMA,
-        "version": SEED_SCHEMA_VERSION,
+        "version": number,
         "units": DRAFT_UNITS,
         "frame": dict(DRAFT_FRAME),
-        "section": project_seed_section(_entities(document)),
+        "section": block,
     }
 
 
-def document_from_section_seed(seed: Mapping[str, object]) -> Document:
-    """Turn an `apeCAD.section-seed` v1 into a `Document` by emitting section-mode ops (C10)."""
-    require_seed_header(seed)
+def seed_block(seed: Mapping[str, object], lists: Sequence[str]) -> Json:
+    """A seed's `section` object, or the seed itself when it carries the lists at top level."""
     if "section" in seed:
-        block = _seed_obj(seed.get("section"), "section")
-    elif any(k in seed for k in SECTION_LISTS):
-        block = dict(seed)
-    else:
-        raise DocumentError("a section-seed needs a section block or top-level section lists")
+        return _seed_obj(seed.get("section"), "section")
+    if any(k in seed for k in lists):
+        return dict(seed)
+    raise DocumentError("a section-seed needs a section block or top-level section lists")
+
+
+def document_from_section_seed(seed: Mapping[str, object]) -> Document:
+    """Turn an `apeCAD.section-seed` v1 or v2 into a `Document` by emitting section-mode ops."""
+    version = seed.get("version")
+    if seed.get("schema") == SEED_SCHEMA and type(version) is int and version == 2:
+        return _document_from_seed_v2(seed)
+    require_seed_header(seed)
+    block = seed_block(seed, SECTION_LISTS)
     doc = Document()
     face_ids: list[EntityId] = []
     raw_faces = _seed_list(block.get("concrete_faces", []), "section.concrete_faces")
@@ -144,7 +204,13 @@ def document_from_section_seed(seed: Mapping[str, object]) -> Document:
         ]
         face = doc.add_section_outline(pts, material=material, label=label)
         face_ids.append(face.entity_id)
+    seed_parts(doc, block, face_ids, v2=False)
+    return doc
 
+
+def seed_parts(doc: Document, block: Json, face_ids: Sequence[EntityId], *, v2: bool) -> None:
+    """Everything after the faces: cover guides, legs, bars, hoops and crossties, plus, in v2,
+    the bars' `material`. Indices resolve against `face_ids` and the bars placed here."""
     for idx, raw in enumerate(_seed_list(block.get("cover_guides", []), "section.cover_guides")):
         where = f"section.cover_guides[{idx}]"
         item = _seed_obj(raw, where)
@@ -191,7 +257,8 @@ def document_from_section_seed(seed: Mapping[str, object]) -> Document:
         designation = _seed_str(item.get("designation"), f"{where}.designation")
         _check_seed_diameter(item, designation, where)
         label = _seed_opt_str(item.get("label"), f"{where}.label")
-        bar = doc.add_bar(x_mm, y_mm, designation, label=label)
+        material = _seed_opt_str(item.get("material"), f"{where}.material") if v2 else None
+        bar = doc.add_bar(x_mm, y_mm, designation, label=label, material=material)
         bar_ids.append(bar.entity_id)
 
     for idx, raw in enumerate(_seed_list(block.get("hoops", []), "section.hoops")):
@@ -220,7 +287,129 @@ def document_from_section_seed(seed: Mapping[str, object]) -> Document:
         label = _seed_opt_str(item.get("label"), f"{where}.label")
         doc.add_crosstie(bar_a, bar_b, designation, spacing_mm, hooks=hooks, label=label)
 
+
+_SEED_V2_LISTS = (
+    "faces",
+    "wall_legs",
+    "bars",
+    "hoops",
+    "crossties",
+    "circular_ties",
+    "cover_guides",
+)
+_SEED_V2_ABSENT = ("concrete_faces", "templates", "materials_used")
+"""Keys a seed v2 never carries: v1's face list, and what a seed derives or omits (Errata 5)."""
+
+
+def _document_from_seed_v2(seed: Mapping[str, object]) -> Document:
+    """An `apeCAD.section-seed` v2 (specs/section-draft-v2.md "Seed") as section-mode ops.
+
+    A concrete ring face with no holes replays as a v1 `ConcreteFace` (the same v2 item,
+    Errata 3); every other face as a v2 face, with its holes in order. A steel face with a
+    `shape` needs its ring, and a concrete or steel face its material (Errata 8.1, 8.4).
+    """
+    require_seed_header_v2(seed)
+    block = seed_block(seed, _SEED_V2_LISTS)
+    for key in _SEED_V2_ABSENT:
+        if key in block:
+            raise DocumentError(f"section.{key} is not part of an apeCAD.section-seed v2")
+    for name in _SEED_V2_LISTS:
+        for idx, raw in enumerate(_seed_list(block.get(name, []), f"section.{name}")):
+            if isinstance(raw, dict) and "template_id" in raw:
+                raise DocumentError(
+                    f"section.{name}[{idx}].template_id is not part of an apeCAD.section-seed v2"
+                )
+    doc = Document()
+    face_ids: list[EntityId] = []
+    for idx, raw in enumerate(_seed_list(block.get("faces", []), "section.faces")):
+        face_ids.append(_seed_face_v2(doc, _seed_obj(raw, f"section.faces[{idx}]"), idx))
+    seed_parts(doc, block, face_ids, v2=True)
+    for idx, raw in enumerate(_seed_list(block.get("circular_ties", []), "section.circular_ties")):
+        where = f"section.circular_ties[{idx}]"
+        item = _seed_obj(raw, where)
+        designation = _seed_str(item.get("designation"), f"{where}.designation")
+        _check_seed_diameter(item, designation, where)
+        cx, cy = _seed_xy(item.get("center_mm"), f"{where}.center_mm")
+        doc.add_circular_tie(
+            _seed_str(item.get("kind"), f"{where}.kind"),
+            PointAt(XYZ(cx, cy, 0.0)),
+            _seed_num(item.get("centerline_radius_mm"), f"{where}.centerline_radius_mm"),
+            designation,
+            _seed_num(item.get("pitch_mm"), f"{where}.pitch_mm"),
+            label=_seed_opt_str(item.get("label"), f"{where}.label"),
+        )
     return doc
+
+
+def _seed_face_v2(doc: Document, item: Json, idx: int) -> EntityId:
+    where = f"section.faces[{idx}]"
+    role = item.get("role")
+    if role not in ("concrete", "steel", "void"):
+        raise DocumentError(f"{where}.role must be 'concrete', 'steel' or 'void', got {role!r}")
+    material = _seed_opt_str(item.get("material"), f"{where}.material")
+    if role != "void" and material is None:
+        raise DocumentError(f"{where} is a {role} face and needs a material name, not null")
+    label = _seed_opt_str(item.get("label"), f"{where}.label")
+    if item.get("boundary") is None:
+        raise DocumentError(f"{where}.boundary is null; every face needs a ring or a circle")
+    ring, circle = _seed_boundary(item.get("boundary"), f"{where}.boundary")
+    holes = [
+        _seed_boundary(hole, f"{where}.holes[{k}]")
+        for k, hole in enumerate(_seed_list(item.get("holes", []), f"{where}.holes"))
+    ]
+    raw_shape = item.get("shape")
+    if raw_shape is not None:
+        if role != "steel" or ring is None:
+            raise DocumentError(
+                f"{where}.shape needs a steel face with a ring; the host resolves the "
+                "designation's outline before it seeds (Errata 8.1)"
+            )
+        shape = _seed_obj(raw_shape, f"{where}.shape")
+        face_id = doc.add_steel_shape(
+            ring,
+            cast(str, material),
+            _seed_str(shape.get("catalog"), f"{where}.shape.catalog"),
+            _seed_str(shape.get("designation"), f"{where}.shape.designation"),
+            _seed_xy(shape.get("anchor_mm"), f"{where}.shape.anchor_mm"),
+            rotation_deg=_seed_num(shape.get("rotation_deg"), f"{where}.shape.rotation_deg"),
+            label=label,
+        ).entity_id
+    elif role == "concrete" and ring is not None and not holes:
+        outline = doc.add_section_outline(ring, material=cast(str, material), label=label)
+        face_id = outline.entity_id
+    elif ring is not None:
+        face_id = doc.add_section_face(role, material, point_ids=ring, label=label).entity_id
+    else:
+        center, radius = cast(tuple[PointAt, float], circle)
+        face_id = doc.add_section_face(
+            role, material, center_id=center, radius_mm=radius, label=label
+        ).entity_id
+    for hole_ring, hole_circle in holes:
+        if hole_ring is not None:
+            doc.add_face_hole(face_id, point_ids=hole_ring)
+        else:
+            center, radius = cast(tuple[PointAt, float], hole_circle)
+            doc.add_face_hole(face_id, center_id=center, radius_mm=radius)
+    return face_id
+
+
+def _seed_boundary(
+    value: object, where: str
+) -> tuple[list[PointAt] | None, tuple[PointAt, float] | None]:
+    """A `<boundary>`: `(ring, None)` for a ring, `(None, (centre, radius))` for a circle."""
+    item = _seed_obj(value, where)
+    kind = item.get("kind")
+    if kind == "ring":
+        raw = _seed_list(item.get("ring_mm"), f"{where}.ring_mm")
+        ring = [
+            PointAt(XYZ(*_seed_xy(pt, f"{where}.ring_mm[{k}]"), 0.0)) for k, pt in enumerate(raw)
+        ]
+        return ring, None
+    if kind == "circle":
+        cx, cy = _seed_xy(item.get("center_mm"), f"{where}.center_mm")
+        radius = _seed_num(item.get("radius_mm"), f"{where}.radius_mm")
+        return None, (PointAt(XYZ(cx, cy, 0.0)), radius)
+    raise DocumentError(f"{where}.kind must be 'ring' or 'circle', got {kind!r}")
 
 
 def _check_seed_diameter(item: Json, designation: str, where: str) -> None:
