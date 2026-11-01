@@ -215,7 +215,13 @@ export function create(container, opts = {}) {
     const list = Array.isArray(opOrOps) ? opOrOps : [opOrOps];
     let lastOk = null;
     for (const op of list) {
-      const res = await transport({ action: "apply", op });
+      let res;
+      try {
+        res = await transport({ action: "apply", op });
+      } catch (err) {
+        if (lastOk) syncResponse(lastOk, true); // the ops that landed still show, then it throws
+        throw err;
+      }
       if (!res || !res.ok) {
         // The ops before the refused one are applied: show them (and move the revision) first.
         if (lastOk) syncResponse(lastOk, true);

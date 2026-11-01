@@ -340,6 +340,61 @@ test("an undo after an overlay set on a later edit leaves it stale", async () =>
   editor.dispose();
 });
 
+// --- C2-S3 (apeSection#47): the edit counter, and a transport that throws -----------------
+
+// The mock without its `revision`, as the stateless Python transport answers: the client
+// must count its own edits.
+function revisionless(inner) {
+  return async (request) => {
+    const res = await inner(request);
+    if (res && typeof res === "object") delete res.revision;
+    return res;
+  };
+}
+
+test("over a transport with no revision, an undo is counted and stales the overlay", async () => {
+  const editor = create({}, { transport: revisionless(mockTransport()) });
+  await editor.loadDraft(SQUARE);
+  await editor.applyOp({ op: "AddBar", x_mm: 60, y_mm: 60, designation: "Ø16" });
+  const at = editor.getOverlayState().revision;
+  editor.setOverlay(one({ kind: "point", at: [0, 0], style: { fill: "#000" } }, null, at));
+  assert.equal(editor.getOverlayState().stale, false);
+  await editor.undo();
+  assert.equal(editor.getOverlayState().revision, at + 1);
+  assert.equal(editor.getOverlayState().stale, true);
+  editor.dispose();
+});
+
+test("a transport that throws partway still shows the ops that landed, then throws", async () => {
+  let applies = 0;
+  const inner = mockTransport();
+  const flaky = async (request) => {
+    if (request.action === "apply" && ++applies === 2) throw new Error("network down");
+    return inner(request);
+  };
+  for (const transport of [flaky, revisionless(flaky)]) {
+    applies = 0;
+    const changes = [];
+    const editor = create({}, { transport, onChange: (d) => changes.push(d) });
+    await editor.loadDraft(SQUARE);
+    editor.setOverlay(one({ kind: "point", at: [0, 0], style: { fill: "#000" } }, null, editor.getOverlayState().revision));
+    const before = editor.getOverlayState().revision;
+    await assert.rejects(
+      editor.applyOp([
+        { op: "AddBar", x_mm: 60, y_mm: 60, designation: "Ø16" },
+        { op: "AddBar", x_mm: 120, y_mm: 60, designation: "Ø16" },
+      ]),
+      /network down/,
+    );
+    assert.equal(editor.getScene().bars.length, 1, "the bar that landed shows");
+    assert.equal(editor.getDraft().bars.length, 1);
+    assert.equal(changes.length, 1, "onChange fires for the ops that landed");
+    assert.ok(editor.getOverlayState().revision > before);
+    assert.equal(editor.getOverlayState().stale, true);
+    editor.dispose();
+  }
+});
+
 // --- ADR 0038: the example scales pass the contrast and CVD gates -------------------------
 
 const MODES = ["normal", "protan", "deutan"];
