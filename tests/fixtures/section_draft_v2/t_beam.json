@@ -1,0 +1,319 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 2,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddSectionFace",
+        "role": "concrete",
+        "material": "C30",
+        "point_ids": [
+          {
+            "xyz": [
+              -150.0,
+              0.0,
+              0.0
+            ],
+            "id": 1
+          },
+          {
+            "xyz": [
+              150.0,
+              0.0,
+              0.0
+            ],
+            "id": 2
+          },
+          {
+            "xyz": [
+              150.0,
+              450.0,
+              0.0
+            ],
+            "id": 3
+          },
+          {
+            "xyz": [
+              400.0,
+              450.0,
+              0.0
+            ],
+            "id": 4
+          },
+          {
+            "xyz": [
+              400.0,
+              600.0,
+              0.0
+            ],
+            "id": 5
+          },
+          {
+            "xyz": [
+              -400.0,
+              600.0,
+              0.0
+            ],
+            "id": 6
+          },
+          {
+            "xyz": [
+              -400.0,
+              450.0,
+              0.0
+            ],
+            "id": 7
+          },
+          {
+            "xyz": [
+              -150.0,
+              450.0,
+              0.0
+            ],
+            "id": 8
+          }
+        ],
+        "center_id": null,
+        "radius_mm": null,
+        "label": null,
+        "entity_id": 9
+      },
+      {
+        "op": "SetCover",
+        "face_id": 9,
+        "cover_mm": 30.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 20.0,
+        "entity_id": 10
+      },
+      {
+        "op": "AddBar",
+        "x_mm": -100,
+        "y_mm": 50.0,
+        "designation": "Ø20",
+        "label": null,
+        "entity_id": 12,
+        "point_id": 11
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 0,
+        "y_mm": 50.0,
+        "designation": "Ø20",
+        "label": null,
+        "entity_id": 14,
+        "point_id": 13
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 100,
+        "y_mm": 50.0,
+        "designation": "Ø20",
+        "label": null,
+        "entity_id": 16,
+        "point_id": 15
+      },
+      {
+        "op": "AddBar",
+        "x_mm": -350,
+        "y_mm": 552.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 18,
+        "point_id": 17
+      },
+      {
+        "op": "AddBar",
+        "x_mm": -100,
+        "y_mm": 552.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 20,
+        "point_id": 19
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 100,
+        "y_mm": 552.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 22,
+        "point_id": 21
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 350,
+        "y_mm": 552.0,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 24,
+        "point_id": 23
+      },
+      {
+        "op": "AddHoop",
+        "bar_ids": [
+          12,
+          16,
+          22,
+          20
+        ],
+        "designation": "Ø10",
+        "spacing_mm": 150.0,
+        "hooks": "135",
+        "label": "stirrup",
+        "entity_id": 25
+      }
+    ]
+  },
+  "section": {
+    "faces": [
+      {
+        "id": 9,
+        "label": null,
+        "role": "concrete",
+        "material": "C30",
+        "boundary": {
+          "kind": "ring",
+          "ring_mm": [
+            [
+              -150.0,
+              0.0
+            ],
+            [
+              150.0,
+              0.0
+            ],
+            [
+              150.0,
+              450.0
+            ],
+            [
+              400.0,
+              450.0
+            ],
+            [
+              400.0,
+              600.0
+            ],
+            [
+              -400.0,
+              600.0
+            ],
+            [
+              -400.0,
+              450.0
+            ],
+            [
+              -150.0,
+              450.0
+            ]
+          ]
+        },
+        "holes": []
+      }
+    ],
+    "wall_legs": [],
+    "bars": [
+      {
+        "id": 12,
+        "label": null,
+        "x_mm": -100.0,
+        "y_mm": 50.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 14,
+        "label": null,
+        "x_mm": 0.0,
+        "y_mm": 50.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 16,
+        "label": null,
+        "x_mm": 100.0,
+        "y_mm": 50.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 18,
+        "label": null,
+        "x_mm": -350.0,
+        "y_mm": 552.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 20,
+        "label": null,
+        "x_mm": -100.0,
+        "y_mm": 552.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 22,
+        "label": null,
+        "x_mm": 100.0,
+        "y_mm": 552.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 24,
+        "label": null,
+        "x_mm": 350.0,
+        "y_mm": 552.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      }
+    ],
+    "hoops": [
+      {
+        "id": 25,
+        "label": "stirrup",
+        "bar_ids": [
+          12,
+          16,
+          22,
+          20
+        ],
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 150.0,
+        "hooks": "135"
+      }
+    ],
+    "crossties": [],
+    "circular_ties": [],
+    "cover_guides": [
+      {
+        "id": 10,
+        "face_id": 9,
+        "cover_mm": 30.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 20.0
+      }
+    ],
+    "templates": [],
+    "materials_used": [
+      "C30"
+    ]
+  },
+  "warnings": []
+}

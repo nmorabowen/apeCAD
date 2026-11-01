@@ -18,6 +18,14 @@ from typing import cast
 import pytest
 
 from _section_fixtures import BUILDERS, rect_boundary_hoops
+from _section_fixtures_v2 import (
+    W_AREA,
+    bare_w_shape,
+    box_with_void,
+    cft_round,
+    circular_column_spiral,
+    src_w_in_rect,
+)
 from apeCAD import Document, DocumentError
 from apeCAD.entities import CoverGuide, WallLeg
 from apeCAD.errors import INVALID_ARGUMENT, REFUSED
@@ -62,66 +70,6 @@ def _section(draft: Json) -> Json:
 
 
 # --- v2 sections (the ADR 0039 decision 8 cases, drawn with the public ops) ----------------
-
-# A W 300 x 200, flanges 20 mm, web 10 mm, centred on the origin: area 2*200*20 + 260*10.
-_W_RING = [
-    (-100, -150), (100, -150), (100, -130), (5, -130), (5, 130), (100, 130),
-    (100, 150), (-100, 150), (-100, 130), (-5, 130), (-5, -130), (-100, -130),
-]  # fmt: skip
-W_AREA = 2 * 200 * 20 + 260 * 10
-
-
-def box_with_void() -> Document:
-    """400 x 600 concrete, a 200 x 300 void at its centre, four corner bars and a hoop."""
-    doc = Document()
-    face = doc.add_section_face("concrete", "C30", point_ids=_rect(-200, -300, 200, 300))
-    doc.add_section_face("void", None, point_ids=_rect(-100, -150, 100, 150), label="duct")
-    doc.set_cover(face.entity_id, 40.0, 10.0, 16.0)
-    corners = ((-142, -242), (142, -242), (142, 242), (-142, 242))
-    bars = [doc.add_bar(x, y, "Ø16").entity_id for x, y in corners]
-    doc.add_hoop(bars, "Ø10", 150.0)
-    return doc
-
-
-def src_w_in_rect() -> Document:
-    """500 x 500 concrete with a W over it (steel > concrete) and four corner bars."""
-    doc = Document()
-    face = doc.add_section_outline(_rect(-250, -250, 250, 250), material="C40")
-    doc.add_steel_shape(
-        [_at(x, y) for x, y in _W_RING], "S355", "AISC", "W300x200", (0.0, 0.0), label="W"
-    )
-    doc.set_cover(face.entity_id, 40.0, 10.0, 20.0)
-    for x, y in ((-190, -190), (190, -190), (190, 190), (-190, 190)):
-        doc.add_bar(x, y, "Ø20", material="A630")
-    return doc
-
-
-def cft_round() -> Document:
-    """A concrete core r = 190 under a steel tube r = 200 with a circle hole r = 190."""
-    doc = Document()
-    doc.add_section_face("concrete", "C50", center_id=_at(0, 0), radius_mm=190.0)
-    tube = doc.add_section_face("steel", "S355", center_id=_at(0, 0), radius_mm=200.0)
-    doc.add_face_hole(tube.entity_id, center_id=_at(0, 0), radius_mm=190.0)
-    return doc
-
-
-def circular_column_spiral() -> Document:
-    """The spec's seed example: a concrete circle, bars on a circle, a spiral, a cover guide."""
-    doc = Document()
-    face = doc.add_section_face("concrete", "concrete", center_id=_at(0, 0), radius_mm=300.0)
-    doc.add_bars_on_circle((0.0, 0.0), 240.0, 8, "Ø20")
-    doc.add_circular_tie("spiral", _at(0, 0), 255.0, "Ø10", 75.0)
-    doc.set_cover(face.entity_id, 40.0, 10.0, 20.0)
-    return doc
-
-
-def bare_w_shape() -> Document:
-    doc = Document()
-    doc.add_steel_shape(
-        [_at(x, y) for x, y in _W_RING], "S355", "AISC", "W300x200", (0.0, 0.0), rotation_deg=0.0
-    )
-    return doc
-
 
 V2_BUILDERS = {
     "box_with_void": box_with_void,
@@ -415,15 +363,16 @@ def test_void_over_concrete_areas_by_hand() -> None:
 
 
 def test_steel_over_concrete_areas_by_hand() -> None:
-    """A W of 2*200*20 + 260*10 = 10 600 mm² of steel over 500 x 500 = 250 000 mm²: the steel
-    displaces the concrete, 239 400 mm² of it remain; the W keeps its provenance."""
+    """A W310x86 ring of 2*254*16.3 + (310 - 2*16.3)*9.1 = 10 804.74 mm² of steel over
+    500 x 500 = 250 000 mm²: the steel displaces the concrete, 239 195.26 mm² of it remain;
+    the W keeps its provenance."""
     faces = _faces(src_w_in_rect())
     (concrete,), (steel,) = faces["concrete"], faces["steel"]
-    assert W_AREA == 10_600
-    assert _region_area(steel) == float(W_AREA)
-    assert _region_area(concrete) - _region_area(steel) == 239_400.0
+    assert math.isclose(W_AREA, 10_804.74, rel_tol=1e-12)
+    assert math.isclose(_region_area(steel), 10_804.74, rel_tol=1e-12)
+    assert math.isclose(_region_area(concrete) - _region_area(steel), 239_195.26, rel_tol=1e-12)
     assert steel["shape"] == {
-        "catalog": "AISC", "designation": "W300x200", "anchor_mm": [0.0, 0.0], "rotation_deg": 0.0
+        "catalog": "AISC", "designation": "W310x86", "anchor_mm": [0.0, 0.0], "rotation_deg": 0.0
     }  # fmt: skip
     assert section_block(src_w_in_rect(), version=2)["materials_used"] == ["A630", "C40", "S355"]
 

@@ -1,0 +1,291 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 2,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddSectionFace",
+        "role": "concrete",
+        "material": "C30",
+        "point_ids": [
+          {
+            "xyz": [
+              -200.0,
+              -300.0,
+              0.0
+            ],
+            "id": 1
+          },
+          {
+            "xyz": [
+              200.0,
+              -300.0,
+              0.0
+            ],
+            "id": 2
+          },
+          {
+            "xyz": [
+              200.0,
+              300.0,
+              0.0
+            ],
+            "id": 3
+          },
+          {
+            "xyz": [
+              -200.0,
+              300.0,
+              0.0
+            ],
+            "id": 4
+          }
+        ],
+        "center_id": null,
+        "radius_mm": null,
+        "label": null,
+        "entity_id": 5
+      },
+      {
+        "op": "AddSectionFace",
+        "role": "void",
+        "material": null,
+        "point_ids": [
+          {
+            "xyz": [
+              -100.0,
+              -150.0,
+              0.0
+            ],
+            "id": 6
+          },
+          {
+            "xyz": [
+              100.0,
+              -150.0,
+              0.0
+            ],
+            "id": 7
+          },
+          {
+            "xyz": [
+              100.0,
+              150.0,
+              0.0
+            ],
+            "id": 8
+          },
+          {
+            "xyz": [
+              -100.0,
+              150.0,
+              0.0
+            ],
+            "id": 9
+          }
+        ],
+        "center_id": null,
+        "radius_mm": null,
+        "label": "duct",
+        "entity_id": 10
+      },
+      {
+        "op": "SetCover",
+        "face_id": 5,
+        "cover_mm": 40.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 16.0,
+        "entity_id": 11
+      },
+      {
+        "op": "AddBar",
+        "x_mm": -142,
+        "y_mm": -242,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 13,
+        "point_id": 12
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 142,
+        "y_mm": -242,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 15,
+        "point_id": 14
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 142,
+        "y_mm": 242,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 17,
+        "point_id": 16
+      },
+      {
+        "op": "AddBar",
+        "x_mm": -142,
+        "y_mm": 242,
+        "designation": "Ø16",
+        "label": null,
+        "entity_id": 19,
+        "point_id": 18
+      },
+      {
+        "op": "AddHoop",
+        "bar_ids": [
+          13,
+          15,
+          17,
+          19
+        ],
+        "designation": "Ø10",
+        "spacing_mm": 150.0,
+        "hooks": "135",
+        "label": null,
+        "entity_id": 20
+      }
+    ]
+  },
+  "section": {
+    "faces": [
+      {
+        "id": 5,
+        "label": null,
+        "role": "concrete",
+        "material": "C30",
+        "boundary": {
+          "kind": "ring",
+          "ring_mm": [
+            [
+              -200.0,
+              -300.0
+            ],
+            [
+              200.0,
+              -300.0
+            ],
+            [
+              200.0,
+              300.0
+            ],
+            [
+              -200.0,
+              300.0
+            ]
+          ]
+        },
+        "holes": []
+      },
+      {
+        "id": 10,
+        "label": "duct",
+        "role": "void",
+        "material": null,
+        "boundary": {
+          "kind": "ring",
+          "ring_mm": [
+            [
+              -100.0,
+              -150.0
+            ],
+            [
+              100.0,
+              -150.0
+            ],
+            [
+              100.0,
+              150.0
+            ],
+            [
+              -100.0,
+              150.0
+            ]
+          ]
+        },
+        "holes": []
+      }
+    ],
+    "wall_legs": [],
+    "bars": [
+      {
+        "id": 13,
+        "label": null,
+        "x_mm": -142.0,
+        "y_mm": -242.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 15,
+        "label": null,
+        "x_mm": 142.0,
+        "y_mm": -242.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 17,
+        "label": null,
+        "x_mm": 142.0,
+        "y_mm": 242.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      },
+      {
+        "id": 19,
+        "label": null,
+        "x_mm": -142.0,
+        "y_mm": 242.0,
+        "diameter_mm": 16.0,
+        "designation": "Ø16"
+      }
+    ],
+    "hoops": [
+      {
+        "id": 20,
+        "label": null,
+        "bar_ids": [
+          13,
+          15,
+          17,
+          19
+        ],
+        "diameter_mm": 10.0,
+        "designation": "Ø10",
+        "spacing_mm": 150.0,
+        "hooks": "135"
+      }
+    ],
+    "crossties": [],
+    "circular_ties": [],
+    "cover_guides": [
+      {
+        "id": 11,
+        "face_id": 5,
+        "cover_mm": 40.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 16.0
+      }
+    ],
+    "templates": [],
+    "materials_used": [
+      "C30"
+    ]
+  },
+  "warnings": []
+}
