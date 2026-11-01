@@ -22,6 +22,30 @@ export const PALETTE = {
   warn: "#c64a1a",
 };
 
+// The ADR 0031 roles an overlay colour may name (spec section-overlay "Colours"), at their
+// light-theme value in `static/css/app.css`: the fallback when the host page does not define
+// the role. `apeCAD.render.overlay.COLOR_TOKENS` holds the same table (a test keeps them equal).
+export const OVERLAY_TOKENS = Object.freeze({
+  "--text": "#1c2127",
+  "--muted": "#4a525c",
+  "--accent": "#2f74ad",
+  "--signal": "#c64a1a",
+  "--ink-edge": "#14181d",
+  "--ink-rebar": "#000077",
+  "--ink-concrete": "#000000",
+  "--ink-section-guide": "#808080",
+  "--fill-concrete": "#b4b4b4",
+});
+
+// Example overlay scales for hosts (ADR 0041). Each passes the ADR 0038 contrast and CVD
+// gates on this canvas (`tests/js/section-overlay.test.mjs`). Red against green does not:
+// it is under 0.055 OKLab apart for a deuteranope.
+export const OVERLAY_EXAMPLE_SCALES = Object.freeze({
+  stress: { kind: "diverging", domain: [-30, 0, 420], colors: ["#2166ac", "#f7f7f7", "#b2182b"], unit: "MPa", title: "Stress" },
+  strain: { kind: "sequential", domain: [0, 0.003], colors: ["#6baed6", "#2171b5", "#08306b"], unit: "", title: "Strain" },
+  bar_state: { kind: "categorical", domain: ["elastic", "yielded", "fractured"], colors: ["#2f74ad", "#c64a1a", "#14181d"], unit: "", title: "Bar state" },
+});
+
 function distToSegment(p, a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const len2 = dx * dx + dy * dy;
@@ -265,6 +289,43 @@ function drawGrid(ctx, view, stepMm = 50) {
   ctx.stroke();
 }
 
+function drawSelectionOutline(ctx, view, scene, selectedIds) {
+  const isSel = (item) => selectedIds.has(item.id ?? item.entity_id);
+  const strokeRing = (ring, width) => {
+    if (!ring || ring.length < 2) return;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    traceRing(ctx, view, ring);
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.strokeStyle = PALETTE.selected;
+  for (const f of (scene.concrete_faces || []).filter(isSel)) strokeRing(f.outer_mm || f.ring_mm, 2.2);
+  for (const h of (scene.hoops || []).filter(isSel)) strokeRing(h.display_ring_mm || h.ring_mm, 2.4);
+  for (const g of (scene.cover_guides || []).filter(isSel)) strokeRing(g.cover_ring_mm, 1.8);
+  const segments = [
+    ...(scene.wall_legs || []).filter(isSel).map((l) => [l.axis_start_mm || l.start_mm, l.axis_end_mm || l.end_mm, 2]),
+    ...(scene.crossties || []).filter(isSel).map((t) => [t.start_mm, t.end_mm, 2.4]),
+  ];
+  for (const [s, e, width] of segments) {
+    if (!s || !e) continue;
+    const [x0, y0] = view.worldToScreen(s), [x1, y1] = view.worldToScreen(e);
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  }
+  for (const b of (scene.bars || []).filter(isSel)) {
+    const [sx, sy] = view.worldToScreen(b.centre_mm || [b.x_mm, b.y_mm]);
+    ctx.beginPath();
+    ctx.arc(sx, sy, Math.max(3.5, ((b.diameter_mm || 16) / 2) * view.scale), 0, Math.PI * 2);
+    ctx.fillStyle = PALETTE.selected;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 export function renderSectionCanvas(canvas, view, state) {
   const ctx = canvas && typeof canvas.getContext === "function" ? canvas.getContext("2d") : null;
   if (!ctx) return;
@@ -375,6 +436,13 @@ export function renderSectionCanvas(canvas, view, state) {
         ctx.stroke();
       }
     }
+  }
+
+  // 6b. The results overlay sits above the section and below the selection (ADR 0041 D2),
+  // so the selection is stroked again on top of it.
+  if (scene && typeof state?.drawOverlay === "function") {
+    state.drawOverlay(ctx, view);
+    if (selectedIds.size) drawSelectionOutline(ctx, view, scene, selectedIds);
   }
 
   // 7. Ghost preview
