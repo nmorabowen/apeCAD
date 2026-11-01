@@ -1,0 +1,378 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 2,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddSectionOutline",
+        "point_ids": [
+          {
+            "xyz": [
+              -250.0,
+              -250.0,
+              0.0
+            ],
+            "id": 1
+          },
+          {
+            "xyz": [
+              250.0,
+              -250.0,
+              0.0
+            ],
+            "id": 2
+          },
+          {
+            "xyz": [
+              250.0,
+              250.0,
+              0.0
+            ],
+            "id": 3
+          },
+          {
+            "xyz": [
+              -250.0,
+              250.0,
+              0.0
+            ],
+            "id": 4
+          }
+        ],
+        "material": "C40",
+        "label": null,
+        "entity_id": 5
+      },
+      {
+        "op": "AddSteelShape",
+        "point_ids": [
+          {
+            "xyz": [
+              -100.0,
+              -150.0,
+              0.0
+            ],
+            "id": 6
+          },
+          {
+            "xyz": [
+              100.0,
+              -150.0,
+              0.0
+            ],
+            "id": 7
+          },
+          {
+            "xyz": [
+              100.0,
+              -130.0,
+              0.0
+            ],
+            "id": 8
+          },
+          {
+            "xyz": [
+              5.0,
+              -130.0,
+              0.0
+            ],
+            "id": 9
+          },
+          {
+            "xyz": [
+              5.0,
+              130.0,
+              0.0
+            ],
+            "id": 10
+          },
+          {
+            "xyz": [
+              100.0,
+              130.0,
+              0.0
+            ],
+            "id": 11
+          },
+          {
+            "xyz": [
+              100.0,
+              150.0,
+              0.0
+            ],
+            "id": 12
+          },
+          {
+            "xyz": [
+              -100.0,
+              150.0,
+              0.0
+            ],
+            "id": 13
+          },
+          {
+            "xyz": [
+              -100.0,
+              130.0,
+              0.0
+            ],
+            "id": 14
+          },
+          {
+            "xyz": [
+              -5.0,
+              130.0,
+              0.0
+            ],
+            "id": 15
+          },
+          {
+            "xyz": [
+              -5.0,
+              -130.0,
+              0.0
+            ],
+            "id": 16
+          },
+          {
+            "xyz": [
+              -100.0,
+              -130.0,
+              0.0
+            ],
+            "id": 17
+          }
+        ],
+        "material": "S355",
+        "catalog": "AISC",
+        "designation": "W300x200",
+        "anchor_mm": [
+          0.0,
+          0.0
+        ],
+        "rotation_deg": 0.0,
+        "label": "W",
+        "entity_id": 18
+      },
+      {
+        "op": "SetCover",
+        "face_id": 5,
+        "cover_mm": 40.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 20.0,
+        "entity_id": 19
+      },
+      {
+        "op": "AddBar",
+        "x_mm": -190,
+        "y_mm": -190,
+        "designation": "Ø20",
+        "label": null,
+        "entity_id": 21,
+        "point_id": 20,
+        "material": "A630"
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 190,
+        "y_mm": -190,
+        "designation": "Ø20",
+        "label": null,
+        "entity_id": 23,
+        "point_id": 22,
+        "material": "A630"
+      },
+      {
+        "op": "AddBar",
+        "x_mm": 190,
+        "y_mm": 190,
+        "designation": "Ø20",
+        "label": null,
+        "entity_id": 25,
+        "point_id": 24,
+        "material": "A630"
+      },
+      {
+        "op": "AddBar",
+        "x_mm": -190,
+        "y_mm": 190,
+        "designation": "Ø20",
+        "label": null,
+        "entity_id": 27,
+        "point_id": 26,
+        "material": "A630"
+      }
+    ]
+  },
+  "section": {
+    "faces": [
+      {
+        "id": 5,
+        "label": null,
+        "role": "concrete",
+        "material": "C40",
+        "boundary": {
+          "kind": "ring",
+          "ring_mm": [
+            [
+              -250.0,
+              -250.0
+            ],
+            [
+              250.0,
+              -250.0
+            ],
+            [
+              250.0,
+              250.0
+            ],
+            [
+              -250.0,
+              250.0
+            ]
+          ]
+        },
+        "holes": []
+      },
+      {
+        "id": 18,
+        "label": "W",
+        "role": "steel",
+        "material": "S355",
+        "boundary": {
+          "kind": "ring",
+          "ring_mm": [
+            [
+              -100.0,
+              -150.0
+            ],
+            [
+              100.0,
+              -150.0
+            ],
+            [
+              100.0,
+              -130.0
+            ],
+            [
+              5.0,
+              -130.0
+            ],
+            [
+              5.0,
+              130.0
+            ],
+            [
+              100.0,
+              130.0
+            ],
+            [
+              100.0,
+              150.0
+            ],
+            [
+              -100.0,
+              150.0
+            ],
+            [
+              -100.0,
+              130.0
+            ],
+            [
+              -5.0,
+              130.0
+            ],
+            [
+              -5.0,
+              -130.0
+            ],
+            [
+              -100.0,
+              -130.0
+            ]
+          ]
+        },
+        "holes": [],
+        "shape": {
+          "catalog": "AISC",
+          "designation": "W300x200",
+          "anchor_mm": [
+            0.0,
+            0.0
+          ],
+          "rotation_deg": 0.0
+        }
+      }
+    ],
+    "wall_legs": [],
+    "bars": [
+      {
+        "id": 21,
+        "label": null,
+        "x_mm": -190.0,
+        "y_mm": -190.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20",
+        "material": "A630"
+      },
+      {
+        "id": 23,
+        "label": null,
+        "x_mm": 190.0,
+        "y_mm": -190.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20",
+        "material": "A630"
+      },
+      {
+        "id": 25,
+        "label": null,
+        "x_mm": 190.0,
+        "y_mm": 190.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20",
+        "material": "A630"
+      },
+      {
+        "id": 27,
+        "label": null,
+        "x_mm": -190.0,
+        "y_mm": 190.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20",
+        "material": "A630"
+      }
+    ],
+    "hoops": [],
+    "crossties": [],
+    "circular_ties": [],
+    "cover_guides": [
+      {
+        "id": 19,
+        "face_id": 5,
+        "cover_mm": 40.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 20.0
+      }
+    ],
+    "templates": [],
+    "materials_used": [
+      "A630",
+      "C40",
+      "S355"
+    ]
+  },
+  "warnings": []
+}

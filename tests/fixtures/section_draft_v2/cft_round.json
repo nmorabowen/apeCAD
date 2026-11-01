@@ -1,0 +1,118 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 2,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddSectionFace",
+        "role": "concrete",
+        "material": "C50",
+        "point_ids": [],
+        "center_id": {
+          "xyz": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "id": 1
+        },
+        "radius_mm": 190.0,
+        "label": null,
+        "entity_id": 2
+      },
+      {
+        "op": "AddSectionFace",
+        "role": "steel",
+        "material": "S355",
+        "point_ids": [],
+        "center_id": 1,
+        "radius_mm": 200.0,
+        "label": null,
+        "entity_id": 3
+      },
+      {
+        "op": "AddFaceHole",
+        "face_id": 3,
+        "point_ids": [],
+        "center_id": 1,
+        "radius_mm": 190.0,
+        "hole_index": 0
+      }
+    ]
+  },
+  "section": {
+    "faces": [
+      {
+        "id": 2,
+        "label": null,
+        "role": "concrete",
+        "material": "C50",
+        "boundary": {
+          "kind": "circle",
+          "center_mm": [
+            0.0,
+            0.0
+          ],
+          "radius_mm": 190.0
+        },
+        "holes": []
+      },
+      {
+        "id": 3,
+        "label": null,
+        "role": "steel",
+        "material": "S355",
+        "boundary": {
+          "kind": "circle",
+          "center_mm": [
+            0.0,
+            0.0
+          ],
+          "radius_mm": 200.0
+        },
+        "holes": [
+          {
+            "kind": "circle",
+            "center_mm": [
+              0.0,
+              0.0
+            ],
+            "radius_mm": 190.0
+          }
+        ]
+      }
+    ],
+    "wall_legs": [],
+    "bars": [],
+    "hoops": [],
+    "crossties": [],
+    "circular_ties": [],
+    "cover_guides": [],
+    "templates": [],
+    "materials_used": [
+      "C50",
+      "S355"
+    ]
+  },
+  "warnings": [
+    {
+      "code": "face-without-cover-guide",
+      "ids": [
+        2
+      ],
+      "message": "concrete face 2 has no cover guide"
+    }
+  ]
+}
