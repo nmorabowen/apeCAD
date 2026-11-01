@@ -190,6 +190,28 @@ def test_section_imports_only_geometry_entities_and_errors() -> None:
     assert not violations, "\n".join(violations)
 
 
+# apeCAD.section.templates expands parameters to a Plan (ADR 0040, stage C3-S1). A Plan names
+# no entity and allocates no id, so the templates sit below draft/ beside section/layout.py
+# and may import only these: not apeCAD.entities, draft/, ops/ or the document.
+TEMPLATES_MAY_IMPORT = ("apeCAD.section", "apeCAD.geometry", "apeCAD.errors")
+
+
+def test_section_templates_import_only_section_geometry_and_errors() -> None:
+    paths = sorted((SRC / "section" / "templates").glob("*.py"))
+    assert paths, "apeCAD/section/templates/ holds no modules"
+    violations = [
+        f"{path.relative_to(SRC).as_posix()} imports {imported}"
+        for path in paths
+        for imported in sorted(_apecad_imports(path))
+        if imported != "apeCAD"
+        and not any(
+            imported == allowed or imported.startswith(f"{allowed}.")
+            for allowed in TEMPLATES_MAY_IMPORT
+        )
+    ]
+    assert not violations, "\n".join(violations)
+
+
 def test_section_draft_sits_above_the_document() -> None:
     """`apeCAD.section_draft` wraps `Document` for the section-draft (ADR 0025), so nothing the
     document is built from may import it: not `document.py`, `draft/`, `section/` or `ops/`."""
