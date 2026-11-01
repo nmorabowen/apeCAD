@@ -322,3 +322,75 @@ def test_two_circles_overlapping_by_a_hair_warn() -> None:
     doc.add_section_face("steel", "S355", center_id=_at(0, 0), radius_mm=100.0)
     doc.add_section_face("steel", "S355", center_id=_at(200.0 - 0.01, 0), radius_mm=100.0)
     assert _codes(doc) == ["same-role-overlap"]
+
+
+# --- C1-S5 (apeSection#39): the CFT-core exemption ---------------------------------------------
+
+
+def _tube(doc: Document, hole: float, *, square: bool = False) -> None:
+    tube = doc.add_section_face("steel", "S355", center_id=_at(0, 0), radius_mm=200.0)
+    if square:
+        doc.add_face_hole(tube.entity_id, point_ids=_rect(-hole, -hole, hole, hole))
+    else:
+        doc.add_face_hole(tube.entity_id, center_id=_at(0, 0), radius_mm=hole)
+
+
+@pytest.mark.parametrize(("core", "hole"), [(190.0, 190.0), (150.0, 190.0)])
+def test_a_concrete_core_inside_a_steel_tubes_hole_needs_no_cover_guide(
+    core: float, hole: float
+) -> None:
+    doc = Document()
+    doc.add_section_face("concrete", "C50", center_id=_at(0, 0), radius_mm=core)
+    _tube(doc, hole)
+    assert "face-without-cover-guide" not in _codes(doc)
+
+
+def test_a_concrete_ring_core_in_a_square_hole_is_exempt_too() -> None:
+    doc = Document()
+    doc.add_section_face("concrete", "C50", point_ids=_rect(-100, -100, 100, 100))
+    _tube(doc, 100.0, square=True)
+    assert "face-without-cover-guide" not in _codes(doc)
+
+
+def test_a_core_larger_than_the_hole_or_not_under_steel_still_warns() -> None:
+    doc = Document()
+    core = doc.add_section_face("concrete", "C50", center_id=_at(0, 0), radius_mm=195.0)
+    _tube(doc, 190.0)
+    assert _only(doc, "face-without-cover-guide").ids == (core.entity_id,)
+
+    beside = Document()
+    away = beside.add_section_face("concrete", "C50", center_id=_at(1000, 0), radius_mm=150.0)
+    _tube(beside, 190.0)
+    assert _only(beside, "face-without-cover-guide").ids == (away.entity_id,)
+
+
+def test_a_concrete_face_with_a_hole_not_under_steel_still_warns() -> None:
+    doc = Document()
+    face = doc.add_section_face("concrete", "C30", center_id=_at(0, 0), radius_mm=300.0)
+    doc.add_face_hole(face.entity_id, center_id=_at(0, 0), radius_mm=100.0)
+    assert _only(doc, "face-without-cover-guide").ids == (face.entity_id,)
+
+
+def test_a_concrete_face_inside_a_void_or_concrete_hole_still_warns() -> None:
+    doc = Document()
+    outer = doc.add_section_face("concrete", "C30", center_id=_at(0, 0), radius_mm=300.0)
+    doc.set_cover(outer.entity_id, 40.0, 10.0, 20.0)
+    doc.add_face_hole(outer.entity_id, center_id=_at(0, 0), radius_mm=100.0)
+    inner = doc.add_section_face("concrete", "C50", center_id=_at(0, 0), radius_mm=100.0)
+    assert _only(doc, "face-without-cover-guide").ids == (inner.entity_id,)
+
+
+@pytest.mark.parametrize("case", ["square_elsewhere", "tube_hole_outside"])
+def test_a_steel_hole_outside_its_own_face_exempts_nothing(case: str) -> None:
+    """Review of #53, finding 2: a hole counts only when it lies within its steel face."""
+    doc = Document()
+    if case == "square_elsewhere":
+        core = doc.add_section_face("concrete", "C50", point_ids=_rect(-100, -100, 100, 100))
+        steel = doc.add_section_face("steel", "S355", point_ids=_rect(1000, 1000, 1100, 1100))
+        doc.add_face_hole(steel.entity_id, point_ids=_rect(-150, -150, 150, 150))
+    else:
+        core = doc.add_section_face("concrete", "C50", center_id=_at(0, 0), radius_mm=250.0)
+        steel = doc.add_section_face("steel", "S355", center_id=_at(0, 0), radius_mm=200.0)
+        doc.add_face_hole(steel.entity_id, center_id=_at(0, 0), radius_mm=260.0)
+    assert _only(doc, "face-without-cover-guide").ids == (core.entity_id,)
+    assert _only(doc, "hole-outside-face").ids == (steel.entity_id,)

@@ -174,3 +174,15 @@ question open.
    5. *`shape.anchor_mm`.* The point, in section coordinates, where the shape's catalog
       origin (its centroid) is placed. Reopen compares it as a length (warn beyond rel 1e-9),
       not structurally.
+9. **Two readings from review gate RGc1 (apeSection#39, stage C1-S5).** The spec states each
+   one outside its hashed block, so the contract's SHA-256 is unchanged.
+   1. *"A second face" means a second v2 face.* Decision 1's and the spec's refusal of "a
+      second face" for `version=1` concerns v2 faces: every `AddSectionFace` or
+      `AddSteelShape` face is refused for v1 anyway. Two v1 `ConcreteFace`s keep writing v1
+      with the `more-than-one-solid-face` warning, so HA-04 is unchanged.
+   2. *The CFT-core exemption.* `face-without-cover-guide` does not fire for a concrete face
+      that lies wholly inside a hole of a steel face (touching or equal to the hole counts as
+      inside): a CFT core is confined by the tube and has no cover to draw. Only a hole that
+      lies within its own steel face counts; one that does not is `hole-outside-face`. A
+      concrete face not under such a hole still raises it, holes of its own or not. The
+      `cft_round` fixture loses its one warning; no other fixture changes.

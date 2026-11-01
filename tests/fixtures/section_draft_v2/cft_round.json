@@ -106,13 +106,5 @@
       "S355"
     ]
   },
-  "warnings": [
-    {
-      "code": "face-without-cover-guide",
-      "ids": [
-        2
-      ],
-      "message": "concrete face 2 has no cover guide"
-    }
-  ]
+  "warnings": []
 }

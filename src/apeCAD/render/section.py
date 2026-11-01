@@ -5,15 +5,19 @@ its bars: the hull of the bar centres, offset by each bar's radius plus half the
 diameter, with round corners. Hoops and crossties carry their hook ticks (spec §3.2) as
 extra open paths after the main one, so `paths[0]` is always the ring or the tie itself.
 Nothing here is mechanics; apeConcrete owns that.
+
+v2 faces and circular ties (ADR 0039) are not drawn yet (stage C5). `not_drawn` names them,
+so the `render` tool warns `not-drawn` instead of answering a silent ok (apeSection#39).
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 
 from apeCAD.entities import (
     Bar,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
@@ -22,6 +26,7 @@ from apeCAD.entities import (
     Hoop,
     Point,
     SectionEntity,
+    SectionFace,
     WallLeg,
 )
 from apeCAD.render.drawable import Drawable, Path3
@@ -30,6 +35,23 @@ from apeCAD.render.views import Vec3
 from apeCAD.section.cover import cover_rings
 
 HOOK_DEG = 135.0  # a hoop's closing hooks (`Hoop.hooks` is only "135")
+
+NOT_DRAWN = "not-drawn"
+"""The `render` warning code for entities `section_drawable` skips (apeSection#39)."""
+
+
+def not_drawn(entities: Mapping[EntityId, Entity], draw_ids: Iterable[EntityId]) -> list[EntityId]:
+    """What `section_drawable` skips among `draw_ids`, ascending: v2 faces, circular ties,
+    and cover guides whose face is not a v1 `ConcreteFace` (`_cover` draws only those)."""
+    skipped: list[EntityId] = []
+    for i in draw_ids:
+        entity = entities.get(i)
+        if isinstance(entity, (SectionFace, CircularTie)) or (
+            isinstance(entity, CoverGuide)
+            and not isinstance(entities.get(entity.face_id), ConcreteFace)
+        ):
+            skipped.append(i)
+    return sorted(skipped)
 
 
 def bar_point_ids(entities: Mapping[EntityId, Entity]) -> set[EntityId]:

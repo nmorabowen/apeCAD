@@ -38,6 +38,7 @@ from apeCAD.section.regions import (
     boundary_probes,
     circle_in_region,
     curve_strictly_inside,
+    curve_within,
     distance,
     edge_distance,
     locate,
@@ -295,7 +296,7 @@ def lint_section_v2(entities: Mapping[EntityId, Entity]) -> tuple[LintWarning, .
         *_bar_outside_concrete_v2(view, regions, located),
         *_hoop_bar_not_in_face_v2(view, concrete),
         *_crosstie_crosses_outside_v2(view, concrete),
-        *_face_without_cover_guide_v2(view, concrete),
+        *_face_without_cover_guide_v2(view, regions),
         *_inclined_wall_leg(view),
         *_tie_mismatch_in_core(view),
         *_same_role_overlap(regions),
@@ -380,17 +381,25 @@ def _crosstie_crosses_outside_v2(view: _View, concrete: Sequence[Region]) -> lis
     return out
 
 
-def _face_without_cover_guide_v2(view: _View, concrete: Sequence[Region]) -> list[LintWarning]:
-    """Concrete faces only: a steel or void face never raises it (Errata 8.3)."""
+def _face_without_cover_guide_v2(view: _View, regions: Sequence[Region]) -> list[LintWarning]:
+    """Concrete faces only: a steel or void face never raises it (Errata 8.3). Nor does a
+    concrete face lying wholly inside a steel face's hole, a CFT core: the tube confines it
+    and there is no cover to draw (ADR 0039 Errata 9)."""
     owners = {guide.face_id for guide in view.guides}
+    # A hole counts only inside its own steel face: one that is not is hole-outside-face.
+    holes = [
+        h for r in regions if r.role == "steel" for h in r.holes if curve_within(h, r.boundary)
+    ]
     return [
         LintWarning(
             "face-without-cover-guide",
             (r.face_id,),
             f"concrete face {r.face_id} has no cover guide",
         )
-        for r in concrete
-        if r.face_id not in owners
+        for r in regions
+        if r.role == "concrete"
+        and r.face_id not in owners
+        and not any(curve_within(r.boundary, hole) for hole in holes)
     ]
 
 

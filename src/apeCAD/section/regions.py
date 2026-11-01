@@ -304,6 +304,18 @@ def curve_strictly_inside(inner: Curve, outer: Curve) -> bool:
     )
 
 
+def curve_within(inner: Curve, outer: Curve) -> bool:
+    """`inner` lies inside `outer` or on it: touching, or the same curve, counts as within."""
+    if not inner.ring:
+        if outer.ring:
+            return outer.locate(inner.center) > 0 and outer.distance(inner.center) >= inner.radius
+        return distance(inner.center, outer.center) + inner.radius <= outer.radius
+    if not outer.ring:
+        return all(outer.locate(p) >= 0 for p in inner.ring)  # a disc is convex
+    n = len(inner.ring)
+    return all(segment_inside(inner.ring[i], inner.ring[(i + 1) % n], outer.ring) for i in range(n))
+
+
 def circle_in_region(center: Point2, radius: float, region: Region) -> bool:
     """A circle (the line, not the disc) lies in the region's interior."""
     if not curve_strictly_inside(Curve((), center, radius), region.boundary):

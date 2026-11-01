@@ -34,6 +34,8 @@ from apeCAD.errors import INVALID_ARGUMENT, DocumentError
 from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import render_png, render_svg
 from apeCAD.render.dxf import export_dxf as _export_dxf
+from apeCAD.render.scene import closure, entity_map
+from apeCAD.render.section import NOT_DRAWN, not_drawn
 from apeCAD.section_draft import section_draft
 
 RENDER_DEFAULTS: dict[str, object] = {
@@ -170,7 +172,10 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
     `save_to` resolves under `root`. `format: "png"` uses `render_png` (`apeCAD[png]`);
     without the extra it fails `UNAVAILABLE` and never falls back to SVG. `overlay` is an
     `apeCAD.section-overlay` v1 object (ADR 0041 decision 3), drawn and never stored; the
-    envelope then carries its `overlay_revision` beside `revision`.
+    envelope then carries its `overlay_revision` beside `revision`. When the drawing holds
+    v2 faces, circular ties or cover guides on v2 faces, which are not drawn yet (stage C5),
+    the envelope carries `warnings: [{code: "not-drawn", ids, message}]` naming each one;
+    otherwise it has no `warnings`.
     """
 
     def body() -> Envelope:
@@ -209,7 +214,7 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
                 fields["path"] = png_result.path
             if png_result.overlay_revision is not None:
                 fields["overlay_revision"] = png_result.overlay_revision
-            return _ok(session, fields)
+            return _ok(session, _with_not_drawn(session, kwargs["ids"], fields))
         result = render_svg(session.document, **kwargs)
         fields = {
             "view": result.view,
@@ -224,9 +229,29 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
             fields["path"] = result.path
         if result.overlay_revision is not None:
             fields["overlay_revision"] = result.overlay_revision
-        return _ok(session, fields)
+        return _ok(session, _with_not_drawn(session, kwargs["ids"], fields))
 
     return guarded(lambda: session.revision, body)
+
+
+def _with_not_drawn(
+    session: Session, ids: list[int] | None, fields: dict[str, object]
+) -> dict[str, object]:
+    """Add the `not-drawn` warning when the drawn set holds v2 entities (apeSection#39).
+
+    `ids` was already checked by the renderer; the drawn set is its closure, as there.
+    """
+    document = session.document
+    entities = entity_map(document)
+    draw_ids = set(entities) if ids is None else closure(ids, document.brep().children)
+    skipped = not_drawn(entities, draw_ids)
+    if not skipped:
+        return fields
+    message = (
+        f"{len(skipped)} entities {skipped} are not drawn yet (stage C5): v2 faces, "
+        "circular ties and cover guides on v2 faces; the rest of the drawing is"
+    )
+    return {**fields, "warnings": [{"code": NOT_DRAWN, "ids": skipped, "message": message}]}
 
 
 apecad_render = render
