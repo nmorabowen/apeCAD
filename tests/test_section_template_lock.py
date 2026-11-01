@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import zlib
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -183,12 +184,6 @@ def test_the_lock_names_the_child_and_its_template() -> None:
     assert f"bar {ids.bars[0]}" in message and "section template 1 (rect_column)" in message
 
 
-@pytest.mark.xfail(
-    raises=AssertionError,
-    strict=True,
-    reason="transform._clone_graph has no SectionTemplate branch; transform.py is not owned "
-    "by C3-S2 (reported, apeSection#49)",
-)
 @pytest.mark.parametrize("kind", ["linear", "polar"])
 def test_an_array_of_the_template_is_refused_by_name(kind: str) -> None:
     doc, ids = _fresh()
@@ -197,8 +192,14 @@ def test_an_array_of_the_template_is_refused_by_name(kind: str) -> None:
         if kind == "linear"
         else ArrayPolar((ids.template,), 0.0, 0.0, 3, 360.0)
     )
-    with pytest.raises(DocumentError, match="section template"):
+    json_before, live_before = doc.to_json(), _snapshot(doc)
+    with pytest.raises(TemplateLockedError) as caught:
         doc.apply(op)
+    assert caught.value.code == TEMPLATE_LOCKED
+    message = str(caught.value)
+    assert f"section template {ids.template} (rect_column)" in message
+    assert "explode the template first to array its contents" in message
+    assert doc.to_json() == json_before and _snapshot(doc) == live_before  # unchanged
 
 
 # --- the fuzz: every handler's hostile samples on a templated document -------------------
@@ -227,19 +228,30 @@ def _templated_fixture() -> tuple[Document, SectionTemplate]:
     return doc, template
 
 
-_SKIP_TEMPLATE_IDS = (ArrayLinear, ArrayPolar)  # the reported gap above
+def _aimed_at(template: SectionTemplate, ops: list[object]) -> list[object]:
+    """The first samples again with the template's id first in `entity_ids`: random picks
+    rarely land on one id, and every op that takes a selection must meet the template."""
+    aimed: list[object] = []
+    for op in ops[:6]:
+        selection = getattr(op, "entity_ids", None)
+        if not isinstance(selection, tuple):
+            continue
+        try:
+            aimed.append(replace(op, entity_ids=(template.entity_id, *selection)))  # type: ignore[type-var]
+        except DocumentError:
+            continue
+    return aimed
 
 
 @pytest.mark.parametrize("op_type", list(HANDLERS), ids=lambda t: t.__name__)
 def test_hostile_ops_on_a_templated_document_keep_the_lock(op_type: type[Any]) -> None:
     doc, template = _templated_fixture()
     ids = sorted(e.entity_id for e in _all_entities(doc))
-    if op_type in _SKIP_TEMPLATE_IDS:
-        ids.remove(template.entity_id)
     point_ids = [p.entity_id for p in doc.points()]
     seed = zlib.crc32(op_type.__name__.encode())  # the atomic test's samples
     ops = _hostile_ops(op_type, ids, point_ids, seed=seed)
     assert ops, f"no constructible {op_type.__name__} sample"
+    ops += _aimed_at(template, ops)
     for op in ops:
         children = {
             t.entity_id: {c: doc.entity(c) for c in t.child_ids} for t in doc.section_templates()
