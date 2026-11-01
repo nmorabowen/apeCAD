@@ -220,6 +220,25 @@ def test_translate_and_rotate_carry_the_shape() -> None:
     _reopened(doc)
 
 
+@pytest.mark.parametrize("move", ["translate", "rotate"])
+def test_a_partial_move_drops_the_shape_but_keeps_the_steel_face(move: str) -> None:
+    """Review probe on PR #49: one W vertex moved 500 mm, or turned 30 deg, is not a W14X90."""
+    doc = Document()
+    face = _w(doc)
+    assert isinstance(face.boundary, RingBoundary)
+    vertex = face.boundary.point_ids[6]
+    if move == "translate":
+        doc.translate([vertex], 500.0, 0.0)
+    else:
+        doc.rotate([vertex], 0.0, 0.0, 30.0)
+    moved = _face(doc, face.entity_id)
+    assert moved.shape is None
+    assert (moved.role, moved.material, moved.label) == ("steel", "A992", "W")
+    assert _reopened(doc).entity(face.entity_id) == moved
+    doc.undo()
+    assert _face(doc, face.entity_id).shape == face.shape
+
+
 def test_mirror_of_a_shape_is_refused_and_changes_nothing() -> None:
     doc = Document()
     face = _w(doc)

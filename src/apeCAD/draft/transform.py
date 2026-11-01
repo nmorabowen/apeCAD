@@ -182,13 +182,19 @@ def _mapped_shape(shape: SteelShape, mapper: Callable[[XYZ], XYZ], turn_deg: flo
 def _carry_shapes(
     state: DraftState, moved: set[EntityId], mapper: Callable[[XYZ], XYZ], turn_deg: float
 ) -> None:
-    """A steel shape's anchor and turn go with its ring (translate, rotate)."""
+    """A steel shape's anchor and turn go with its ring (translate, rotate).
+
+    Only a whole-ring move keeps the provenance. When some of the ring's points move and
+    others stay, the outline is no longer that designation: the face stays steel, with its
+    material, but loses `shape` (the orchestrator's ruling on PR #49, as for a mirror).
+    """
     for entity in list(state.entities.values()):
         if isinstance(entity, SectionFace) and entity.shape is not None:
-            if not moved.isdisjoint(state.point_ids_of(entity)):
-                state.entities[entity.entity_id] = replace(
-                    entity, shape=_mapped_shape(entity.shape, mapper, turn_deg)
-                )
+            points = set(state.point_ids_of(entity))
+            if moved.isdisjoint(points):
+                continue
+            shape = _mapped_shape(entity.shape, mapper, turn_deg) if points <= moved else None
+            state.entities[entity.entity_id] = replace(entity, shape=shape)
 
 
 def _owned_by(state: DraftState, face_id: EntityId) -> list[WallLeg | CoverGuide]:
