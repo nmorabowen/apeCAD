@@ -16,6 +16,7 @@ from apeCAD.entities import (
     Bezier,
     Box,
     Circle,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
@@ -27,6 +28,7 @@ from apeCAD.entities import (
     Line,
     Point,
     Polyline,
+    SectionFace,
     Solid,
     WallLeg,
 )
@@ -38,6 +40,8 @@ from apeCAD.ops import (
     UNITS,
     AddBarRow,
     AddBarsAlongEdge,
+    AddBarsOnCircle,
+    AddFaceHole,
     AddLineChain,
     ArrayLinear,
     ArrayPolar,
@@ -140,6 +144,13 @@ class Document(SectionTypedOps):
 
     def cover_guides(self) -> tuple[CoverGuide, ...]:
         return tuple(e for e in self._state.ordered() if isinstance(e, CoverGuide))
+
+    def section_faces(self) -> tuple[SectionFace, ...]:
+        """The v2 faces (ADR 0039): concrete, steel and void, rings or circles, with holes."""
+        return tuple(e for e in self._state.ordered() if isinstance(e, SectionFace))
+
+    def circular_ties(self) -> tuple[CircularTie, ...]:
+        return tuple(e for e in self._state.ordered() if isinstance(e, CircularTie))
 
     def section_lint(self) -> tuple[LintWarning, ...]:
         """Section drawing warnings (`section.lint`); returned, never raised. The
@@ -265,6 +276,8 @@ _NO_PRODUCT = (
     SetLegReinforcement,
     AddBarRow,
     AddBarsAlongEdge,
+    AddBarsOnCircle,
+    AddFaceHole,
 )
 """Ops that change the draft without producing exactly one entity to return."""
 

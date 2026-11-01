@@ -12,6 +12,7 @@ from apeCAD.entities import (
     Bezier,
     Box,
     Circle,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
@@ -22,8 +23,10 @@ from apeCAD.entities import (
     Hoop,
     Line,
     Polyline,
+    SectionFace,
     Solid,
     WallLeg,
+    section_face_point_ids,
 )
 
 
@@ -124,6 +127,12 @@ def _children_of(
         return ring + tuple(sorted(owned))
     if isinstance(entity, WallLeg):
         return tuple(i for i in (entity.start_id, entity.end_id) if i in entities)
+    # Section mode v2 (ADR 0039): a face is built from its boundary and hole points (ring
+    # vertices, circle centres); a circular tie from its centre.
+    if isinstance(entity, SectionFace):
+        return tuple(pid for pid in section_face_point_ids(entity) if pid in entities)
+    if isinstance(entity, CircularTie):
+        return (entity.center_id,) if entity.center_id in entities else ()
     if isinstance(entity, (Polyline, Bezier)):
         return tuple(pid for pid in entity.point_ids if pid in entities)
     # Section mode (ADR 0024): a hoop is built from its bars, a bar from its point.

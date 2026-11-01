@@ -9,22 +9,29 @@ from collections.abc import Sequence
 
 from apeCAD.entities import (
     Bar,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
     EntityId,
     Hoop,
     LegSteel,
+    SectionFace,
     WallLeg,
 )
 from apeCAD.ops import (
     AddBar,
     AddBarRow,
     AddBarsAlongEdge,
+    AddBarsOnCircle,
+    AddCircularTie,
     AddConcreteFace,
     AddCrosstie,
+    AddFaceHole,
     AddHoop,
+    AddSectionFace,
     AddSectionOutline,
+    AddSteelShape,
     AddWallChain,
     AddWallLeg,
     SetBarSize,
@@ -58,9 +65,12 @@ class SectionTypedOps(TypedOps):
         designation: str,
         *,
         label: str | None = None,
+        material: str | None = None,
     ) -> Bar:
-        """A bar at (x, y, 0) with a fresh point of its own."""
-        op = AddBar(x_mm=x_mm, y_mm=y_mm, designation=designation, label=label)
+        """A bar at (x, y, 0) with a fresh point of its own; `material` names its steel."""
+        op = AddBar(
+            x_mm=x_mm, y_mm=y_mm, designation=designation, label=label, material=material
+        )
         return self._require_produced(self._apply(op), Bar)
 
     def add_hoop(
@@ -249,7 +259,112 @@ class SectionTypedOps(TypedOps):
         self._apply(op)
         return self._bars_placed()
 
+    def add_section_face(
+        self,
+        role: str,
+        material: str | None = None,
+        *,
+        point_ids: Sequence[VertexRef] = (),
+        center_id: VertexRef | None = None,
+        radius_mm: float | None = None,
+        label: str | None = None,
+    ) -> SectionFace:
+        """A v2 face: a ring (stored CCW) or a circle. Concrete and steel name a material."""
+        op = AddSectionFace(
+            role=role,
+            material=material,
+            point_ids=tuple(point_ids),
+            center_id=center_id,
+            radius_mm=radius_mm,
+            label=label,
+        )
+        return self._require_produced(self._apply(op), SectionFace)
+
+    def add_face_hole(
+        self,
+        face_id: EntityId,
+        *,
+        point_ids: Sequence[VertexRef] = (),
+        center_id: VertexRef | None = None,
+        radius_mm: float | None = None,
+    ) -> int:
+        """Add a hole (a ring stored CW, or a circle) to a v2 face; returns its hole index."""
+        op = AddFaceHole(
+            face_id=face_id, point_ids=tuple(point_ids), center_id=center_id, radius_mm=radius_mm
+        )
+        self._apply(op)
+        committed = self._ops[-1]
+        assert isinstance(committed, AddFaceHole) and committed.hole_index is not None
+        return committed.hole_index
+
+    def add_steel_shape(
+        self,
+        point_ids: Sequence[VertexRef],
+        material: str,
+        catalog: str,
+        designation: str,
+        anchor_mm: tuple[float, float],
+        *,
+        rotation_deg: float = 0.0,
+        label: str | None = None,
+    ) -> SectionFace:
+        """A steel face from the ring the host resolved; apeCAD keeps only the provenance."""
+        op = AddSteelShape(
+            point_ids=tuple(point_ids),
+            material=material,
+            catalog=catalog,
+            designation=designation,
+            anchor_mm=(float(anchor_mm[0]), float(anchor_mm[1])),
+            rotation_deg=rotation_deg,
+            label=label,
+        )
+        return self._require_produced(self._apply(op), SectionFace)
+
+    def add_circular_tie(
+        self,
+        kind: str,
+        center_id: VertexRef,
+        centerline_radius_mm: float,
+        designation: str,
+        pitch_mm: float,
+        *,
+        label: str | None = None,
+    ) -> CircularTie:
+        """A spiral (pitch) or a circular hoop (spacing) around a centre on z = 0."""
+        op = AddCircularTie(
+            kind=kind,
+            center_id=center_id,
+            centerline_radius_mm=centerline_radius_mm,
+            designation=designation,
+            pitch_mm=pitch_mm,
+            label=label,
+        )
+        return self._require_produced(self._apply(op), CircularTie)
+
+    def add_bars_on_circle(
+        self,
+        center_xy_mm: tuple[float, float],
+        radius_mm: float,
+        count: int,
+        designation: str,
+        *,
+        start_angle_deg: float = 0.0,
+        material: str | None = None,
+    ) -> tuple[Bar, ...]:
+        """`count` bars evenly on a circle of bar centres, the first at `start_angle_deg`."""
+        op = AddBarsOnCircle(
+            center_x_mm=center_xy_mm[0],
+            center_y_mm=center_xy_mm[1],
+            radius_mm=radius_mm,
+            count=count,
+            designation=designation,
+            start_angle_deg=start_angle_deg,
+            material=material,
+        )
+        self._apply(op)
+        return self._bars_placed()
+
     def _bars_placed(self) -> tuple[Bar, ...]:
         committed = self._ops[-1]
-        assert isinstance(committed, (AddBarRow, AddBarsAlongEdge))
+        assert isinstance(committed, (AddBarRow, AddBarsAlongEdge, AddBarsOnCircle))
         return tuple(self._require_produced(self.entity(i), Bar) for i in committed.bar_ids)

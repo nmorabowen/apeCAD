@@ -7,10 +7,15 @@ from apeCAD.ops import (
     AddBar,
     AddBarRow,
     AddBarsAlongEdge,
+    AddBarsOnCircle,
+    AddCircularTie,
     AddConcreteFace,
     AddCrosstie,
+    AddFaceHole,
     AddHoop,
+    AddSectionFace,
     AddSectionOutline,
+    AddSteelShape,
     AddWallChain,
     AddWallLeg,
     SetBarSize,
@@ -34,6 +39,30 @@ _STEEL_EXAMPLE = {"designation": "Ø10", "spacing_mm": 200, "curtains": 2}
 _COUNT = "Number of bars, both ends included; 2 or more. Give this or spacing_mm, not both."
 _PLACED = "Output: the ids of the bars placed, in order. Do not send it."
 _PLACED_POINTS = "Output: the ids of the bars' own points, in order. Do not send it."
+_BAR_MATERIAL = (
+    "The bar steel's name, e.g. \"A630-420H\", or null for the consumer's default "
+    "(ADR 0039 decision 6)."
+)
+_RING = (
+    VERTICES + " A ring of at least 3, all at z = 0, simple. Give this or center_id and "
+    "radius_mm, not both."
+)
+_CENTER = VERTEX + " A circle's centre, at z = 0; null for a ring."
+_RADIUS = "A circle's radius, mm; positive. Null for a ring."
+_W_RING = [
+    {"xyz": [-150, -175, 0]},
+    {"xyz": [150, -175, 0]},
+    {"xyz": [150, -155, 0]},
+    {"xyz": [6, -155, 0]},
+    {"xyz": [6, 155, 0]},
+    {"xyz": [150, 155, 0]},
+    {"xyz": [150, 175, 0]},
+    {"xyz": [-150, 175, 0]},
+    {"xyz": [-150, 155, 0]},
+    {"xyz": [-6, 155, 0]},
+    {"xyz": [-6, -155, 0]},
+    {"xyz": [-150, -155, 0]},
+]
 
 SECTION_ENTRIES: tuple[OpSpec, ...] = (
     entry(
@@ -69,6 +98,7 @@ SECTION_ENTRIES: tuple[OpSpec, ...] = (
             "label": LABEL,
             "entity_id": OUTPUT_ID,
             "point_id": "Output: the id of the bar's own point. Do not send it.",
+            "material": _BAR_MATERIAL,
         },
         {"x_mm": 60, "y_mm": 60, "designation": "Ø16"},
         outputs=("entity_id", "point_id"),
@@ -113,9 +143,12 @@ SECTION_ENTRIES: tuple[OpSpec, ...] = (
     ),
     entry(
         SetMaterial,
-        "Set the material name of concrete faces.",
+        "Set the material name of faces: v1 concrete faces, v2 concrete and steel faces.",
         "none",
-        {"entity_ids": "Ids of the concrete faces.", "material": "Concrete material name."},
+        {
+            "entity_ids": "Ids of the faces; a void face is refused (it takes no material).",
+            "material": "Material name, e.g. \"H30\" or \"A630-420H\"; a name, not a law.",
+        },
         {"entity_ids": [5], "material": "H35"},
     ),
     entry(
@@ -268,6 +301,119 @@ SECTION_ENTRIES: tuple[OpSpec, ...] = (
             "bar_point_ids": _PLACED_POINTS,
         },
         {"face_id": 5, "edge_index": 0, "designation": "Ø16", "spacing_mm": 150},
+        outputs=("bar_ids", "bar_point_ids"),
+    ),
+    entry(
+        AddSectionFace,
+        "Add a v2 section face: concrete, steel or void, as a ring (stored CCW) or a circle.",
+        "entity",
+        {
+            "role": "\"concrete\", \"steel\" or \"void\". Where faces overlap, void > steel > "
+            "concrete decides, never the drawing order (ADR 0039 decision 3).",
+            "material": "Material name for a concrete or steel face, e.g. \"H30\"; required "
+            "for those roles. Null for a void, which has no material.",
+            "point_ids": _RING,
+            "center_id": _CENTER,
+            "radius_mm": _RADIUS,
+            "label": LABEL,
+            "entity_id": OUTPUT_ID,
+        },
+        {
+            "role": "concrete",
+            "material": "H30",
+            "center_id": {"xyz": [0, 0, 0]},
+            "radius_mm": 300,
+            "label": "column-C1",
+        },
+        outputs=("entity_id",),
+    ),
+    entry(
+        AddFaceHole,
+        "Add a hole to a v2 section face: a ring (stored clockwise) or a circle.",
+        "none",
+        {
+            "face_id": "The v2 section face; it loses material inside the hole, and no other "
+            "face does. A v1 concrete face is refused.",
+            "point_ids": _RING,
+            "center_id": _CENTER,
+            "radius_mm": _RADIUS,
+            "hole_index": "Output: the hole's 0-based index on the face; a hole is "
+            "(face_id, hole_index). Do not send it.",
+        },
+        {"face_id": 5, "center_id": {"xyz": [0, 0, 0]}, "radius_mm": 290},
+        outputs=("hole_index",),
+    ),
+    entry(
+        AddSteelShape,
+        "Add a steel face from a catalog shape's ring the host resolved; apeCAD keeps the "
+        "provenance only.",
+        "entity",
+        {
+            "point_ids": VERTICES + " The resolved outline, at least 3 at z = 0, simple; "
+            "stored CCW. apeCAD never resolves the designation itself.",
+            "material": "Steel material name, e.g. \"A992\".",
+            "catalog": "The catalog the host resolved the designation in, e.g. \"AISC 16\".",
+            "designation": "The shape's designation in that catalog, e.g. \"W14X90\".",
+            "anchor_mm": "Where the host placed the shape's origin, [x, y] in mm.",
+            "rotation_deg": "The shape's turn about its anchor, degrees CCW. A rotate adds to "
+            "it; a mirror of the face is refused.",
+            "label": LABEL,
+            "entity_id": OUTPUT_ID,
+        },
+        {
+            "point_ids": _W_RING,
+            "material": "A992",
+            "catalog": "AISC 16",
+            "designation": "W14X90",
+            "anchor_mm": [0, 0],
+        },
+        outputs=("entity_id",),
+    ),
+    entry(
+        AddCircularTie,
+        "Add a spiral or a circular hoop around a centre on z = 0.",
+        "entity",
+        {
+            "kind": "\"spiral\" or \"hoop\".",
+            "center_id": VERTEX + " The tie's centre, at z = 0.",
+            "centerline_radius_mm": "Radius of the tie's centreline, mm; positive.",
+            "designation": _DESIGNATION,
+            "pitch_mm": "A spiral's pitch, or a hoop's spacing along the member, mm; "
+            "positive.",
+            "label": LABEL,
+            "entity_id": OUTPUT_ID,
+        },
+        {
+            "kind": "spiral",
+            "center_id": {"xyz": [0, 0, 0]},
+            "centerline_radius_mm": 255,
+            "designation": "Ø10",
+            "pitch_mm": 75,
+        },
+        outputs=("entity_id",),
+    ),
+    entry(
+        AddBarsOnCircle,
+        "Lay bars evenly on a circle of bar centres on z = 0 (one op).",
+        "entities",
+        {
+            "center_x_mm": "Circle centre x, mm.",
+            "center_y_mm": "Circle centre y, mm.",
+            "radius_mm": "Radius of the bar-centre circle, mm; positive.",
+            "count": "Number of bars, 2 or more, spaced evenly round the circle.",
+            "designation": _DESIGNATION,
+            "start_angle_deg": "Angle of the first bar, degrees CCW from +x.",
+            "material": _BAR_MATERIAL,
+            "bar_ids": _PLACED,
+            "bar_point_ids": _PLACED_POINTS,
+        },
+        {
+            "center_x_mm": 0,
+            "center_y_mm": 0,
+            "radius_mm": 240,
+            "count": 8,
+            "designation": "Ø20",
+        },
         outputs=("bar_ids", "bar_point_ids"),
     ),
 )

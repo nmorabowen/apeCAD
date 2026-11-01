@@ -55,6 +55,12 @@ _NAMES = ("t", "group", "")
 _DESIGNATIONS = ("Ø16", "Ø10", "Ø32", "#4", "16", "")
 _MATERIALS = ("H30", "H35", "  ")
 _HOOKS = ("135", "135-135", "135-90", "90-90", "180")
+# ADR 0039 v2 ops: a face's role, a circular tie's kind, a steel shape's catalog.
+_WORDS = {
+    "role": ("concrete", "steel", "void", "solid", ""),
+    "kind": ("spiral", "hoop", "helix"),
+    "catalog": ("AISC 16", "  "),
+}
 
 
 def _snapshot(document: Document) -> tuple[object, ...]:
@@ -158,6 +164,8 @@ def _value(
             return None
         pool = {"designation": _DESIGNATIONS, "material": _MATERIALS, "hooks": _HOOKS}[name]
         return rng.choice(pool)
+    if name in _WORDS:
+        return rng.choice(_WORDS[name])
     vertex = _mentions(hint, PointAt)
     if name == "ring" and rng.random() < 0.5:
         return None
@@ -165,6 +173,8 @@ def _value(
         return ()  # ids the handler allocates, not references
     if name in ("count", "spacing_mm") and optional and rng.random() < 0.5:
         return None  # a bar layout takes one of count and spacing_mm (stage C3)
+    if name == "radius_mm" and optional and rng.random() < 0.5:
+        return None  # a v2 boundary is a ring or a circle (ADR 0039)
     if name.endswith("_ids") or name == "ring":
         pick = _vertex if vertex else _pick_id
         return tuple(pick(rng, ids, point_ids) for _ in range(rng.randint(0, 5)))

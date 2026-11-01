@@ -1,4 +1,4 @@
-"""Handlers for the bar-layout gestures (ADR 0024 decision 3, plan stage C3).
+"""Handlers for the bar-layout gestures (ADR 0024 decision 3) and circular steel (ADR 0039).
 
 A row and an edge layout are each one op and one undo. Positions come from
 `section.layout` (an inclined layout sits on an exact lattice, ADR 0032); every bar gets a
@@ -12,10 +12,10 @@ from collections.abc import Sequence
 from dataclasses import replace
 
 from apeCAD.draft.state import DraftState
-from apeCAD.entities import Bar, ConcreteFace, CoverGuide, EntityId, Point
+from apeCAD.entities import Bar, CircularTie, ConcreteFace, CoverGuide, EntityId, Point
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ
-from apeCAD.ops import AddBarRow, AddBarsAlongEdge
+from apeCAD.ops import AddBarRow, AddBarsAlongEdge, AddBarsOnCircle, AddCircularTie
 from apeCAD.section.cover import cover_rings
 from apeCAD.section.designations import diameter_of
 from apeCAD.section.geometry import Point2
@@ -77,11 +77,59 @@ def add_bars_along_edge(state: DraftState, op: AddBarsAlongEdge) -> AddBarsAlong
     return replace(op, bar_ids=bar_ids, bar_point_ids=point_ids)
 
 
+def add_bars_on_circle(state: DraftState, op: AddBarsOnCircle) -> AddBarsOnCircle:
+    """`count` bars evenly on a circle, the first at `start_angle_deg` (ADR 0039)."""
+    positions = [
+        _on_circle(op, op.start_angle_deg + 360.0 * k / op.count) for k in range(op.count)
+    ]
+    bar_ids, point_ids = _place_bars(state, positions, op.designation, op, op.material)
+    return replace(op, bar_ids=bar_ids, bar_point_ids=point_ids)
+
+
+def _on_circle(op: AddBarsOnCircle, angle_deg: float) -> Point2:
+    """A point on the circle; a whole quarter turn is exact, so 0, 90, 180, 270 sit on axes."""
+    quarter = angle_deg / 90.0
+    if quarter.is_integer():
+        cos, sin = ((1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0))[int(quarter) % 4]
+    else:
+        cos, sin = math.cos(math.radians(angle_deg)), math.sin(math.radians(angle_deg))
+    return (op.center_x_mm + op.radius_mm * cos, op.center_y_mm + op.radius_mm * sin)
+
+
+def add_circular_tie(state: DraftState, op: AddCircularTie) -> AddCircularTie:
+    """A spiral or a circular hoop around a centre on z = 0 (ADR 0039 decision 5).
+
+    The centre reuses a point within 1 mm (a circle face's centre, say) or creates one; the
+    enclosed bars are not stored, the consumer derives them.
+    """
+    center_id, center_ref = state.resolve(op.center_id)
+    z_mm = state.require_point(center_id).xyz_mm.z_mm
+    if z_mm != 0.0:
+        raise DocumentError(
+            f"point {center_id} is at z = {z_mm:g} mm; a section lies on z = 0 (ADR 0024)"
+        )
+    state.reject_taken_label(op.label)
+    entity_id = state.allocate_id(op.entity_id)
+    state.register_label(entity_id, op.label)
+    state.entities[entity_id] = CircularTie(
+        entity_id=entity_id,
+        kind="spiral" if op.kind == "spiral" else "hoop",
+        center_id=center_id,
+        centerline_radius_mm=op.centerline_radius_mm,
+        designation=op.designation,
+        diameter_mm=diameter_of(op.designation),
+        pitch_mm=op.pitch_mm,
+        label=op.label,
+    )
+    return replace(op, center_id=center_ref, entity_id=entity_id)
+
+
 def _place_bars(
     state: DraftState,
     positions: Sequence[Point2],
     designation: str,
-    recorded: AddBarRow | AddBarsAlongEdge,
+    recorded: AddBarRow | AddBarsAlongEdge | AddBarsOnCircle,
+    material: str | None = None,
 ) -> tuple[tuple[EntityId, ...], tuple[EntityId, ...]]:
     """One point and one bar per position; replay reuses the ids the committed op recorded."""
     if recorded.bar_ids and len(recorded.bar_ids) != len(positions):
@@ -98,7 +146,11 @@ def _place_bars(
         )
         bar_id = state.allocate_id(recorded.bar_ids[k] if recorded.bar_ids else None)
         state.entities[bar_id] = Bar(
-            entity_id=bar_id, point_id=point_id, designation=designation, diameter_mm=diameter
+            entity_id=bar_id,
+            point_id=point_id,
+            designation=designation,
+            diameter_mm=diameter,
+            material=material,
         )
         bar_ids.append(bar_id)
         point_ids.append(point_id)

@@ -62,7 +62,9 @@ def section_drawable(
         if len(ends) != 2:
             return None
         return Drawable(eid, "leg", ((tuple(ends), False),), _mean(ends), label)
-    return _cover(entities, entity)
+    if isinstance(entity, CoverGuide):
+        return _cover(entities, entity)
+    return None  # v2 faces and circular ties (ADR 0039) are not drawn here yet
 
 
 def _hoop(

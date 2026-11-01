@@ -144,6 +144,8 @@ class AddSteelShape:
         object.__setattr__(self, "material", _name("material", self.material))
         object.__setattr__(self, "catalog", _name("catalog", self.catalog))
         object.__setattr__(self, "designation", _name("designation", self.designation))
+        if len(self.anchor_mm) != 2:
+            raise DocumentError(f"anchor_mm must be [x, y], got {list(self.anchor_mm)!r}")
         require_finite("anchor_mm[0]", self.anchor_mm[0])
         require_finite("anchor_mm[1]", self.anchor_mm[1])
         require_finite("rotation_deg", self.rotation_deg)

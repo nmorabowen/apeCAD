@@ -14,6 +14,8 @@ from apeCAD.entities import (
     Bezier,
     Box,
     Circle,
+    CircleBoundary,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
@@ -21,11 +23,15 @@ from apeCAD.entities import (
     Entity,
     EntityId,
     Face,
+    FaceBoundary,
     Hoop,
     Line,
     Point,
     Polyline,
+    RingBoundary,
+    SectionFace,
     Solid,
+    SteelShape,
     WallLeg,
 )
 from apeCAD.errors import DocumentError
@@ -56,7 +62,7 @@ def rotate(state: DraftState, op: Rotate) -> Rotate:
         x_mm, y_mm = rotate_xy(xyz.x_mm, xyz.y_mm, op.origin_x_mm, op.origin_y_mm, angle)
         return XYZ(x_mm, y_mm, xyz.z_mm)
 
-    moved = _transform_points(state, op.entity_ids, mapper)
+    moved = _transform_points(state, op.entity_ids, mapper, turn_deg=op.angle_deg)
     if not moved:
         raise DocumentError("rotate did not move any points")
     return op
@@ -67,6 +73,7 @@ def mirror(state: DraftState, op: Mirror) -> Mirror:
         x_mm, y_mm = mirror_xy(xyz.x_mm, xyz.y_mm, op.ax_mm, op.ay_mm, op.bx_mm, op.by_mm)
         return XYZ(x_mm, y_mm, xyz.z_mm)
 
+    _refuse_mirrored_shapes(state, op.entity_ids)
     moved = _transform_points(state, op.entity_ids, mapper)
     if not moved:
         raise DocumentError("mirror did not move any points")
@@ -99,7 +106,7 @@ def array_polar(state: DraftState, op: ArrayPolar) -> ArrayPolar:
             x_mm, y_mm = rotate_xy(xyz.x_mm, xyz.y_mm, op.origin_x_mm, op.origin_y_mm, angle)
             return XYZ(x_mm, y_mm, xyz.z_mm)
 
-        _clone_graph(state, op.entity_ids, mapper)
+        _clone_graph(state, op.entity_ids, mapper, turn_deg=step * index)
     return op
 
 
@@ -107,6 +114,8 @@ def _transform_points(
     state: DraftState,
     entity_ids: tuple[EntityId, ...],
     mapper: Callable[[XYZ], XYZ],
+    *,
+    turn_deg: float = 0.0,
 ) -> set[EntityId]:
     moved: set[EntityId] = set()
     box_moved = False
@@ -126,6 +135,7 @@ def _transform_points(
     if not moved and not box_moved:
         return set()
     _restore_section_rings(state, moved)
+    _carry_shapes(state, moved, mapper, turn_deg)
     return moved if moved else {entity_ids[0]}
 
 
@@ -136,6 +146,49 @@ def _carried_point_ids(state: DraftState, entity: Entity) -> tuple[EntityId, ...
         return ids
     legs = [leg for leg in _owned_by(state, entity.entity_id) if isinstance(leg, WallLeg)]
     return (*ids, *(pid for leg in legs for pid in (leg.start_id, leg.end_id)))
+
+
+def _refuse_mirrored_shapes(state: DraftState, entity_ids: tuple[EntityId, ...]) -> None:
+    """A mirror of a steel face with `shape` provenance is refused (ADR 0039 Errata 7).
+
+    The stored designation, anchor and turn would describe the wrong outline for an
+    asymmetric shape. The check covers every face the mirror would move, selected or not.
+    """
+    carried = {
+        pid
+        for entity_id in entity_ids
+        for pid in _carried_point_ids(state, state.entity(entity_id))
+    }
+    for entity in state.entities.values():
+        if isinstance(entity, SectionFace) and entity.shape is not None:
+            if not carried.isdisjoint(state.point_ids_of(entity)):
+                raise DocumentError(
+                    f"mirror would move steel face {entity.entity_id}, which carries shape "
+                    f"{entity.shape.designation!r} from {entity.shape.catalog!r}; a mirrored "
+                    "shape is not that designation. Delete it and add the mirrored ring as "
+                    "a plain steel face"
+                )
+
+
+def _mapped_shape(shape: SteelShape, mapper: Callable[[XYZ], XYZ], turn_deg: float) -> SteelShape:
+    anchor = mapper(XYZ(shape.anchor_mm[0], shape.anchor_mm[1], 0.0))
+    return replace(
+        shape,
+        anchor_mm=(anchor.x_mm, anchor.y_mm),
+        rotation_deg=shape.rotation_deg + turn_deg,
+    )
+
+
+def _carry_shapes(
+    state: DraftState, moved: set[EntityId], mapper: Callable[[XYZ], XYZ], turn_deg: float
+) -> None:
+    """A steel shape's anchor and turn go with its ring (translate, rotate)."""
+    for entity in list(state.entities.values()):
+        if isinstance(entity, SectionFace) and entity.shape is not None:
+            if not moved.isdisjoint(state.point_ids_of(entity)):
+                state.entities[entity.entity_id] = replace(
+                    entity, shape=_mapped_shape(entity.shape, mapper, turn_deg)
+                )
 
 
 def _owned_by(state: DraftState, face_id: EntityId) -> list[WallLeg | CoverGuide]:
@@ -154,6 +207,10 @@ def _restore_section_rings(state: DraftState, moved: set[EntityId]) -> None:
     a concrete face is reversed when it turned clockwise.
     """
     for entity in list(state.entities.values()):
+        if isinstance(entity, SectionFace):
+            if not moved.isdisjoint(state.point_ids_of(entity)):
+                _orient_section_face(state, entity)
+            continue
         if isinstance(entity, (Hoop, ConcreteFace)):
             point_ids = state.point_ids_of(entity)
             if moved.isdisjoint(point_ids):
@@ -172,6 +229,23 @@ def _restore_section_rings(state: DraftState, moved: set[EntityId]) -> None:
                 state.entities[entity.entity_id] = replace(entity, bar_ids=ring)
 
 
+def _orient_section_face(state: DraftState, face: SectionFace) -> None:
+    """Store a v2 face's boundary ring CCW and its hole rings CW again (a mirror flips them)."""
+    boundary = _oriented(state, face.boundary, ccw=True)
+    holes = tuple(_oriented(state, hole, ccw=False) for hole in face.holes)
+    if boundary != face.boundary or holes != face.holes:
+        state.entities[face.entity_id] = replace(face, boundary=boundary, holes=holes)
+
+
+def _oriented(state: DraftState, boundary: FaceBoundary, *, ccw: bool) -> FaceBoundary:
+    if isinstance(boundary, CircleBoundary):
+        return boundary
+    area = signed_area([_xy(state, pid) for pid in boundary.point_ids])
+    if (area > 0.0) == ccw:
+        return boundary
+    return RingBoundary(boundary.point_ids[::-1])
+
+
 def _xy(state: DraftState, point_id: EntityId) -> Point2:
     xyz = state.require_point(point_id).xyz_mm
     return (xyz.x_mm, xyz.y_mm)
@@ -181,6 +255,8 @@ def _clone_graph(
     state: DraftState,
     entity_ids: tuple[EntityId, ...],
     mapper: Callable[[XYZ], XYZ],
+    *,
+    turn_deg: float = 0.0,
 ) -> None:
     """Copy the selected subgraph through mapper as new unlabelled entities."""
     extras: list[EntityId] = []
@@ -299,6 +375,21 @@ def _clone_graph(
                 point_ids=tuple(mapped_point(pid) for pid in entity.point_ids),
                 label=None,
             )
+        elif isinstance(entity, SectionFace):
+            state.entities[new_id] = replace(
+                entity,
+                entity_id=new_id,
+                boundary=_cloned_boundary(entity.boundary, mapped_point),
+                holes=tuple(_cloned_boundary(h, mapped_point) for h in entity.holes),
+                shape=None
+                if entity.shape is None
+                else _mapped_shape(entity.shape, mapper, turn_deg),
+                label=None,
+            )
+        elif isinstance(entity, CircularTie):
+            state.entities[new_id] = replace(
+                entity, entity_id=new_id, center_id=mapped_point(entity.center_id), label=None
+            )
         elif isinstance(entity, Bar):
             state.entities[new_id] = replace(
                 entity, entity_id=new_id, point_id=mapped_point(entity.point_id), label=None
@@ -357,6 +448,14 @@ def _clone_graph(
                 label=None,
             )
     _restore_section_rings(state, set(point_map.values()))
+
+
+def _cloned_boundary(
+    boundary: FaceBoundary, mapped_point: Callable[[EntityId], EntityId]
+) -> FaceBoundary:
+    if isinstance(boundary, CircleBoundary):
+        return replace(boundary, center_id=mapped_point(boundary.center_id))
+    return RingBoundary(tuple(mapped_point(pid) for pid in boundary.point_ids))
 
 
 def _clone_rank(entity: object) -> int:
