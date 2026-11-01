@@ -1,0 +1,23 @@
+[
+  {"case": "sequential midpoint: 255*0.5+0.5 = 128 = 0x80", "scale": {"kind": "sequential", "domain": [0, 10], "colors": ["#000000", "#ffffff"], "unit": "", "title": ""}, "value": 5, "color": "#808080"},
+  {"case": "sequential quarter: 63.75+0.5 = 64.25 -> 64 = 0x40", "scale": {"kind": "sequential", "domain": [0, 10], "colors": ["#000000", "#ffffff"], "unit": "", "title": ""}, "value": 2.5, "color": "#404040"},
+  {"case": "sequential below the domain clamps to the first colour", "scale": {"kind": "sequential", "domain": [0, 10], "colors": ["#000000", "#ffffff"], "unit": "", "title": ""}, "value": -1, "color": "#000000"},
+  {"case": "sequential above the domain clamps to the last colour", "scale": {"kind": "sequential", "domain": [0, 10], "colors": ["#000000", "#ffffff"], "unit": "", "title": ""}, "value": 11, "color": "#ffffff"},
+  {"case": "sequential at lo is the first colour", "scale": {"kind": "sequential", "domain": [0, 10], "colors": ["#000000", "#ffffff"], "unit": "", "title": ""}, "value": 0, "color": "#000000"},
+  {"case": "half rounds up: 0.5+0.5 = 1", "scale": {"kind": "sequential", "domain": [0, 1], "colors": ["#000000", "#010101"], "unit": "", "title": ""}, "value": 0.5, "color": "#010101"},
+  {"case": "three stops at 0/50/100, value 25: red-green t=0.5", "scale": {"kind": "sequential", "domain": [0, 100], "colors": ["#ff0000", "#00ff00", "#0000ff"], "unit": "", "title": ""}, "value": 25, "color": "#808000"},
+  {"case": "three stops, value 75: green-blue t=0.5", "scale": {"kind": "sequential", "domain": [0, 100], "colors": ["#ff0000", "#00ff00", "#0000ff"], "unit": "", "title": ""}, "value": 75, "color": "#008080"},
+  {"case": "three stops, value on the middle stop", "scale": {"kind": "sequential", "domain": [0, 100], "colors": ["#ff0000", "#00ff00", "#0000ff"], "unit": "", "title": ""}, "value": 50, "color": "#00ff00"},
+  {"case": "#rgb expands to #rrggbb", "scale": {"kind": "sequential", "domain": [0, 1], "colors": ["#F00", "--accent"], "unit": "", "title": ""}, "value": 0, "color": "#ff0000"},
+  {"case": "a token resolves to its light-theme value", "scale": {"kind": "sequential", "domain": [0, 1], "colors": ["#F00", "--accent"], "unit": "", "title": ""}, "value": 1, "color": "#2f74ad"},
+  {"case": "diverging left half, t=0.5", "scale": {"kind": "diverging", "domain": [-1, 0, 1], "colors": ["#0000ff", "#ffffff", "#ff0000"], "unit": "", "title": ""}, "value": -0.5, "color": "#8080ff"},
+  {"case": "diverging at mid is the middle colour", "scale": {"kind": "diverging", "domain": [-1, 0, 1], "colors": ["#0000ff", "#ffffff", "#ff0000"], "unit": "", "title": ""}, "value": 0, "color": "#ffffff"},
+  {"case": "diverging right half, t=0.25: 255-63.75+0.5 = 191.75 -> 191 = 0xbf", "scale": {"kind": "diverging", "domain": [-1, 0, 1], "colors": ["#0000ff", "#ffffff", "#ff0000"], "unit": "", "title": ""}, "value": 0.25, "color": "#ffbfbf"},
+  {"case": "asymmetric diverging, compression half t=0.5: (33,102,172)->(247,247,247)", "scale": {"kind": "diverging", "domain": [-30, 0, 400], "colors": ["#2166ac", "#f7f7f7", "#b2182b"], "unit": "MPa", "title": "Stress"}, "value": -15, "color": "#8cafd2"},
+  {"case": "asymmetric diverging, tension half t=0.25: (247,247,247)->(178,24,43)", "scale": {"kind": "diverging", "domain": [-30, 0, 400], "colors": ["#2166ac", "#f7f7f7", "#b2182b"], "unit": "MPa", "title": "Stress"}, "value": 100, "color": "#e6bfc4"},
+  {"case": "asymmetric diverging, tension half t=0.625", "scale": {"kind": "diverging", "domain": [-30, 0, 400], "colors": ["#2166ac", "#f7f7f7", "#b2182b"], "unit": "MPa", "title": "Stress"}, "value": 250, "color": "#cc6c78"},
+  {"case": "five-colour diverging: stops -2,-1,0,2,4; value 1 is t=0.5 of 0x80->0xc0", "scale": {"kind": "diverging", "domain": [-2, 0, 4], "colors": ["#000000", "#404040", "#808080", "#c0c0c0", "#ffffff"], "unit": "", "title": ""}, "value": 1, "color": "#a0a0a0"},
+  {"case": "five-colour diverging, value 3 is t=0.5 of 0xc0->0xff: 224", "scale": {"kind": "diverging", "domain": [-2, 0, 4], "colors": ["#000000", "#404040", "#808080", "#c0c0c0", "#ffffff"], "unit": "", "title": ""}, "value": 3, "color": "#e0e0e0"},
+  {"case": "five-colour diverging, value -1.5 is t=0.5 of 0x00->0x40: 32.5 -> 32", "scale": {"kind": "diverging", "domain": [-2, 0, 4], "colors": ["#000000", "#404040", "#808080", "#c0c0c0", "#ffffff"], "unit": "", "title": ""}, "value": -1.5, "color": "#202020"},
+  {"case": "categorical, written back lower-case", "scale": {"kind": "categorical", "domain": ["elastic", "yielded"], "colors": ["#1A9850", "#d73027"], "unit": "", "title": ""}, "value": "elastic", "color": "#1a9850"}
+]

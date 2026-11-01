@@ -1,0 +1,78 @@
+{
+  "schema": "apeCAD.section-overlay",
+  "version": 1,
+  "units": "mm",
+  "revision": 7,
+  "layers": [
+    {
+      "id": "stress",
+      "label": "Fiber stress",
+      "visible": true,
+      "scale": {
+        "kind": "diverging",
+        "domain": [-30, 0, 400],
+        "colors": ["#2166AC", "#f7f7f7", "#b2182b"],
+        "unit": "MPa",
+        "title": "Stress"
+      },
+      "primitives": [
+        {"kind": "polygon", "ring": [[0, -300], [500, -300], [500, 0], [0, 0]], "value": -30, "ids": [1]},
+        {"kind": "polygon", "ring": [[500, -300], [1000, -300], [1000, 0], [500, 0]], "value": -15},
+        {"kind": "polygon", "ring": [[1000, -300], [1500, -300], [1500, 0], [1000, 0]], "value": 0},
+        {"kind": "polygon", "ring": [[1500, -300], [2000, -300], [2000, 0], [1500, 0]], "value": 100},
+        {"kind": "polygon", "ring": [[2000, -300], [2500, -300], [2500, 0], [2000, 0]], "value": 250},
+        {
+          "kind": "polygon",
+          "ring": [[2500, -300], [3000, -300], [3000, 0], [2500, 0]],
+          "holes": [[[2650, -200], [2850, -200], [2850, -100], [2650, -100]]],
+          "value": 500
+        }
+      ]
+    },
+    {
+      "id": "na",
+      "label": "Neutral axis",
+      "visible": true,
+      "scale": null,
+      "primitives": [
+        {"kind": "polyline", "points": [[1200, 60], [1200, -360]], "style": {"stroke": "--signal", "width_px": 2}},
+        {"kind": "label", "at": [1215, 30], "text": "NA <c = 1.2 m> & \"x\"", "style": {"fill": "--signal"}}
+      ]
+    },
+    {
+      "id": "bars",
+      "label": "Bar state",
+      "visible": true,
+      "scale": {
+        "kind": "categorical",
+        "domain": ["elastic", "yielded"],
+        "colors": ["#1a9850", "#d73027"],
+        "unit": "",
+        "title": "Bars"
+      },
+      "primitives": [
+        {"kind": "circle", "center": [43, -43], "radius": 8, "value": "yielded", "ids": [12, 13]},
+        {"kind": "circle", "center": [2957, -43], "radius": 8, "value": "elastic"},
+        {"kind": "point", "at": [1500, -150], "value": "yielded"}
+      ]
+    },
+    {
+      "id": "outline",
+      "label": "Core",
+      "visible": true,
+      "scale": null,
+      "primitives": [
+        {"kind": "circle", "center": [1500, -150], "radius": 100, "style": {"stroke": "#F80", "fill": null, "opacity": 0.5}}
+      ]
+    },
+    {
+      "id": "hidden",
+      "label": "Not drawn",
+      "visible": false,
+      "scale": {"kind": "sequential", "domain": [0, 1], "colors": ["#000", "#fff"], "unit": "", "title": "Hidden"},
+      "primitives": [
+        {"kind": "polygon", "ring": [[0, 0], [10, 0], [10, 10]], "value": 0.5}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "apeCAD.section-overlay",
+  "version": 1.0,
+  "units": "mm",
+  "revision": 3.0,
+  "layers": [
+    {
+      "id": "a",
+      "label": "",
+      "visible": true,
+      "scale": null,
+      "primitives": [
+        {"kind": "point", "at": [0, 0], "ids": [2.0, 5], "style": {"fill": "#000"}}
+      ]
+    }
+  ]
+}
