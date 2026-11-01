@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 from apeCAD.document import Document
-from apeCAD.entities import Bar, ConcreteFace, CoverGuide, Hoop, LegSteel, Point
+from apeCAD.entities import (
+    Bar,
+    CircleBoundary,
+    ConcreteFace,
+    CoverGuide,
+    Hoop,
+    LegSteel,
+    Point,
+    SectionFace,
+)
 from apeCAD.render.section import rounded_ring
-from apeCAD.section.cover import bar_centre_inset_mm, cover_rings
+from apeCAD.section.cover import CoverRings, bar_centre_inset_mm, circle_cover_rings, cover_rings
 
 
 def scene_payload(document: Document) -> dict[str, object]:
@@ -198,14 +207,7 @@ def _steel(steel: LegSteel | None) -> dict[str, object] | None:
 
 def _cover_guide(document: Document, guide: CoverGuide) -> dict[str, object]:
     """The guide with its rings, computed here in Python (plan C2: never in the client)."""
-    face = document.entity(guide.face_id)
-    assert isinstance(face, ConcreteFace)
-    outline: list[tuple[float, float]] = []
-    for point_id in face.point_ids:
-        point = document.entity(point_id)
-        assert isinstance(point, Point)
-        outline.append((point.xyz_mm.x_mm, point.xyz_mm.y_mm))
-    rings = cover_rings(outline, guide)
+    rings = _guide_rings(document, guide)
     return {
         "entity_id": guide.entity_id,
         "face_id": guide.face_id,
@@ -218,6 +220,27 @@ def _cover_guide(document: Document, guide: CoverGuide) -> dict[str, object]:
         "reason": rings.reason,
         "label": guide.label,
     }
+
+
+def _xy(document: Document, point_id: int) -> tuple[float, float]:
+    point = document.entity(point_id)
+    assert isinstance(point, Point)
+    return (point.xyz_mm.x_mm, point.xyz_mm.y_mm)
+
+
+def _guide_rings(document: Document, guide: CoverGuide) -> CoverRings:
+    """A v1 face or a v2 concrete ring insets by mitred offset; a v2 circle by radius."""
+    face = document.entity(guide.face_id)
+    if isinstance(face, SectionFace):
+        boundary = face.boundary
+        if isinstance(boundary, CircleBoundary):
+            center = _xy(document, boundary.center_id)
+            return circle_cover_rings(center, boundary.radius_mm, guide)
+        point_ids = boundary.point_ids
+    else:
+        assert isinstance(face, ConcreteFace)
+        point_ids = face.point_ids
+    return cover_rings([_xy(document, point_id) for point_id in point_ids], guide)
 
 
 def _ring(ring: list[tuple[float, float]] | None) -> list[list[float]] | None:

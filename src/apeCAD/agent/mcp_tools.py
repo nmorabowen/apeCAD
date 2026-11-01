@@ -52,7 +52,7 @@ class ToolSet(Protocol):
     def render(self, document: object, **params: object) -> Envelope: ...
     def export_dxf(self, document: object, **params: object) -> Envelope: ...
     def get_document(self, document: object) -> Envelope: ...
-    def get_section_draft(self, document: object) -> Envelope: ...
+    def get_section_draft(self, document: object, version: object = None) -> Envelope: ...
 
 
 class ArgumentProblem(Exception):
@@ -246,10 +246,17 @@ TOOLS: dict[str, McpTool] = {
         ),
         _tool(
             "get_section_draft",
-            "Return the apeCAD.section-draft v1 of the document (read-only): the ops log, the "
-            "derived section block apeConcrete reads, and the section lint as warnings.",
-            {"document": _DOCUMENT},
-            lambda t, a: t.get_section_draft(a["document"]),
+            "Return the apeCAD.section-draft of the document (read-only): the ops log, the "
+            "derived section block apeConcrete reads, and the section lint as warnings. "
+            "version 1 (the default) or 2; version 1 refuses what only v2 can say.",
+            {
+                "document": _DOCUMENT,
+                "version": {
+                    "type": ["integer", "null"],
+                    "description": "The section-draft version, 1 or 2; null or absent means 1",
+                },
+            },
+            lambda t, a: t.get_section_draft(a["document"], a.get("version")),
             ("document",),
         ),
     )

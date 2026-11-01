@@ -2,7 +2,7 @@
 
 A request carries the client's whole state, so a host keeps nothing between calls:
 
-    {transport_version, action, document, redo, op?, payload?}
+    {transport_version, action, document, redo, op?, payload?, version?}
 
 `document` is an ops log (`Document.to_dict()`) and `redo` the redo stack as op dicts, next
 redo first (`Document.redo_ops()`). Either may be omitted or null for a new, empty document.
@@ -14,7 +14,9 @@ The actions:
 - `load`: replace the state with `payload`, an ops log, an `apeCAD.section-draft`, or an
   `apeCAD.section-seed`. `document` and `redo` are not read. A draft's reopen warnings come
   back as `warnings`.
-- `draft`: the state plus `draft`, the ADR 0025 section-draft.
+- `draft`: the state plus `draft`, the ADR 0025 section-draft. `version` is 1 (the default,
+  also when absent or null) or 2 (ADR 0039 Errata 1); any other value is refused by name, as
+  is `version` on any other action.
 - `seed`: replace the state with `payload`, an `apeCAD.section-seed` v1 (stage C10).
 
 A success is `{ok: true, status: 200, transport_version, document, redo, scene}`, plus
@@ -55,7 +57,9 @@ Above it the transport refuses (`TOO_LARGE`), never truncates (ADR 0026 decision
 
 ACTIONS = ("scene", "apply", "undo", "redo", "load", "draft", "seed")
 
-_KEYS = frozenset({"transport_version", "action", "document", "redo", "op", "payload"})
+_KEYS = frozenset(
+    {"transport_version", "action", "document", "redo", "op", "payload", "version"}
+)
 
 
 class _Refusal(Exception):
@@ -99,6 +103,8 @@ def _handle(request: Json) -> Json:
     action = request.get("action")
     if action not in ACTIONS:
         raise _Refusal(INVALID_ARGUMENT, f"unknown action {action!r}, expected one of {ACTIONS}")
+    if request.get("version") is not None and action != "draft":
+        raise _Refusal(INVALID_ARGUMENT, f"version belongs to action 'draft', not {action!r}")
     if action == "seed":
         return _seed(request.get("payload"))
     if action == "load":
@@ -115,7 +121,7 @@ def _handle(request: Json) -> Json:
     elif action == "redo":
         document.redo()
     elif action == "draft":
-        extras["draft"] = section_draft(document)
+        extras["draft"] = section_draft(document, version=request.get("version"))
     return _state(document, extras)
 
 

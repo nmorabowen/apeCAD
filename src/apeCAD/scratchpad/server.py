@@ -57,6 +57,16 @@ def _session_root() -> Path | None:
     return Path(raw).expanduser().resolve()
 
 
+def _draft_version(query: str) -> object:
+    """`?version=N` of `/api/section/draft`: absent is None (v1); "1" and "2" are ints; any
+    other text goes through as given, so the tool refuses it by name (ADR 0039 Errata 1)."""
+    values = parse_qs(query).get("version")
+    if not values:
+        return None
+    raw = values[-1]
+    return int(raw) if raw in ("1", "2") else raw
+
+
 class ScratchpadServer(ThreadingHTTPServer):
     allow_reuse_address = False
 
@@ -176,7 +186,7 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         elif path == "/api/document":
             self._send_envelope(tools.get_document(session))
         elif path == "/api/section/draft":
-            self._send_envelope(tools.get_section_draft(session))
+            self._send_envelope(tools.get_section_draft(session, _draft_version(query)))
         elif path == "/api/revision":
             self._send_json(200, {"revision": session.revision})
         else:

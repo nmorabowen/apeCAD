@@ -40,7 +40,10 @@ HOSTED: dict[str, tuple[frozenset[str] | None, Body]] = {
     # None: the body checks its own keys (query_entities takes them as **filters).
     "query_entities": (None, lambda s, a: tools.query_entities(s, **a)),
     "get_document": (frozenset(), lambda s, a: tools.get_document(s)),
-    "get_section_draft": (frozenset(), lambda s, a: tools.get_section_draft(s)),
+    "get_section_draft": (
+        frozenset({"version"}),
+        lambda s, a: tools.get_section_draft(s, a.get("version")),
+    ),
 }
 
 

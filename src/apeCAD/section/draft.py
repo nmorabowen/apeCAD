@@ -66,10 +66,18 @@ _NUMERIC_KEYS = frozenset(
         "cover_mm",
         "tie_diameter_mm",
         "bar_diameter_mm",
+        # v2 (specs/section-draft-v2.md "Writer and reader"); absent from a v1 block
+        "center_mm",
+        "radius_mm",
+        "centerline_radius_mm",
+        "pitch_mm",
+        "anchor_mm",
+        "rotation_deg",
     }
 )
 """Fields whose numbers are lengths: compared with `REL_TOL`. Every other value (ids,
-designations, labels, hooks, curtains) must be equal."""
+designations, labels, hooks, curtains) must be equal. `rotation_deg` is an angle, compared
+numerically like `anchor_mm` (apeSection#27 ruling)."""
 
 Json = dict[str, object]
 
@@ -291,18 +299,21 @@ def require_seed_header(seed: Mapping[str, object]) -> None:
         )
 
 
-def compare_sections(stored: object, fresh: Json) -> list[Json]:
+def compare_sections(
+    stored: object, fresh: Json, *, lists: Sequence[str] = SECTION_LISTS
+) -> list[Json]:
     """Compare a stored `section` block with the one recomputed from the replayed document.
 
     Returns one `{code, ids, message}` warning per item whose numbers moved by more than
     `REL_TOL`. Raises `DocumentError` on a structural difference: an id missing or extra in
     a list (which also catches an id of another kind), or any non-numeric field that
     differs (hoop membership, designations, labels, hooks). A stored key this reader does
-    not write is ignored, so an additive field (ADR 0025 rule 6) still reopens.
+    not write is ignored, so an additive field (ADR 0025 rule 6) still reopens. `lists` names
+    the id-keyed lists to compare: v1's by default, `SECTION_LISTS_V2` for a v2 block.
     """
     block = _object(stored, "section")
     warnings: list[Json] = []
-    for name in SECTION_LISTS:
+    for name in lists:
         stored_items = _by_id(block.get(name), f"section.{name}")
         fresh_items = _by_id(fresh[name], f"section.{name}")
         missing = sorted(set(fresh_items) - set(stored_items))
