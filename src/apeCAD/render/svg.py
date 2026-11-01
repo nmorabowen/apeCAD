@@ -368,3 +368,114 @@ def _legend(view: View, viewport: Viewport, title: str, layout: Layout | None) -
         *note,
         "</g>",
     ]
+
+
+# --- a section-overlay scale legend (ADR 0041; drawn for `render/overlay.py`) -------------
+
+LEGEND_W_PX = 150.0
+LEGEND_BAR_PX = 10.0
+LEGEND_ROW_PX = 14.0
+LEGEND_GAP_PX = 10.0
+LEGEND_EDGE_PX = 12.0
+LEGEND_TICK_ROW_PX = 11.0
+LEGEND_TICK_GAP_PX = 4.0
+
+ScaleLegend = tuple[list[str], float]
+
+
+def scale_legend(
+    index: int,
+    layer_id: str,
+    heading: str,
+    colors: Sequence[str],
+    top: float,
+    right: float,
+    stops: Sequence[float] = (),
+    *,
+    names: Sequence[str] = (),
+    mid: float | None = None,
+) -> ScaleLegend:
+    """A legend whose top-right corner is (right, top), and its height: a swatch per name
+    (categorical), else a gradient bar over `stops` with lo, hi and `mid` ticks."""
+    x0 = right - LEGEND_W_PX
+    out = [
+        f'<g class="overlay-legend" data-layer="{clean_text(layer_id)}" {FONT} '
+        f'fill="{BLUE}">',
+        f'<text x="{num(x0)}" y="{num(top + 10.0)}">{clean_text(heading)}</text>',
+    ]
+    bar_top = top + 14.0
+    if names:
+        for i, (name, color) in enumerate(zip(names, colors, strict=True)):
+            y = bar_top + i * LEGEND_ROW_PX
+            out.append(
+                f'<rect x="{num(x0)}" y="{num(y)}" width="{num(LEGEND_BAR_PX)}" '
+                f'height="{num(LEGEND_BAR_PX)}" fill="{color}" stroke="{BLUE}" '
+                'stroke-width="0.5"/>'
+            )
+            out.append(
+                f'<text x="{num(x0 + LEGEND_BAR_PX + 4.0)}" y="{num(y + 9.0)}">'
+                f"{clean_text(name)}</text>"
+            )
+        out.append("</g>")
+        return out, 14.0 + len(names) * LEGEND_ROW_PX
+    lo, hi = stops[0], stops[-1]
+    gradient = f"overlay-scale-{index}"
+    out.append(f'<defs><linearGradient id="{gradient}" x1="0" y1="0" x2="1" y2="0">')
+    out.extend(
+        f'<stop offset="{(s - lo) / (hi - lo):.6g}" stop-color="{c}"/>'
+        for s, c in zip(stops, colors, strict=True)
+    )
+    out.append("</linearGradient></defs>")
+    out.append(
+        f'<rect x="{num(x0)}" y="{num(bar_top)}" width="{num(LEGEND_W_PX)}" '
+        f'height="{num(LEGEND_BAR_PX)}" fill="url(#{gradient})" stroke="{BLUE}" '
+        'stroke-width="0.5"/>'
+    )
+    bar_bottom = bar_top + LEGEND_BAR_PX
+    wanted = [(f"{lo:.4g}", x0, "start"), (f"{hi:.4g}", right, "end")]
+    if mid is not None:
+        at = x0 + LEGEND_W_PX * (mid - lo) / (hi - lo)
+        out.append(
+            f'<path d="M{num(at)} {num(bar_bottom)} L{num(at)} {num(bar_bottom + 3.0)}" '
+            f'stroke="{BLUE}" stroke-width="0.5"/>'
+        )
+        wanted.append((f"{mid:.4g}", at, "middle"))
+    placed = tick_rows(wanted, x0, right)
+    out.extend(
+        f'<text x="{num(x)}" y="{num(bar_bottom + 11.0 + row * LEGEND_TICK_ROW_PX)}" '
+        f'text-anchor="{anchor}">{clean_text(text)}</text>'
+        for text, x, anchor, row in placed
+    )
+    out.append("</g>")
+    rows = 1 + max(row for *_rest, row in placed)
+    return out, 14.0 + LEGEND_BAR_PX + 13.0 + (rows - 1) * LEGEND_TICK_ROW_PX
+
+
+def tick_rows(
+    wanted: Sequence[tuple[str, float, str]], x0: float, right: float
+) -> list[tuple[str, float, str, int]]:
+    """Each tick label in the first row where it clears the labels already there by
+    `LEGEND_TICK_GAP_PX` (widths estimated with `labels.CHAR_PX`). A centred label is first
+    clamped inside [x0, right]. Returns (text, x, anchor, row) in the order given."""
+    rows: list[list[tuple[float, float]]] = []
+    placed: list[tuple[str, float, str, int]] = []
+    for text, x, anchor in wanted:
+        width = len(text) * CHAR_PX
+        if anchor == "middle":
+            x = min(max(x, x0 + width / 2.0), right - width / 2.0)
+            box = (x - width / 2.0, x + width / 2.0)
+        elif anchor == "end":
+            box = (x - width, x)
+        else:
+            box = (x, x + width)
+        row = 0
+        while row < len(rows) and any(
+            box[0] < b + LEGEND_TICK_GAP_PX and a < box[1] + LEGEND_TICK_GAP_PX
+            for a, b in rows[row]
+        ):
+            row += 1
+        if row == len(rows):
+            rows.append([])
+        rows[row].append(box)
+        placed.append((text, x, anchor, row))
+    return placed

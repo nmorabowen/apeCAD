@@ -16,9 +16,16 @@ from dataclasses import dataclass
 from typing import cast
 
 from apeCAD.errors import INVALID_ARGUMENT, TOO_LARGE
-from apeCAD.render.labels import CHAR_PX
-from apeCAD.render.style import BLUE
-from apeCAD.render.svg import FONT, Viewport, clean_text, num
+from apeCAD.render.svg import (
+    FONT,
+    LEGEND_EDGE_PX,
+    LEGEND_GAP_PX,
+    ScaleLegend,
+    Viewport,
+    clean_text,
+    num,
+    scale_legend,
+)
 from apeCAD.render.views import Vec2, View
 
 OVERLAY_SCHEMA = "apeCAD.section-overlay"
@@ -476,13 +483,6 @@ def as_overlay(value: Overlay | Mapping[str, object] | object) -> Overlay:
 
 # --- drawing -------------------------------------------------------------------------------
 
-LEGEND_W_PX = 150.0
-LEGEND_BAR_PX = 10.0
-LEGEND_ROW_PX = 14.0
-LEGEND_GAP_PX = 10.0
-LEGEND_EDGE_PX = 12.0
-
-
 def overlay_svg(overlay: Overlay, view: View, viewport: Viewport) -> list[str]:
     """One `<g class="overlay">`: the visible layers in order, then their legends."""
 
@@ -503,7 +503,7 @@ def overlay_svg(overlay: Overlay, view: View, viewport: Viewport) -> list[str]:
     right = viewport.width - LEGEND_EDGE_PX
     for index, layer in enumerate(overlay.layers):
         if layer.visible and layer.scale is not None:
-            lines, height = _legend_svg(index, layer.id, layer.scale, right, top)
+            lines, height = _legend(index, layer.id, layer.scale, top, right)
             out.extend(lines)
             top += height + LEGEND_GAP_PX
     out.append("</g>")
@@ -554,97 +554,11 @@ def _primitive_svg(p: Primitive, px: _Px, scale: float) -> str:
     return f'<text x="{num(x)}" y="{num(y)}" {FONT} {paint}{data}>{clean_text(p.text)}</text>'
 
 
-def _legend_svg(
-    index: int, layer_id: str, scale: Scale, right: float, top: float
-) -> tuple[list[str], float]:
-    """A legend block whose top-right corner is (right, top); returns it and its height."""
-    x0 = right - LEGEND_W_PX
+def _legend(index: int, layer_id: str, scale: Scale, top: float, right: float) -> ScaleLegend:
     heading = f"{scale.title} ({scale.unit})" if scale.unit else scale.title
-    out = [
-        f'<g class="overlay-legend" data-layer="{clean_text(layer_id)}" {FONT} '
-        f'fill="{BLUE}">',
-        f'<text x="{num(x0)}" y="{num(top + 10.0)}">{clean_text(heading)}</text>',
-    ]
-    bar_top = top + 14.0
     if scale.kind == "categorical":
         names = cast(tuple[str, ...], scale.domain)
-        for i, (name, color) in enumerate(zip(names, scale.colors, strict=True)):
-            y = bar_top + i * LEGEND_ROW_PX
-            out.append(
-                f'<rect x="{num(x0)}" y="{num(y)}" width="{num(LEGEND_BAR_PX)}" '
-                f'height="{num(LEGEND_BAR_PX)}" fill="{color}" stroke="{BLUE}" '
-                'stroke-width="0.5"/>'
-            )
-            out.append(
-                f'<text x="{num(x0 + LEGEND_BAR_PX + 4.0)}" y="{num(y + 9.0)}">'
-                f"{clean_text(name)}</text>"
-            )
-        out.append("</g>")
-        return out, 14.0 + len(names) * LEGEND_ROW_PX
+        return scale_legend(index, layer_id, heading, scale.colors, top, right, names=names)
+    mid = cast(tuple[float, ...], scale.domain)[1] if scale.kind == "diverging" else None
     stops = scale_stops(scale)
-    lo, hi = stops[0], stops[-1]
-    gradient = f"overlay-scale-{index}"
-    out.append(f'<defs><linearGradient id="{gradient}" x1="0" y1="0" x2="1" y2="0">')
-    out.extend(
-        f'<stop offset="{(s - lo) / (hi - lo):.6g}" stop-color="{c}"/>'
-        for s, c in zip(stops, scale.colors, strict=True)
-    )
-    out.append("</linearGradient></defs>")
-    out.append(
-        f'<rect x="{num(x0)}" y="{num(bar_top)}" width="{num(LEGEND_W_PX)}" '
-        f'height="{num(LEGEND_BAR_PX)}" fill="url(#{gradient})" stroke="{BLUE}" '
-        'stroke-width="0.5"/>'
-    )
-    bar_bottom = bar_top + LEGEND_BAR_PX
-    wanted = [(f"{lo:.4g}", x0, "start"), (f"{hi:.4g}", right, "end")]
-    if scale.kind == "diverging":
-        mid = cast(tuple[float, ...], scale.domain)[1]
-        at = x0 + LEGEND_W_PX * (mid - lo) / (hi - lo)
-        out.append(
-            f'<path d="M{num(at)} {num(bar_bottom)} L{num(at)} {num(bar_bottom + 3.0)}" '
-            f'stroke="{BLUE}" stroke-width="0.5"/>'
-        )
-        wanted.append((f"{mid:.4g}", at, "middle"))
-    placed = legend_ticks(wanted, x0, right)
-    out.extend(
-        f'<text x="{num(x)}" y="{num(bar_bottom + 11.0 + row * LEGEND_TICK_ROW_PX)}" '
-        f'text-anchor="{anchor}">{clean_text(text)}</text>'
-        for text, x, anchor, row in placed
-    )
-    out.append("</g>")
-    rows = 1 + max(row for *_rest, row in placed)
-    return out, 14.0 + LEGEND_BAR_PX + 13.0 + (rows - 1) * LEGEND_TICK_ROW_PX
-
-
-LEGEND_TICK_ROW_PX = 11.0
-LEGEND_TICK_GAP_PX = 4.0
-
-
-def legend_ticks(
-    wanted: Sequence[tuple[str, float, str]], x0: float, right: float
-) -> list[tuple[str, float, str, int]]:
-    """Each tick label in the first row where it clears the labels already there, by
-    `LEGEND_TICK_GAP_PX` (widths estimated with `labels.CHAR_PX`). A centred label is first
-    clamped inside [x0, right]. Returns (text, x, anchor, row) in the order given."""
-    rows: list[list[tuple[float, float]]] = []
-    placed: list[tuple[str, float, str, int]] = []
-    for text, x, anchor in wanted:
-        width = len(text) * CHAR_PX
-        if anchor == "middle":
-            x = min(max(x, x0 + width / 2.0), right - width / 2.0)
-            box = (x - width / 2.0, x + width / 2.0)
-        elif anchor == "end":
-            box = (x - width, x)
-        else:
-            box = (x, x + width)
-        row = 0
-        while row < len(rows) and any(
-            box[0] < b + LEGEND_TICK_GAP_PX and a < box[1] + LEGEND_TICK_GAP_PX
-            for a, b in rows[row]
-        ):
-            row += 1
-        if row == len(rows):
-            rows.append([])
-        rows[row].append(box)
-        placed.append((text, x, anchor, row))
-    return placed
+    return scale_legend(index, layer_id, heading, scale.colors, top, right, stops, mid=mid)
