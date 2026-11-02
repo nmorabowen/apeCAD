@@ -385,7 +385,7 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 
 ### 3.2 Entity → drawing style
 
-`Role` is what `scene.py` attaches to a drawable (`Drawable.layer`); `render/style.py` resolves it: `SECTION_STYLE` for the section roles, `SKETCH_STYLE` for the rest ([ADR 0033](../adrs/0033-ape-drawing-style-errata.md)). The canvas twin is `static/js/section.js` `SECTION_STYLE`, reading the canvas roles of §1.1.
+`Role` is what `scene.py` attaches to a drawable (`Drawable.layer`); `render/style.py` resolves it: `SECTION_STYLE` for the section roles, `SKETCH_STYLE` for the rest ([ADR 0033](../adrs/0033-ape-drawing-style-errata.md)). The canvas twin is `static/js/section.js` `SECTION_STYLE`, reading the canvas roles of §1.1. Section layers paint back to front: concrete, steel, void, cover, leg, hoop, crosstie, circular-tie, bar (C5 record §3). A v2 circle is tessellated for display only, its side count from `sqrt` alone (`tessellate.circle_segments`). An entity that draws nothing is named by the `render` tool's `not-drawn` warning (templates and bar points excepted).
 
 | Entity (kind) | Role | Line style | Fill | Layer (DXF) | Notes |
 |---|---|---|---|---|---|
@@ -395,12 +395,16 @@ template, `<Verb>: select the entities first.`, in `strings.js`.
 | `Face` (3-D, not section) | `face` | `0.20mm S-Black` outline | none | `FACE` | The 15 % blue tint goes; projection weight (ADR 0033) |
 | `Box`, `Solid` edges | `solid` | `0.20mm S-Black` | — | `SOLID-EDGE` | Projection; no hidden-line removal |
 | `ConcreteFace` | `concrete-cut` | `0.40mm S-Black` | `Solid - Grey210 - Transparent` | `CONCRETE-CUT`, fill on `CONCRETE-FILL` | Section is a cut (ADR-005 D2) |
+| `SectionFace` concrete (v2) | `concrete` | `0.40mm S-Black` | `Solid - Grey210 - Transparent` | `CONCRETE-CUT`, fill on `CONCRETE-FILL` | One `<path>`: outer, then holes, `fill-rule="evenodd"`; DXF holes are hatch islands (C5-S1) |
+| `SectionFace` steel (v2) | `steel` | `0.40mm S-Black` | `Steel - Grey128 - Opaque` | `STEEL-CUT`, fill on `STEEL-FILL` | Painted over concrete; joins concrete in the title and dimensions |
+| `SectionFace` void (v2) | `void` | `0.40mm S-Black` | none: paper colour, so it takes away what it cuts | `VOID`, a `WIPEOUT` | Painted over steel and concrete whatever the ids (ADR 0039 D3); DXF refuses a void with holes |
 | `WallLeg` axis | `wall-axis` | `0.10mm H-Dark Grey` | — | `WALL-AXIS` | Intent line; thickness is shown by the face |
 | `WallLeg.horizontal` | `tag` | — | — | `TAG` | `Φd @ s mm, {curtains} curtains` beside the leg |
 | `Bar` | `bar` | edge `0.10mm S-Blue` | disc at `diameter_mm`, Blue | `BAR` | True scale; never below 0.6 mm on paper |
 | `Hoop` | `hoop` | `0.30mm S-Blue` | — | `HOOP` | Path = hull of bar centres offset by (d<sub>b</sub> + d<sub>h</sub>) / 2; 135° hook ticks of 6 d<sub>h</sub> at the closing corner (implemented, SVG only) |
 | `Crosstie` | `crosstie` | `0.20mm S-Blue` | — | `HOOP` | Bar to bar, 135° or 90° hook tick of 6 d<sub>h</sub> per `hooks` (implemented, SVG only) |
-| `CoverGuide` | `cover` | `0.10mm H-Dark Grey`, short dash (ADR 0033; Grey 192 vanishes on Grey210) | — | `COVER-GUIDE` | Face ring inset by `cover_mm` |
+| `CircularTie` (v2) | `circular-tie` | `0.30mm S-Blue` | — | `CIRCULAR-TIE`, native `CIRCLE` | Centreline at `centerline_radius_mm`; tag `Spiral Φd @ p mm` or `Tie Φd @ s mm`, after its bars |
+| `CoverGuide` | `cover` | `0.10mm H-Dark Grey`, short dash (ADR 0033; Grey 192 vanishes on Grey210) | — | `COVER-GUIDE` | Face ring inset by `cover_mm` (`section/cover.py`, as the scene: a v2 circle by radius) |
 | entity `label` | `label` | — | — | `LABEL` | Working font 2.0 mm, Blue; on an annotated plan, placed clear of the annotation (D4) |
 | `#id` (show_ids) | `label` | — | — | not exported | Debug only |
 | Bar group tag | `tag` | leader `0.10mm S-Blue` | — | `TAG` | `n Φd`, one per designation (D4) |
@@ -468,7 +472,8 @@ ADR 0031 "Implementation stages".
 
 - `render/style.py` (#32's table, extended; ADR 0033): `pen_px(mm)`, the ink and font
   constants, `LayerStyle` with its ADR-005 `line_style`, ADR-010 `fill_name` and DXF
-  `layer_name`, `SECTION_STYLE` (concrete, cover, leg, hoop, crosstie, bar),
+  `layer_name`, `SECTION_STYLE` (concrete, cover, leg, hoop, crosstie, bar; C5-S1 adds steel,
+  void and circular-tie),
   `SKETCH_STYLE` (face, solid, edge, point), `VIEW_TITLES`.
 - `drawable.py` / `scene.py`: boxes and solids move from `edge` to a `solid` layer.
 - `svg.py`: one group per layer in a fixed paint order (faces, section layers, solids,
@@ -558,15 +563,15 @@ As [ADR 0034](../adrs/0034-dxf-export.md) decides, in `render/dxf.py`:
   `tests/test_dxf_unavailable.py` runs in the core CI job and checks both.
 - **AC1027 (R2013), model space at 1:1 mm, plan only.** Units are `$INSUNITS` 4 and
   `$MEASUREMENT` 1.
-- **Layers** come from `render/style.py` `layer_name` plus `CONCRETE-FILL`, `TAG`,
-  `DIMENSION` and `VIEW-TITLE`:
+- **Layers** come from `render/style.py` `layer_name` plus `CONCRETE-FILL`, `STEEL-FILL`,
+  `TAG`, `DIMENSION` and `VIEW-TITLE`; crossties are on `CROSSTIE`:
   - ByLayer ADR-005 lineweight (0.10/0.20/0.30/0.40/0.50 → 9/20/30/40/50) and colour (Black
     ACI 7, Dark Grey ACI 8, Grey ACI 9; Blue and Grey210 true colour);
   - linetype `HIDDEN` (2.0 mm dash, 1.0 mm gap, `$LTSCALE` = n) for `H-`;
   - the style name in the layer description.
-  - Crossties are on `CROSSTIE`.
-- **Entities:**
-  - concrete: `LWPOLYLINE` plus a ByLayer solid `HATCH` on `CONCRETE-FILL`;
+- **Entities**, written in the SVG's paint order:
+  - concrete: `LWPOLYLINE` plus a ByLayer solid `HATCH` on `CONCRETE-FILL`; a v2 face's
+    circles are native `CIRCLE`s and its holes hatch islands; a void is a `WIPEOUT`;
   - bars: `CIRCLE` plus a solid `HATCH`;
   - circles, arcs and ellipses in a horizontal plane: native `CIRCLE`, `ARC`, `ELLIPSE`;
   - anything else: `LWPOLYLINE` when flat, a 3-D `POLYLINE` otherwise.
@@ -587,11 +592,9 @@ As [ADR 0034](../adrs/0034-dxf-export.md) decides, in `render/dxf.py`:
   - the CLI `export-dxf`.
 - **Tests** (`tests/test_dxf.py`): each section fixture and a box, read back with ezdxf.
   - version, units and an ezdxf `audit()` with no errors and no fixes;
-  - entity counts per layer equal the drawables (no section entity dropped);
-  - native curves;
+  - entity counts per layer equal the drawables (no section entity dropped); native curves;
   - the layer table's weights, colours, linetypes and descriptions;
-  - MTEXT tag texts equal the SVG's, the DIMENSION measurements, the style names and
-    `dimscale`;
-  - `ids`, the view refusal, and every surface.
+  - MTEXT tag texts equal the SVG's, the DIMENSION measurements, the style names, `dimscale`;
+  - `ids`, the view refusal, and every surface; v2 faces in `tests/test_render_v2_draw.py`.
 - **Not built:** entity labels (`labels`) other than those the tags carry, and goldens
   (ezdxf writes fresh GUIDs and timestamps, so the bytes differ run to run).

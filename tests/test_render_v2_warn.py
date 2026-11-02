@@ -1,50 +1,44 @@
-"""Stage C1-S5 (apeSection#39): `render` warns `not-drawn` for v2 entities it skips.
+"""`render` warns `not-drawn` for what draws nothing (C1-S5, apeSection#39; C5-S1, #58).
 
-v2 faces, circular ties and cover guides on v2 faces are drawn in stage C5. Until then the
-envelope names each one it leaves out, instead of a silent ok. The expected ids come from the
-committed fixtures' op logs (the ops that create v2 entities, and the `SetCover` ops whose
-face is one of them), not from the code under test.
+Stage C5-S1 draws v2 faces, circular ties and cover guides on v2 faces, so the 11 v2
+fixtures now warn nothing. The warning stays, generic: any entity that draws nothing is
+named with its kind, templates (their children draw) and bar points (their bar draws)
+excepted. A kind added without a drawing is named by construction; the synthetic `Gadget`
+below stands for it (C5 record §4 invariant 2).
 """
 
 from __future__ import annotations
 
-import json
 import sys
 import types
-from typing import cast
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any, cast
 
 import pytest
 
 from _section_fixtures import BUILDERS
-from _section_fixtures_v2 import BUILDERS_V2, fixture_path_v2
+from _section_fixtures_v2 import BUILDERS_V2
 from apeCAD import Document
 from apeCAD.agent import LocalTools
+from apeCAD.agent import tools as agent_tools
 from apeCAD.agent.session import Session
 from apeCAD.agent.tools import render
-from apeCAD.geometry import XYZ
-from apeCAD.ops import PointAt
+from apeCAD.entities import Entity, EntityId
+from apeCAD.render.scene import entity_map
+from apeCAD.render.section import not_drawn
 from test_render import _fake_png  # pyright: ignore[reportPrivateUsage]
 
 Json = dict[str, object]
-V2_FACE_OPS = {"AddSectionFace", "AddSteelShape"}
+GADGET_ID = 9001
 
 
-def _expected(name: str) -> list[int]:
-    draft = cast(Json, json.loads(fixture_path_v2(name).read_text(encoding="utf-8")))
-    ops = cast(list[Json], cast(Json, draft["document"])["ops"])
-    faces = {cast(int, op["entity_id"]) for op in ops if op["op"] in V2_FACE_OPS}
-    ties = {cast(int, op["entity_id"]) for op in ops if op["op"] == "AddCircularTie"}
-    covers = [op for op in ops if op["op"] == "SetCover"]
-    guides = {cast(int, op["entity_id"]) for op in covers if op["face_id"] in faces}
-    # A template's children come from one op: the committed section names them (C3-S3).
-    section = cast(dict[str, list[Json]], draft["section"])
-    children = {
-        cast(int, item["id"])
-        for key in ("faces", "circular_ties", "cover_guides")
-        for item in section[key]
-        if "template_id" in item
-    }
-    return sorted(faces | ties | guides | children)
+@dataclass(frozen=True, slots=True)
+class Gadget:
+    """A section kind the renderer has never heard of."""
+
+    entity_id: EntityId
+    label: str | None = None
 
 
 def _warnings(envelope: Json) -> list[Json]:
@@ -54,38 +48,21 @@ def _warnings(envelope: Json) -> list[Json]:
 
 @pytest.mark.parametrize("name", sorted(BUILDERS_V2))
 @pytest.mark.parametrize("fmt", ["svg", "png"])
-def test_rendering_a_v2_fixture_names_exactly_its_v2_entities(
+def test_rendering_a_v2_fixture_warns_nothing(
     name: str, fmt: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     if fmt == "png":  # the png extra may be missing: rasterize with test_render's fake
         fake = types.ModuleType("resvg_py")
         fake.svg_to_bytes = _fake_png  # type: ignore[attr-defined]
         monkeypatch.setitem(sys.modules, "resvg_py", fake)
-    expected = _expected(name)
-    warnings = _warnings(render(Session(BUILDERS_V2[name]()), format=fmt))
-    if not expected:
-        assert warnings == []
-        return
-    (warning,) = warnings
-    assert warning["code"] == "not-drawn"
-    assert warning["ids"] == expected
-    assert str(expected) in cast(str, warning["message"])
+    envelope = render(Session(BUILDERS_V2[name]()), format=fmt)
+    assert envelope["ok"] is True and "warnings" not in envelope
 
 
-def test_the_fixture_oracle_covers_faces_and_circular_ties() -> None:
-    """Guard the oracle itself: v2 fixtures hold both kinds, and two have none."""
-    assert _expected("circular_column_spiral") == [2, 19, 20]  # circle face, spiral, guide
-    assert len(_expected("cft_round")) == 2
-    assert _expected("rect_boundary_hoops") == []  # v1's wall: ConcreteFace only
-    assert _expected("src_w_in_rect") == [18]  # the W only: its guide is on a v1 face
-    assert len(_expected("rect_column_template")) == 2  # a template's face and cover guide
-    assert len(_expected("t_beam_template")) == 2
-    # The review's undrawn guides: 6, 20, 11 and 10 on these four fixtures.
-    for name, guide in (
-        ("rect_column_ties", 6), ("circular_column_spiral", 20), ("box_with_void", 11),
-        ("t_beam", 10),
-    ):  # fmt: skip
-        assert guide in _expected(name), name
+@pytest.mark.parametrize("name", sorted(BUILDERS_V2))
+def test_not_drawn_is_empty_on_every_v2_fixture(name: str) -> None:
+    entities = entity_map(BUILDERS_V2[name]())
+    assert not_drawn(entities, set(entities)) == []
 
 
 @pytest.mark.parametrize("name", sorted(BUILDERS))
@@ -94,19 +71,50 @@ def test_v1_fixtures_warn_nothing_new(name: str) -> None:
     assert "warnings" not in envelope
 
 
+def _with_gadget(entities: Mapping[EntityId, Entity]) -> dict[EntityId, Entity]:
+    gadget = cast(Any, Gadget(GADGET_ID))  # not in the `Entity` union, on purpose
+    return {**entities, GADGET_ID: gadget}
+
+
+def test_an_unknown_kind_is_named_by_not_drawn() -> None:
+    entities = _with_gadget(entity_map(BUILDERS_V2["circular_column_spiral"]()))
+    assert not_drawn(entities, set(entities)) == [GADGET_ID]
+    assert not_drawn(entities, set(entities) - {GADGET_ID}) == []
+
+
+def test_templates_and_bar_points_are_never_named() -> None:
+    doc = BUILDERS_V2["rect_column_template"]()
+    entities = entity_map(doc)
+    (template,) = doc.section_templates()
+    bar_points = {bar.point_id for bar in doc.bars()}
+    assert template.entity_id in entities and bar_points <= set(entities)
+    assert not_drawn(entities, {template.entity_id, *bar_points}) == []
+
+
+@pytest.fixture
+def gadget_map(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`render`'s warning sees one more entity, of a kind with no drawing."""
+    real = agent_tools.entity_map
+    monkeypatch.setattr(agent_tools, "entity_map", lambda document: _with_gadget(real(document)))
+
+
+@pytest.mark.usefixtures("gadget_map")
+def test_render_names_an_unknown_kind_with_its_kind() -> None:
+    (warning,) = _warnings(render(Session(BUILDERS_V2["cft_round"]())))
+    assert warning["code"] == "not-drawn"
+    assert warning["ids"] == [GADGET_ID]
+    message = cast(str, warning["message"])
+    assert f"[{GADGET_ID}]" in message and f"Gadget {GADGET_ID}" in message
+
+
+@pytest.mark.usefixtures("gadget_map")
 def test_ids_limit_the_warning_to_what_is_drawn() -> None:
-    doc = Document()
-    face = doc.add_section_outline(
-        [PointAt(XYZ(x, y, 0.0)) for x, y in ((0, 0), (400, 0), (400, 400), (0, 400))],
-        material="C30",
-    )
-    void = doc.add_section_face("void", None, center_id=PointAt(XYZ(200, 200, 0)), radius_mm=50)
-    session = Session(doc)
-    assert _warnings(render(session, ids=[face.entity_id])) == []
-    (warning,) = _warnings(render(session, ids=[void.entity_id]))
-    assert warning["ids"] == [void.entity_id]
+    doc = BUILDERS_V2["box_with_void"]()
+    void = next(f for f in doc.section_faces() if f.role == "void")
+    assert _warnings(render(Session(doc), ids=[void.entity_id])) == []
 
 
+@pytest.mark.usefixtures("gadget_map")
 def test_local_tools_and_mcp_structured_content_carry_it() -> None:
     tools = LocalTools()
     doc = cast(str, tools.new_document()["document"])
@@ -121,14 +129,18 @@ def test_local_tools_and_mcp_structured_content_carry_it() -> None:
     assert structured["warnings"] == envelope["warnings"] and "svg" not in structured
 
 
-def test_a_cover_guide_on_a_v2_face_is_named_when_drawn_alone() -> None:
-    """Review of #53, finding 1: `ids=[20]` drew nothing and answered a silent ok."""
-    (warning,) = _warnings(render(Session(BUILDERS_V2["circular_column_spiral"]()), ids=[20]))
-    assert warning["ids"] == [20]
-    assert "cover guides on v2 faces" in cast(str, warning["message"])
+def test_a_cover_guide_on_a_v2_face_drawn_alone_warns_nothing() -> None:
+    """Review of #53, finding 1, inverted by C5-S1: `ids=[20]` now draws the guide."""
+    envelope = render(Session(BUILDERS_V2["circular_column_spiral"]()), ids=[20])
+    assert _warnings(envelope) == []
+    assert '<g class="cover"' in cast(str, envelope["svg"])
 
 
 def test_a_cover_guide_on_a_v1_face_is_drawn_and_not_named() -> None:
     doc = BUILDERS_V2["src_w_in_rect"]()
     guide = doc.cover_guides()[0].entity_id
     assert _warnings(render(Session(doc), ids=[guide])) == []
+
+
+def test_an_empty_document_warns_nothing() -> None:
+    assert _warnings(render(Session(Document()))) == []

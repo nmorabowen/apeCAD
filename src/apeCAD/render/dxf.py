@@ -266,7 +266,8 @@ def _write_face(
     boundaries = (face.boundary, *face.holes)
     z = d.paths[0][0][0][2]
     if face.role == "void":
-        msp.add_wipeout([(p[0], p[1]) for p in d.paths[0][0]], dxfattribs={"layer": layer})
+        wipeout = msp.add_wipeout([(p[0], p[1]) for p in d.paths[0][0]])
+        wipeout.dxf.layer = layer  # ezdxf 1.4 drops add_wipeout's dxfattribs
         used = {layer}
     else:
         fill = FILL_LAYERS[face.role]
