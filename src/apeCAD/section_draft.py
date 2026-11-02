@@ -7,8 +7,9 @@ whole draft a consumer stores (apeConcrete reads `section`, apeCAD replays `docu
 and the id-free `apeCAD.section-seed` that apeConcrete emits (stage C10).
 
 Each writer takes `version=1` (the default, ADR 0025) or `version=2` (ADR 0039,
-specs/section-draft-v2.md); version 1 refuses by name what it cannot say. Each reader reads
-either version.
+specs/section-draft-v2.md); version 1 refuses by name what it cannot say, section templates
+included. Version 2 lists them in `templates[]`; its seed writes their children as a plain
+drawing. Each reader reads either version.
 
 This module sits above `document.py` because it needs the ops log and `Document.from_dict`.
 `apeCAD.section` (pure geometry, below the handlers) holds the projection itself and may not

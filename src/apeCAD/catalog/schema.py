@@ -16,7 +16,7 @@ from typing import Union, cast, get_args, get_origin, get_type_hints
 
 from apeCAD.errors import OpArgumentError
 from apeCAD.geometry import XYZ
-from apeCAD.ops import Op, PointAt
+from apeCAD.ops import PointAt
 
 Schema = dict[str, object]
 
@@ -55,13 +55,14 @@ _SCALARS: dict[object, Schema] = {
 
 
 def params_schema(
-    op_type: type[Op],
+    op_type: type,
     descriptions: Mapping[str, str],
     *,
     outputs: Iterable[str] = (),
     defaults: Mapping[str, object] | None = None,
 ) -> Schema:
-    """The params schema of one op: every field except `outputs`, each with its description.
+    """The params schema of one op, or of a template's parameter dataclass: every field except
+    `outputs`, each with its description.
 
     `defaults` makes a field without a dataclass default optional, for fields the codec has
     always treated as optional (Extrude's `face_id`).

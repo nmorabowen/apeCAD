@@ -61,11 +61,12 @@ def test_the_fixtures_pin_the_v2_contract_hash() -> None:
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == CONTRACT_SHA256_V2
 
 
-def test_the_fixture_set_is_decision_8s() -> None:
+def test_the_fixture_set_is_decision_8s_and_the_two_template_fixtures() -> None:
     assert sorted(path.stem for path in FIXTURE_DIR.glob("*.json")) == NAMES == sorted(
         [
             "rect_column_ties", "circular_column_spiral", "box_with_void", "t_beam",
             "src_w_in_rect", "cft_round", "bare_w_shape", "rect_boundary_hoops",
+            "rect_column_template", "t_beam_template",  # additive (C3 record, ruling Q3)
         ]
     )  # fmt: skip
 
@@ -107,7 +108,9 @@ def test_fixture_matches_its_builder(name: str) -> None:
 
 @pytest.mark.parametrize("name", NAMES)
 def test_fixture_validates_against_the_v2_field_table(name: str) -> None:
-    validate_v2(_load(name))
+    draft = _load(name)
+    validate_v2(draft)
+    assert bool(_section(draft)["templates"]) == name.endswith("_template")
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -145,6 +148,8 @@ EXPECTED: dict[str, dict[str, tuple[float, float, float]]] = {
     },
     "bare_w_shape": {"steel": (_W, 0.0, 0.0)},
     "rect_boundary_hoops": {"concrete": (3000 * 300, 1500.0, -150.0)},
+    "rect_column_template": {"concrete": (400 * 600, 200.0, 300.0)},
+    "t_beam_template": {"concrete": (_T_AREA, 0.0, _T_CY)},
 }
 MINUS = {"box_with_void": ("void",), "src_w_in_rect": ("steel",)}
 

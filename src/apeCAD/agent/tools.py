@@ -56,11 +56,17 @@ RENDER_DEFAULTS: dict[str, object] = {
 
 
 def list_ops(name: object = None) -> Envelope:
-    """The catalog (§4 `list_ops`). Needs no document, so the envelope has no revision."""
+    """The catalog (§4 `list_ops`) and the section templates (ADR 0040 decision 6). Needs no
+    document, so the envelope has no revision. `name` selects an op, not a template."""
 
     def body() -> Envelope:
         selected = opt_str("name", name)
-        return {"ok": True, "schema": SCHEMA_ID, "ops": catalog.list_ops(selected)}
+        return {
+            "ok": True,
+            "schema": SCHEMA_ID,
+            "ops": catalog.list_ops(selected),
+            "templates": catalog.list_templates(),
+        }
 
     return guarded(lambda: None, body)
 

@@ -108,8 +108,12 @@ optional `expect_revision: int`.
 |---|---|---|
 | `name` | string \| null | null: all ops |
 
-Result: `{ok, schema, ops: [{name, summary, produces, params, example}]}`, where `schema` is
-`ops.types.SCHEMA_ID`.
+Result: `{ok, schema, ops: [{name, summary, produces, params, example}], templates: [{name,
+summary, version, versions, params, example}]}`, where `schema` is `ops.types.SCHEMA_ID`.
+`templates` lists every section template (ADR 0040 decision 6), whatever `name` selects:
+`version` is the latest, `versions` every released one, and `params` the JSON Schema of the
+latest version's params, for `AddSectionTemplate.template_params`. A refusal carries no
+`templates`. `GET /api/ops` returns the same result.
 Reads the catalog only. It needs no document.
 
 ### `new_document` (local mode)

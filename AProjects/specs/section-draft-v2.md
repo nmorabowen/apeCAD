@@ -1,6 +1,6 @@
 # Spec — `apeCAD.section-draft` v2
 
-**Status:** Implemented (2026-11-01): the writer and reader in C1-S3 (apeCAD #51), the fixtures in C1-S4 (#52)
+**Status:** Implemented (2026-11-01): the writer and reader in C1-S3 (apeCAD #51), the fixtures in C1-S4 (#52), the templates in C3-S3
 **ADRs:** 0006, 0023, 0024, 0025, 0026, 0039, 0040
 
 The one text of the v2 section-draft contract (ADR 0039 decision 1, under ADR 0025's rules).
@@ -172,8 +172,8 @@ entity ids (positive integers) and stay stable across replay. Rows not listed (`
 | `section.hoops[]`, `section.crossties[]` | list | Exactly as in v1 (polygon hoops on the strict CCW hull; crossties between two bars) | as in v1 |
 | `section.circular_ties[]` | list | `kind` `"spiral"` or `"hoop"`; centre `center_mm`; `centerline_radius_mm` > 0; `designation`, `diameter_mm`; `pitch_mm` is the pitch of a spiral and the spacing of a hoop. The enclosed bars are not listed: the consumer derives them | apeCAD (positive lengths); consumer |
 | `section.cover_guides[]` | list | As in v1. `face_id` names a `faces[]` entry | apeCAD only |
-| `section.templates[]` | list | `{id, template, template_version, params}` (ADR 0040 decision 7). Always present; empty until stage C3 emits it (Errata 4, 5) | display only |
-| `*.template_id` | entity id, optional | On a template child: the id of its `templates[]` entry. Absent on freehand entities | display only |
+| `section.templates[]` | list | `{id, template, template_version, params}` (ADR 0040 decision 7), in entity-id order. Always present; empty when the document holds no template. `params` is what the op recorded. The block's comment "`[]` until C3" is history: C3-S3 emits it, and the hashed text stays as it is | display only |
+| `*.template_id` | entity id, optional | On a template child: the id of its `templates[]` entry, found by looking the item up in the template's `child_ids` (ADR 0040 Errata 4). Last key of its item. Absent on freehand entities and after an explode | display only |
 | `section.materials_used` | list of strings | The sorted, de-duplicated names of every face `material` and bar `material` present. Nulls are not listed. The bar default is not listed | host that binds names |
 
 ## Designation vocabulary
@@ -216,6 +216,8 @@ decision 7), under the same header as seed v1 with `"version": 2`:
 - Items omit their own `id` (or carry a 0-based index the reader ignores), as in seed v1.
 - A seed carries no `templates[]`, no `template_id` and no `materials_used`. A seed replays
   into plain entities (ADR 0040 Context, option 2); `materials_used` is derived (Errata 5).
+  The seed v2 of a templated document is the seed of its children, the same as the seed of
+  its explosion: the parameters do not survive it.
 - apeCAD alone turns a seed into ops. A seed reader validates the header, every 0-based
   cross-reference, and `diameter_mm` against `designation` (rel 1e-9), as for seed v1.
 - A seed refuses, by name, a steel face that has a `shape` but no ring (a designation-only
@@ -232,8 +234,8 @@ Outside the hashed block, so the contract is unchanged. Names follow v1's table 
   say: a second v2 face, a void or steel face, a circle, a hole, a circular tie. Any v2 face
   (`AddSectionFace`, `AddSteelShape`) is refused, but two v1 `ConcreteFace`s still write v1
   with the `more-than-one-solid-face` warning, as before (Errata 9.1). The same holds
-  for the v2-only fields: a bar with a `material`, or any entity with a `template_id`, is
-  refused by name (Errata 8.2). It never drops entities or fields to fit (ADR 0039
+  for the v2-only fields: a bar with a `material`, or any document holding a section template,
+  is refused by name (Errata 8.2). It never drops entities or fields to fit (ADR 0039
   decision 1).
 - Hosts ask for v2 explicitly. The transport's `action: "draft"` and the MCP and CLI
   `get_section_draft` take an optional `version`, 1 or 2, default 1, so HA-04 is unchanged.
@@ -245,6 +247,11 @@ Outside the hashed block, so the contract is unchanged. Names follow v1's table 
   `designation`, a template id. `shape.anchor_mm` is a length and compares numerically: a
   difference beyond rel 1e-9 warns, it is not refused (Errata 8.5). A stored key the reader
   does not write is ignored. The stored `warnings[]` are not compared.
+- A template compares strictly: its `template`, its `template_version` and any `template_id`
+  refuse on a difference, and so does a `template_id` the replay does not write. Its `params`
+  are recorded intent, not derived numbers, so they must equal the replay's exactly, whatever
+  their key order: a changed length, an extra param and `400.0` for `400` are all refused,
+  with no numeric tolerance (C3-S3).
 - An unknown `schema` or `version`, or `units` other than `"mm"`, is refused.
 - Lists are in entity-id order; every length is written as a float.
 
@@ -264,3 +271,17 @@ a pinned apeCAD sha (its ADR-0026). ADR 0039 decision 8:
 | `cft_round` | a concrete circle under a steel circle with a circle hole |
 | `bare_w_shape` | one steel face, no concrete, no bars |
 | `rect_boundary_hoops` | v1's wall fixture written as v2: v1 and v2 describe the same wall |
+
+Two more are additive (C3-S3, C3 decision record §2): the eight above stay byte-identical.
+
+| Fixture | Checks |
+|---|---|
+| `rect_column_template` | one `rect_column` v1: `templates[]`, `template_id` on its children, the same bars as `rect_column_ties` |
+| `t_beam_template` | one `t_beam` v1: the `T_RING` outline, bottom, top and slab bars |
+
+`tests/fixtures/section_templates/<template>@v<version>.json` holds one frozen op log per
+template version (ADR 0040 decision 4), recorded once and never regenerated: `REGENERATE`
+does not touch them. `rect_column@v1` and `t_beam@v1` replay to the two fixtures above, byte
+for byte; `polygon_column@v1` and `rect_hollow@v1` have no fixture and replay to a recorded
+SHA-256 of their draft. A consumer gets the new fixtures only by a new vendoring at a pinned
+apeCAD sha.

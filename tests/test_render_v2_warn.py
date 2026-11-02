@@ -36,7 +36,15 @@ def _expected(name: str) -> list[int]:
     ties = {cast(int, op["entity_id"]) for op in ops if op["op"] == "AddCircularTie"}
     covers = [op for op in ops if op["op"] == "SetCover"]
     guides = {cast(int, op["entity_id"]) for op in covers if op["face_id"] in faces}
-    return sorted(faces | ties | guides)
+    # A template's children come from one op: the committed section names them (C3-S3).
+    section = cast(dict[str, list[Json]], draft["section"])
+    children = {
+        cast(int, item["id"])
+        for key in ("faces", "circular_ties", "cover_guides")
+        for item in section[key]
+        if "template_id" in item
+    }
+    return sorted(faces | ties | guides | children)
 
 
 def _warnings(envelope: Json) -> list[Json]:
@@ -70,6 +78,8 @@ def test_the_fixture_oracle_covers_faces_and_circular_ties() -> None:
     assert len(_expected("cft_round")) == 2
     assert _expected("rect_boundary_hoops") == []  # v1's wall: ConcreteFace only
     assert _expected("src_w_in_rect") == [18]  # the W only: its guide is on a v1 face
+    assert len(_expected("rect_column_template")) == 2  # a template's face and cover guide
+    assert len(_expected("t_beam_template")) == 2
     # The review's undrawn guides: 6, 20, 11 and 10 on these four fixtures.
     for name, guide in (
         ("rect_column_ties", 6), ("circular_column_spiral", 20), ("box_with_void", 11),

@@ -303,7 +303,8 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
         except DocumentError as exc:
             self._send_json(400, {"error": str(exc), "code": exc.code})
             return
-        self._send_json(200, {"ok": True, "schema": SCHEMA_ID, "ops": ops})
+        templates = catalog.list_templates()
+        self._send_json(200, {"ok": True, "schema": SCHEMA_ID, "ops": ops, "templates": templates})
 
     def _render_svg(self, query: str) -> None:
         try:

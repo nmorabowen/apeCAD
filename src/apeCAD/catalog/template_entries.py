@@ -4,7 +4,8 @@ An agent lists the templates, fills in the params and sends one op; it never com
 bar position (ADR 0040 decision 6). The field is `template_params`, because the request
 envelope already uses `params` (ADR 0040 Errata 9). Its schema is an object: each template
 checks its own params when it expands, and refuses a bad one by name with
-`INVALID_ARGUMENT` (`TemplateParamError`). Stage C3-S3 lists each template's params.
+`INVALID_ARGUMENT` (`TemplateParamError`). `list_ops` lists each template's params
+(`catalog.template_params`).
 """
 
 from __future__ import annotations

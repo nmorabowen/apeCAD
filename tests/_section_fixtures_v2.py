@@ -139,6 +139,33 @@ def bare_w_shape() -> Document:
     return doc
 
 
+# The two additive template fixtures (C3 record §2 and §4, ruling Q3). The frozen logs in
+# fixtures/section_templates/ replay to them; REGENERATE never touches those logs.
+RECT_COLUMN_PARAMS: dict[str, object] = {
+    "material": "C30", "b": 400, "h": 600, "center_mm": [200, 300], "cover": 40, "nx": 3,
+    "ny": 3, "bar": "Ø20", "tie": "Ø10", "tie_spacing": 150, "crossties": "all",
+}  # fmt: skip
+T_BEAM_PARAMS: dict[str, object] = {
+    "material": "C30", "bw": 300, "h": 600, "bf": 800, "hf": 150, "center_mm": [0, 300],
+    "cover": 30, "bottom": {"n": 3, "bar": "Ø20"}, "top": {"n": 2, "bar": "Ø16"},
+    "slab_bars": {"n": 2, "bar": "Ø12"}, "stirrup": "Ø10", "stirrup_spacing": 150,
+}  # fmt: skip
+
+
+def rect_column_template() -> Document:
+    """`rect_column` v1 at the record's oracle: 400 x 600, the same bars as `rect_column_ties`."""
+    doc = Document()
+    doc.add_section_template("rect_column", RECT_COLUMN_PARAMS)
+    return doc
+
+
+def t_beam_template() -> Document:
+    """`t_beam` v1 at the record's oracle: the ring is `T_RING`, plus four slab bars."""
+    doc = Document()
+    doc.add_section_template("t_beam", T_BEAM_PARAMS)
+    return doc
+
+
 BUILDERS_V2: dict[str, Callable[[], Document]] = {
     "rect_column_ties": rect_column_ties,
     "circular_column_spiral": circular_column_spiral,
@@ -148,6 +175,8 @@ BUILDERS_V2: dict[str, Callable[[], Document]] = {
     "cft_round": cft_round,
     "bare_w_shape": bare_w_shape,
     "rect_boundary_hoops": rect_boundary_hoops,  # v1's wall, written as v2
+    "rect_column_template": rect_column_template,
+    "t_beam_template": t_beam_template,
 }
 
 

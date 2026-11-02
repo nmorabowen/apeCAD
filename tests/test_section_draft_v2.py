@@ -24,7 +24,9 @@ from _section_fixtures_v2 import (
     box_with_void,
     cft_round,
     circular_column_spiral,
+    rect_column_template,
     src_w_in_rect,
+    t_beam_template,
 )
 from apeCAD import Document, DocumentError
 from apeCAD.entities import CoverGuide, WallLeg
@@ -33,6 +35,7 @@ from apeCAD.geometry import XYZ
 from apeCAD.ops import PointAt
 from apeCAD.section.draft import REOPEN_NUMERIC
 from apeCAD.section.lint import LINT_CODES_V2
+from apeCAD.section.templates import TEMPLATES
 from apeCAD.section_draft import (
     document_from_draft,
     document_from_section_seed,
@@ -215,6 +218,32 @@ def _check_boundary(value: object, *, hole: bool) -> None:
         assert type(boundary["radius_mm"]) is float and cast(float, boundary["radius_mm"]) > 0
 
 
+def _check_templates(section: Json) -> None:
+    """`templates[]` and every `template_id` (ADR 0040 decision 7, ADR 0039 Errata 4)."""
+    templates = _items(section["templates"])
+    for item in templates:
+        assert list(item) == ["id", "template", "template_version", "params"]
+        assert type(item["id"]) is int and item["id"] >= 1
+        name, version = item["template"], item["template_version"]
+        assert isinstance(name, str) and name in TEMPLATES
+        assert type(version) is int and version in TEMPLATES[name]
+        assert isinstance(item["params"], dict)
+    ids = [cast(int, item["id"]) for item in templates]
+    assert ids == sorted(set(ids))  # entity-id order, each once
+    listed: set[object] = set()
+    owners: set[int] = set()
+    for name in ("faces", *_KEYS):
+        for item in _items(section[name]):
+            listed.add(item["id"])
+            if "template_id" in item:
+                owner = item["template_id"]
+                assert type(owner) is int and owner in ids
+                assert list(item)[-1] == "template_id"
+                owners.add(owner)
+    assert owners == set(ids)  # every template owns a listed child
+    assert not listed & set(ids)  # a template is not its own child
+
+
 def validate_v2(draft: Json) -> None:
     """Check a draft against the spec's block and field table; raise AssertionError if not."""
     assert list(draft) == [
@@ -228,11 +257,11 @@ def validate_v2(draft: Json) -> None:
         "faces", "wall_legs", "bars", "hoops", "crossties", "circular_ties", "cover_guides",
         "templates", "materials_used",
     ]  # fmt: skip
-    assert section["templates"] == []
+    _check_templates(section)
     faces = _items(section["faces"])
     names: set[str] = set()
     for face in faces:
-        assert _FACE_KEYS <= set(face) <= _FACE_KEYS | _OPTIONAL["faces"]
+        assert _FACE_KEYS <= set(face) <= _FACE_KEYS | _OPTIONAL["faces"] | {"template_id"}
         assert face["role"] in ("concrete", "steel", "void")
         if face["role"] == "void":
             assert face["material"] is None
@@ -255,7 +284,7 @@ def validate_v2(draft: Json) -> None:
         ids = [item["id"] for item in items]
         assert ids == sorted(ids)  # entity-id order
         for item in items:
-            assert keys <= set(item) <= keys | _OPTIONAL.get(name, set())
+            assert keys <= set(item) <= keys | _OPTIONAL.get(name, set()) | {"template_id"}
             if name == "bars" and "material" in item:
                 names.add(cast(str, item["material"]))
     for item in _items(section["wall_legs"]):
@@ -278,6 +307,119 @@ def test_every_v2_draft_validates_against_the_spec(name: str) -> None:
     draft = section_draft(ALL_BUILDERS[name](), version=2, commit=None)
     validate_v2(draft)
     json.dumps(draft, allow_nan=False)
+
+
+@pytest.mark.parametrize("build", [rect_column_template, t_beam_template])
+def test_a_valid_templates_block_validates(build: Callable[[], Document]) -> None:
+    validate_v2(section_draft(build(), version=2, commit=None))
+
+
+def _first_template(section: Json) -> Json:
+    return _items(section["templates"])[0]
+
+
+def _set_template(key: str, value: object) -> Callable[[Json], None]:
+    def change(section: Json) -> None:
+        _first_template(section)[key] = value
+
+    return change
+
+
+def _template_key_out(section: Json) -> None:
+    del _first_template(section)["params"]
+
+
+def _template_label_in(section: Json) -> None:
+    _first_template(section)["label"] = "C1"
+
+
+def _templates_not_a_list(section: Json) -> None:
+    section["templates"] = {}
+
+
+def _template_twice(section: Json) -> None:
+    section["templates"] = [_first_template(section)] * 2
+
+
+def _templates_out_of_order(section: Json) -> None:
+    other = {**_first_template(section), "id": 999}
+    section["templates"] = [other, _first_template(section)]
+    _items(section["bars"])[0]["template_id"] = 999  # both own a child: only the order is wrong
+
+
+def _template_id_zero(section: Json) -> None:
+    _first_template(section)["id"] = 0
+    for name in ("faces", *_KEYS):
+        for item in _items(section[name]):
+            item["template_id"] = 0  # the children agree: only the id itself is wrong
+
+
+def _templates_emptied(section: Json) -> None:
+    section["templates"] = []  # the children still name it
+
+
+def _template_id_dangles(section: Json) -> None:
+    _items(section["bars"])[0]["template_id"] = 999
+
+
+def _template_id_a_bool(section: Json) -> None:
+    assert _first_template(section)["id"] == 1  # so True == 1 would pass a plain `in`
+    _items(section["bars"])[0]["template_id"] = True
+
+
+def _template_id_not_last(section: Json) -> None:
+    bar = _items(section["bars"])[0]
+    owner = bar.pop("template_id")
+    label = bar.pop("label")
+    bar["template_id"] = owner
+    bar["label"] = label
+
+
+def _template_without_a_child(section: Json) -> None:
+    for name in ("faces", *_KEYS):
+        for item in _items(section[name]):
+            item.pop("template_id", None)
+
+
+def _template_is_its_own_child(section: Json) -> None:
+    template = _first_template(section)
+    template["id"] = _items(section["bars"])[0]["id"]
+    for name in ("faces", *_KEYS):
+        for item in _items(section[name]):
+            item["template_id"] = template["id"]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        pytest.param(_templates_not_a_list, id="not-a-list"),
+        pytest.param(_template_key_out, id="key-missing"),
+        pytest.param(_template_label_in, id="undeclared-key"),
+        pytest.param(_template_id_zero, id="id-zero"),
+        pytest.param(_set_template("id", True), id="id-bool"),  # True == 1, the children's id
+        pytest.param(_set_template("id", "1"), id="id-string"),
+        pytest.param(_set_template("template", "teapot"), id="unknown-template"),
+        pytest.param(_set_template("template", ["rect_column"]), id="template-not-a-string"),
+        pytest.param(_set_template("template_version", 2), id="unknown-version"),
+        pytest.param(_set_template("template_version", True), id="version-bool"),
+        pytest.param(_set_template("template_version", 1.0), id="version-float"),
+        pytest.param(_set_template("params", None), id="params-null"),
+        pytest.param(_set_template("params", []), id="params-list"),
+        pytest.param(_template_twice, id="id-twice"),
+        pytest.param(_templates_out_of_order, id="out-of-order"),
+        pytest.param(_templates_emptied, id="children-name-no-entry"),
+        pytest.param(_template_id_dangles, id="template-id-dangles"),
+        pytest.param(_template_id_a_bool, id="template-id-bool"),
+        pytest.param(_template_id_not_last, id="template-id-not-last"),
+        pytest.param(_template_without_a_child, id="template-without-a-child"),
+        pytest.param(_template_is_its_own_child, id="template-is-its-own-child"),
+    ],
+)
+def test_an_invalid_templates_block_is_refused(tamper: Callable[[Json], None]) -> None:
+    draft = copy.deepcopy(section_draft(rect_column_template(), version=2, commit=None))
+    tamper(_section(draft))
+    with pytest.raises(AssertionError):
+        validate_v2(draft)
 
 
 def test_the_spec_block_names_every_list_the_writer_writes() -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from apeCAD.catalog.calls import Applied, apply, decode, list_ops, spec_for, split_request
 from apeCAD.catalog.entries import CATALOG
 from apeCAD.catalog.spec import OpSpec, Produces
+from apeCAD.catalog.template_params import list_templates
 
 __all__ = [
     "CATALOG",
@@ -19,6 +20,7 @@ __all__ = [
     "apply",
     "decode",
     "list_ops",
+    "list_templates",
     "spec_for",
     "split_request",
 ]
