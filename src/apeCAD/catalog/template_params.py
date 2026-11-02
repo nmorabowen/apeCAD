@@ -20,6 +20,7 @@ from apeCAD.catalog.schema import params_schema
 from apeCAD.section.designations import DESIGNATIONS
 from apeCAD.section.templates import (
     TEMPLATES,
+    circular_column,
     latest_version,
     polygon_column,
     rect_column,
@@ -147,6 +148,30 @@ _ROWS = (
             "material": "C30", "bw": 300, "h": 600, "bf": 800, "hf": 150, "center_mm": [0, 300],
             "cover": 30, "bottom": {"n": 3, "bar": "Ø20"}, "top": {"n": 2, "bar": "Ø16"},
             "slab_bars": {"n": 2, "bar": "Ø12"}, "stirrup": "Ø10", "stirrup_spacing": 150,
+        },
+    ),
+    _Row(
+        circular_column.TEMPLATE,
+        "A circular column: the exact circle, equal bars evenly on a circle from angle 0 "
+        "counter-clockwise, one spiral or circular hoop and its cover guide.",
+        circular_column.CircularColumnParams,
+        {
+            "material": _MATERIAL,
+            "bar_material": _BAR_MATERIAL,
+            "center_mm": "Centre of the circle, [x, y] in mm.",
+            "diameter": "Outer diameter, in mm.",
+            "cover": _COVER,
+            "n_bars": "Bars on the circle; at least 3.",
+            "bar": f"Bar, {_BARS}.",
+            "tie_kind": "spiral or hoop; required. Both are circular ties, and differ in kind "
+            "alone.",
+            "tie": _TIE,
+            "pitch": "Pitch of a spiral or spacing of the hoops along the member, in mm; at "
+            "least the tie's diameter.",
+        },
+        {
+            "material": "C30", "diameter": 600, "cover": 40, "n_bars": 8, "bar": "Ø20",
+            "tie_kind": "spiral", "tie": "Ø10", "pitch": 75,
         },
     ),
 )  # fmt: skip
