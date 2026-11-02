@@ -3,7 +3,9 @@
 `project_section_v2(entities)` projects the section kinds onto the block of
 `specs/section-draft-v2.md`, in entity-id order. A v1 `ConcreteFace` is written as a
 `role: "concrete"` ring face with no holes (Errata 3). `faces[]` replaces `concrete_faces[]`;
-`circular_ties[]`, `templates[]` (empty until stage C3) and `materials_used` are new.
+`circular_ties[]`, `templates[]` and `materials_used` are new. `templates[]` lists the section
+templates (ADR 0040 decision 7), and each child's `template_id` is found by looking it up in
+their `child_ids` (Errata 4); a seed carries neither (ADR 0039 Errata 5).
 
 `require_v1_expressible(entities)` refuses, by name, what v1 cannot say, so the v1 writer
 never drops an entity or a field to fit (ADR 0039 decision 1, Errata 8.2).
@@ -13,6 +15,7 @@ Like `apeCAD.section.draft`, this module takes entities, never the `Document`.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from typing import cast
 
@@ -144,30 +147,66 @@ def _materials_used(ordered: Sequence[Entity]) -> list[str]:
 
 
 def refuse_templates(entities: Mapping[EntityId, Entity], what: str) -> None:
-    """Refuse, by name, a document holding a section template (ADR 0040), until stage C3-S3.
-
-    The v2 block's `templates[]` and `template_id` are declared (ADR 0039 Errata 4, 5) but
-    not yet written; a draft or seed of a templated document would silently drop them.
-    """
+    """Refuse, by name, a document holding a section template (ADR 0040): v1 cannot say one."""
     found = [e for e in entities.values() if isinstance(e, SectionTemplate)]
     if found:
         e = min(found, key=lambda t: t.entity_id)
         raise DocumentError(
-            f"{what} cannot yet say a document holding section templates: entity "
-            f"{e.entity_id} is a {e.template} template; the projection lands in stage "
-            "C3-S3 (explode it to write a freehand drawing)"
+            f"{what} cannot say a document holding section templates: entity "
+            f"{e.entity_id} is a {e.template} template; ask for version 2, or explode it to "
+            "write a freehand drawing"
         )
+
+
+def _plain(value: object) -> object:
+    """A template's stored params as JSON: read-only mappings as dicts, tuples as lists."""
+    if isinstance(value, Mapping):
+        pairs = cast(Mapping[str, object], value).items()
+        return {key: _plain(item) for key, item in pairs}
+    if isinstance(value, tuple):
+        return [_plain(item) for item in cast(tuple[object, ...], value)]
+    return value
+
+
+def _template_item(template: SectionTemplate) -> Json:
+    """One `templates[]` item: the block's four fields (the label is not part of the contract)."""
+    return {
+        "id": template.entity_id,
+        "template": template.template,
+        "template_version": template.template_version,
+        "params": _plain(template.params),
+    }
+
+
+def _with_template_ids(block: Json, ordered: Sequence[Entity]) -> Json:
+    """`block` with `template_id` last on each template child, found from `child_ids`."""
+    owners = {
+        child_id: e.entity_id
+        for e in ordered
+        if isinstance(e, SectionTemplate)
+        for child_id in e.child_ids
+    }
+    if not owners:
+        return block
+
+    def tagged(item: Json) -> Json:
+        owner = owners.get(cast(int, item["id"]))
+        return item if owner is None else {**item, "template_id": owner}
+
+    children = {name: block[name] for name in SECTION_LISTS_V2 if name != "templates"}
+    for name, items in children.items():
+        block[name] = [tagged(item) for item in cast(list[Json], items)]
+    return block
 
 
 def project_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
     """The v2 `section` block of these entities (specs/section-draft-v2.md)."""
-    refuse_templates(entities, f"{DRAFT_SCHEMA} version 2")
     ordered = _ordered(entities)
     xy = _points(ordered)
     v1 = project_section(entities)  # wall legs, hoops, crossties and cover guides are as in v1
     bars = [e for e in ordered if isinstance(e, Bar)]
     v1_bars = cast(list[Json], v1["bars"])
-    return {
+    block: Json = {
         "faces": [
             {"id": e.entity_id, **_face(e, xy)}
             for e in ordered
@@ -183,17 +222,18 @@ def project_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
             if isinstance(e, CircularTie)
         ],
         "cover_guides": v1["cover_guides"],
-        "templates": [],
+        "templates": [_template_item(e) for e in ordered if isinstance(e, SectionTemplate)],
         "materials_used": _materials_used(ordered),
     }
+    return _with_template_ids(block, ordered)
 
 
 def project_seed_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
     """The `section` block of an `apeCAD.section-seed` v2: 0-based indices in place of ids.
 
-    No `templates[]`, no `template_id` and no `materials_used` (ADR 0039 Errata 5).
+    No `templates[]`, no `template_id` and no `materials_used` (ADR 0039 Errata 5): a templated
+    document seeds as its children, which replay as a plain drawing (ADR 0040 Context).
     """
-    refuse_templates(entities, f"{SEED_SCHEMA} version 2")
     ordered = _ordered(entities)
     xy = _points(ordered)
     faces = [e for e in ordered if isinstance(e, (ConcreteFace, SectionFace))]
@@ -359,7 +399,8 @@ def compare_sections_v2(stored: object, fresh: Json) -> list[Json]:
 
     A role, a boundary of another kind, the number of holes, a material, a shape's catalog or
     designation all refuse; `shape.anchor_mm` and `shape.rotation_deg` compare as numbers
-    (Errata 8.5). `materials_used` must be equal.
+    (Errata 8.5). A template's name and version, its `params` and a `template_id` refuse too.
+    `materials_used` must be equal.
     """
     if not isinstance(stored, dict):
         raise DocumentError(f"section must be an object, got {type(stored).__name__}")
@@ -391,8 +432,10 @@ def _refuse_stored_v2_fields(block: Json, fresh: Json) -> None:
 
     `compare_sections` walks the replayed keys only, so it cannot see a `bars[].material`, a
     `faces[].shape` or a `template_id` the stored item has and the replay lacks. Other keys a
-    reader does not write stay ignored (ADR 0025 rule 6). Runs after `compare_sections`, so
-    both lists are well formed and match id for id.
+    reader does not write stay ignored (ADR 0025 rule 6). A template's `params` are recorded
+    intent, not derived numbers, so they must be the replay's exactly: `compare_sections` alone
+    would let an extra param through and only warn on one named like a length. Runs after
+    `compare_sections`, so both lists are well formed and match id for id.
     """
     for name in SECTION_LISTS_V2:
         fields = _V2_OPTIONAL_FIELDS.get(name, ("template_id",))
@@ -400,9 +443,21 @@ def _refuse_stored_v2_fields(block: Json, fresh: Json) -> None:
         for raw in cast(list[object], block[name]):
             item = cast(Json, raw)
             entity_id = cast(int, item["id"])
+            if name == "templates" and _canonical(item["params"]) != _canonical(
+                replayed[entity_id]["params"]
+            ):
+                raise DocumentError(
+                    f"section.templates[id={entity_id}].params is {item['params']!r} in the "
+                    f"draft; the replayed document has {replayed[entity_id]['params']!r}"
+                )
             for key in fields:
                 if key in item and key not in replayed[entity_id]:
                     raise DocumentError(
                         f"section.{name}[id={entity_id}].{key} is {item[key]!r} in the draft; "
                         "the replayed document has none"
                     )
+
+
+def _canonical(value: object) -> str:
+    """One text per JSON value, whatever its key order; 400 and 400.0 stay different."""
+    return json.dumps(value, sort_keys=True, default=repr)
