@@ -344,6 +344,14 @@ def _template_twice(section: Json) -> None:
 def _templates_out_of_order(section: Json) -> None:
     other = {**_first_template(section), "id": 999}
     section["templates"] = [other, _first_template(section)]
+    _items(section["bars"])[0]["template_id"] = 999  # both own a child: only the order is wrong
+
+
+def _template_id_zero(section: Json) -> None:
+    _first_template(section)["id"] = 0
+    for name in ("faces", *_KEYS):
+        for item in _items(section[name]):
+            item["template_id"] = 0  # the children agree: only the id itself is wrong
 
 
 def _templates_emptied(section: Json) -> None:
@@ -387,7 +395,8 @@ def _template_is_its_own_child(section: Json) -> None:
         pytest.param(_templates_not_a_list, id="not-a-list"),
         pytest.param(_template_key_out, id="key-missing"),
         pytest.param(_template_label_in, id="undeclared-key"),
-        pytest.param(_set_template("id", 0), id="id-zero"),
+        pytest.param(_template_id_zero, id="id-zero"),
+        pytest.param(_set_template("id", True), id="id-bool"),  # True == 1, the children's id
         pytest.param(_set_template("id", "1"), id="id-string"),
         pytest.param(_set_template("template", "teapot"), id="unknown-template"),
         pytest.param(_set_template("template", ["rect_column"]), id="template-not-a-string"),
