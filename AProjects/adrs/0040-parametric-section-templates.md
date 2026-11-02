@@ -179,6 +179,10 @@ question open.
        cannot overlap. The 4 and 6 bars of ACI 318 §10.7.3.1 and spiral spacing are the
        consumer's checks, not the template's.
     4. *Placement.* Bars start at angle 0 and run counter-clockwise; a start angle would be a
-       new version. Overlapping bars are refused by `n_bars`, or by `diameter` when even three
-       bars overlap, as `rect_column` names `b` when its two corner bars do. The template and
+       new version. Overlapping bars are refused by `n_bars`. The template and
        `AddBarsOnCircle` share one formula, `section/layout.py::on_circle`.
+
+    *Orchestrator reading, awaiting the owner (not part of the ratification above).* When even
+    the fewest bars, three, overlap, the refusal names `diameter` rather than `n_bars`, because
+    no `n_bars` could cure it. The record does not say this. It is consistent with the record's
+    row 2 and mirrors `rect_column` naming `b` when its two corner bars overlap.

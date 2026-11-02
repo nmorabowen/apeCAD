@@ -494,6 +494,8 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("circular_column", {"diameter": 120}, "diameter"),  # r_b = 60 - 40 - 10 - 10 = 0
     ("circular_column", {"diameter": 60}, "diameter"),  # r_t = 30 - 40 - 5 < 0: no tie either
     ("circular_column", {"diameter": 122}, "diameter"),  # r_b = 1: even three bars overlap
+    ("circular_column", {"diameter": 142}, "diameter"),  # r_b = 11: √3 r_b = 19.05, under Ø20
+    ("circular_column", {"diameter": 144}, "n_bars"),  # r_b = 12: 20.78 for 3, but 9.18 for 8
     ("circular_column", {"cover": 0}, "cover"),
     ("circular_column", {"n_bars": _DROP}, "n_bars"),
     ("circular_column", {"n_bars": 2}, "n_bars"),

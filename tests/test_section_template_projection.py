@@ -51,6 +51,7 @@ from apeCAD.section_draft import (
     section_draft,
     section_seed,
 )
+from test_section_draft_v2_fixtures import _same
 
 Json = dict[str, object]
 
@@ -68,9 +69,10 @@ LOG_OF_FIXTURE = {"rect_column@v1": "rect_column_template", "t_beam@v1": "t_beam
 # Replayed drafts without a committed fixture of their own (the card names two new fixtures):
 # the SHA-256 of `fixture_text(section)`, recorded with the logs. Only the `section` block: the
 # whole draft also carries `producer.apeCAD_version`, which a version bump changes and no
-# regeneration can repair (apeSection#51). The hand oracles below hold the numbers.
+# regeneration can repair (apeSection#51). The hand oracles below hold the numbers. Exact hashes
+# hold only for templates with no trig: `circular_column@v1` has its own comparison at rel 1e-12
+# (`_recorded_circular_section`), because libm's sin and cos differ by an ulp between platforms.
 SECTION_SHA256 = {
-    "circular_column@v1": "5fae246c6cf1d04e249edd671b7a648b0080084a48dbd7ec228e7ce7b131f39c",
     "polygon_column@v1": "b55388e7fc6f89609884e72f2aa99549ede4e02e76a525fa775d1baefa4f72cc",
     "rect_hollow@v1": "dc43d3fa41ad050a63a866ea5b1bfbbd2ec8a281db5df9ab4b81eb2ace09be3a",
 }
@@ -513,6 +515,97 @@ def test_the_recorded_section_ignores_a_version_bump_and_sees_a_section_value(
     bar = _items(_section(draft), "bars")[0]
     bar["x_mm"] = cast(float, bar["x_mm"]) + 1.0
     assert _section_sha256(draft) != SECTION_SHA256[stem]
+
+
+def _recorded_circular_section() -> Json:
+    """What `circular_column@v1` replays to, by hand: every key, in order, with its ids.
+
+    Template 1, then its children in allocation order: the circle's centre 2 and face 3, a
+    point and a bar per bar (4 and 5 to 18 and 19), the tie's centre 20 and tie 21, guide 22.
+    """
+    k = 240.0 * math.sqrt(0.5)
+    spots = [
+        (240.0, 0.0), (k, k), (0.0, 240.0), (-k, k),
+        (-240.0, 0.0), (-k, -k), (0.0, -240.0), (k, -k),
+    ]  # fmt: skip
+    return {
+        "faces": [
+            {
+                "id": 3, "label": None, "role": "concrete", "material": "concrete",
+                "boundary": {"kind": "circle", "center_mm": [0.0, 0.0], "radius_mm": 300.0},
+                "holes": [], "template_id": 1,
+            }
+        ],
+        "wall_legs": [],
+        "bars": [
+            {
+                "id": 5 + 2 * n, "label": None, "x_mm": x, "y_mm": y, "diameter_mm": 20.0,
+                "designation": "Ø20", "template_id": 1,
+            }
+            for n, (x, y) in enumerate(spots)
+        ],
+        "hoops": [],
+        "crossties": [],
+        "circular_ties": [
+            {
+                "id": 21, "label": None, "kind": "spiral", "center_mm": [0.0, 0.0],
+                "centerline_radius_mm": 255.0, "designation": "Ø10", "diameter_mm": 10.0,
+                "pitch_mm": 75.0, "template_id": 1,
+            }
+        ],
+        "cover_guides": [
+            {
+                "id": 22, "face_id": 3, "cover_mm": 40.0, "tie_diameter_mm": 10.0,
+                "bar_diameter_mm": 20.0, "template_id": 1,
+            }
+        ],
+        "templates": [
+            {
+                "id": 1, "template": "circular_column", "template_version": 1,
+                "params": {
+                    "material": "concrete", "diameter": 600, "cover": 40, "n_bars": 8, "bar": "Ø20",
+                    "tie_kind": "spiral", "tie": "Ø10", "pitch": 75,
+                },
+            }
+        ],
+        "materials_used": ["concrete"],
+    }  # fmt: skip
+
+
+def test_the_circular_column_log_replays_to_its_recorded_section() -> None:
+    """Numbers at rel 1e-12, whatever libm's last bit; everything else exact."""
+    _same(_section(_draft(_replay("circular_column@v1"))), _recorded_circular_section(), "section")
+
+
+def test_the_circular_section_ignores_a_version_bump_and_sees_a_section_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(import_module("apeCAD.section_draft"), "__version__", "9.9.9")
+    draft = _draft(_replay("circular_column@v1"))
+    assert cast(Json, draft["producer"])["apeCAD_version"] == "9.9.9"
+    recorded = _recorded_circular_section()
+    _same(_section(draft), recorded, "section")
+
+    def bar_one(section: Json) -> Json:
+        return _items(section, "bars")[1]
+
+    within = copy.deepcopy(_section(draft))
+    bar_one(within)["x_mm"] = cast(float, bar_one(within)["x_mm"]) * (1.0 + 2.0**-52)  # an ulp
+    _same(within, recorded, "section")
+    tampered: list[tuple[str, object]] = [
+        ("x_mm", cast(float, bar_one(_section(draft))["x_mm"]) * (1.0 + 1e-9)),
+        ("designation", "Ø16"),
+        ("template_id", 2),
+    ]
+    for key, value in tampered:
+        moved = copy.deepcopy(_section(draft))
+        bar_one(moved)[key] = value
+        with pytest.raises(AssertionError):
+            _same(moved, recorded, "section")
+    off_axis = copy.deepcopy(_section(draft))
+    _items(off_axis, "bars")[2]["x_mm"] = 1.5e-14  # an unsnapped cos 90°: 0 stays exactly 0
+    with pytest.raises(AssertionError):
+        _same(off_axis, recorded, "section")
 
 
 @pytest.mark.parametrize("stem", sorted(p.stem for p in LOG_DIR.glob("*.json")))
