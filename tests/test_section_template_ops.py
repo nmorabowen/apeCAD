@@ -2,7 +2,7 @@
 
 Add, edit, explode and delete; the committed op's version and child ids; replay, undo and
 a frozen log; the catalog; the one materialiser on a synthetic circle plan (C4's forms);
-the stage-S2 draft refusal; the seams that must not crash on a templated document; and
+version 1's draft refusal; the seams that must not crash on a templated document; and
 the cost of the lock on a document without templates.
 """
 
@@ -399,15 +399,14 @@ def test_the_materialiser_hoop_equals_add_hoop() -> None:
     assert [bars.index(i) for i in templated.bar_ids] == [order[i] for i in hoop.bar_ids]
 
 
-# --- until S3: the draft refuses a templated document ----------------------------------
+# --- version 1 refuses a templated document, by name (C3-S3 writes version 2) ------------
 
 
-@pytest.mark.parametrize("version", [1, 2])
-def test_the_section_draft_refuses_a_template_by_name(version: int) -> None:
+def test_the_section_draft_v1_refuses_a_template_by_name() -> None:
     doc, template = _doc()
     for write in (section_draft, section_seed):
         with pytest.raises(DocumentError, match=f"entity {template.entity_id} is a rect_column"):
-            write(doc, version=version)
+            write(doc, version=1)
     doc.explode_section_template(template.entity_id)
     assert section_draft(doc, version=2)["version"] == 2  # a freehand drawing writes
 
@@ -427,7 +426,8 @@ def test_every_surface_reads_a_templated_document(tmp_path: Path) -> None:
     assert tools.render(name)["ok"] is True
     dxf = tools.export_dxf(name)
     assert dxf["ok"] is True or cast(dict[str, object], dxf["error"])["code"] == "UNAVAILABLE"
-    refused = tools.get_section_draft(name, 2)
+    assert tools.get_section_draft(name, 2)["ok"] is True
+    refused = tools.get_section_draft(name, 1)
     assert cast(dict[str, object], refused["error"])["code"] == REFUSED
     doc, _ = _doc()
     scene = scene_payload(doc)

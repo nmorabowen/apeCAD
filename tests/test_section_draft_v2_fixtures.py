@@ -106,32 +106,11 @@ def test_fixture_matches_its_builder(name: str) -> None:
     _same(_load(name), fixture_draft_v2(name), name)
 
 
-def _without_templates(draft: Json) -> Json:
-    """The draft with `templates[]` emptied and every `template_id` gone (ADR 0040 decision 7)."""
-    section = dict(_section(draft))
-    for key, value in section.items():
-        if key not in ("templates", "materials_used"):
-            section[key] = [
-                {k: v for k, v in item.items() if k != "template_id"} for item in _items(value)
-            ]
-    return {**draft, "section": {**section, "templates": []}}
-
-
 @pytest.mark.parametrize("name", NAMES)
 def test_fixture_validates_against_the_v2_field_table(name: str) -> None:
-    """`validate_v2` knows a freehand block; `templates[]` and `template_id` are checked here."""
     draft = _load(name)
-    validate_v2(_without_templates(draft))
-    section = _section(draft)
-    template_ids = {item["id"] for item in _items(section["templates"])}
-    assert bool(template_ids) == name.endswith("_template")
-    for item in _items(section["templates"]):
-        assert list(item) == ["id", "template", "template_version", "params"]
-    for key, value in section.items():
-        if key not in ("templates", "materials_used"):
-            for item in _items(value):
-                assert item.get("template_id", min(template_ids, default=0)) in template_ids | {0}
-                assert "template_id" not in item or list(item)[-1] == "template_id"
+    validate_v2(draft)
+    assert bool(_section(draft)["templates"]) == name.endswith("_template")
 
 
 @pytest.mark.parametrize("name", NAMES)
