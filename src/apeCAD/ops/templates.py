@@ -10,13 +10,13 @@ expansion no longer matches (ADR 0040 decision 4, Errata 3).
 `params` is stored read-only: `freeze_params` turns lists into tuples and objects into
 read-only mappings, and `thaw_params` turns them back for JSON. The structure is checked
 here (a known template and version, an object of params, at most `MAX_PARAMS_DEPTH` levels
-deep); the params themselves are checked by the expansion, which refuses a bad one with
+deep and `MAX_PARAMS_VALUES` values); the params themselves are checked by the expansion, which refuses a bad one with
 `TemplateParamError` (`INVALID_ARGUMENT`).
 """
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
@@ -25,11 +25,19 @@ from apeCAD.entities import EntityId
 from apeCAD.errors import DocumentError, OpArgumentError
 from apeCAD.ops.base import optional_label
 from apeCAD.section.templates import TEMPLATES, TemplateParamError
+from apeCAD.section.templates.plan import MAX_TEMPLATE_BARS, shown
 
 MAX_PARAMS_DEPTH = 16
 """Most levels of objects and lists a template's params may nest; the params object is the
 first. The deepest real param, a polygon's `ring`, is three. The cap keeps the recursive
 `_freeze`, `thaw_params` and JSON encoder far from Python's recursion limit."""
+
+MAX_PARAMS_VALUES = 4 * MAX_TEMPLATE_BARS
+"""Most objects, lists and scalars a template's params may hold, counted as `_freeze` walks
+them, so a value reached by two paths counts twice. The largest params the expansions accept
+are a polygon's `ring` at `MAX_TEMPLATE_BARS` vertices (three values each) and a few scalars.
+The cap keeps a shared-reference DAG, which JSON cannot produce but an in-process caller can
+(five levels of `v = [v] * 1000` reach 10^15 paths), from hanging `_freeze`."""
 
 
 def freeze_params(params: object, path: str = "params") -> Mapping[str, object]:
@@ -42,11 +50,13 @@ def freeze_params(params: object, path: str = "params") -> Mapping[str, object]:
 
 
 def _require_depth(params: object, path: str) -> None:
-    """Refuse params nested past the cap. A loop, not a recursion, so it cannot overflow."""
+    """Refuse params nested or sized past the caps. A loop, not a recursion, so it cannot
+    overflow, and it stops at the budget, so a shared-reference DAG cannot hang it."""
     stack: list[tuple[object, int]] = [(params, 1)]
+    values = 1
     while stack:
         value, depth = stack.pop()
-        children: Iterable[object]
+        children: Collection[object]
         if isinstance(value, Mapping):
             children = cast(Mapping[object, object], value).values()
         elif isinstance(value, list | tuple):
@@ -55,6 +65,9 @@ def _require_depth(params: object, path: str) -> None:
             continue
         if depth > MAX_PARAMS_DEPTH:
             raise OpArgumentError(f"{path} nests deeper than {MAX_PARAMS_DEPTH} levels")
+        values += len(children)
+        if values > MAX_PARAMS_VALUES:
+            raise OpArgumentError(f"{path} holds more than {MAX_PARAMS_VALUES} values")
         stack.extend((child, depth + 1) for child in children)
 
 
@@ -63,7 +76,7 @@ def _freeze(value: object, path: str) -> object:
         out: dict[str, object] = {}
         for key, item in cast(Mapping[object, object], value).items():
             if not isinstance(key, str):
-                raise DocumentError(f"{path} keys must be strings, got {key!r}")
+                raise DocumentError(f"{path} keys must be strings, got {shown(key)}")
             out[key] = _freeze(item, f"{path}.{key}")
         return MappingProxyType(out)
     if isinstance(value, list | tuple):
@@ -98,12 +111,12 @@ def require_version(template: str, version: object) -> int | None:
         return None
     if isinstance(version, bool) or not isinstance(version, int):
         raise TemplateParamError(
-            template, "template_version", f"must be a whole number, got {version!r}"
+            template, "template_version", f"must be a whole number, got {shown(version)}"
         )
     if version not in TEMPLATES[template]:
         known = ", ".join(str(v) for v in sorted(TEMPLATES[template]))
         raise TemplateParamError(
-            template, "template_version", f"unknown version {version}; known: {known}"
+            template, "template_version", f"unknown version {shown(version)}; known: {known}"
         )
     return version
 
@@ -157,7 +170,7 @@ class EditSectionTemplate:
         if isinstance(version, bool) or not (version is None or isinstance(version, int)):
             raise TemplateParamError(
                 "template", "template_version",
-                f"must be a whole number, got {self.template_version!r}",
+                f"must be a whole number, got {shown(self.template_version)}",
             )  # fmt: skip
         object.__setattr__(
             self, "template_params", freeze_params(self.template_params, "template_params")

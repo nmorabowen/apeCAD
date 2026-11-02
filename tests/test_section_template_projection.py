@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
 from threading import Thread
 from typing import cast
@@ -59,10 +60,12 @@ SMALL: Json = {
 }  # fmt: skip
 LOG_OF_FIXTURE = {"rect_column@v1": "rect_column_template", "t_beam@v1": "t_beam_template"}
 # Replayed drafts without a committed fixture of their own (the card names two new fixtures):
-# the SHA-256 of `fixture_text`, recorded with the logs. The hand oracles below hold the numbers.
-DRAFT_SHA256 = {
-    "polygon_column@v1": "48e779ec61374f76faa095ffd2f434d82034752d6bbd4d1a7127b38852760b07",
-    "rect_hollow@v1": "139fbacc097526219e1e91ccdfc8ada3f66980db75542729a9f55fc6a5bfa33b",
+# the SHA-256 of `fixture_text(section)`, recorded with the logs. Only the `section` block: the
+# whole draft also carries `producer.apeCAD_version`, which a version bump changes and no
+# regeneration can repair (apeSection#51). The hand oracles below hold the numbers.
+SECTION_SHA256 = {
+    "polygon_column@v1": "b55388e7fc6f89609884e72f2aa99549ede4e02e76a525fa775d1baefa4f72cc",
+    "rect_hollow@v1": "dc43d3fa41ad050a63a866ea5b1bfbbd2ec8a281db5df9ab4b81eb2ace09be3a",
 }
 
 
@@ -324,10 +327,26 @@ def test_a_frozen_log_replays_to_its_fixture_byte_for_byte(stem: str) -> None:
     assert fixture_text(_draft(_replay(stem))) == committed
 
 
-@pytest.mark.parametrize("stem", sorted(DRAFT_SHA256))
-def test_a_frozen_log_without_a_fixture_replays_to_its_recorded_bytes(stem: str) -> None:
-    text = fixture_text(_draft(_replay(stem)))
-    assert hashlib.sha256(text.encode("utf-8")).hexdigest() == DRAFT_SHA256[stem]
+def _section_sha256(draft: Json) -> str:
+    return hashlib.sha256(fixture_text(_section(draft)).encode("utf-8")).hexdigest()
+
+
+@pytest.mark.parametrize("stem", sorted(SECTION_SHA256))
+def test_a_frozen_log_without_a_fixture_replays_to_its_recorded_section(stem: str) -> None:
+    assert _section_sha256(_draft(_replay(stem))) == SECTION_SHA256[stem]
+
+
+@pytest.mark.parametrize("stem", sorted(SECTION_SHA256))
+def test_the_recorded_section_ignores_a_version_bump_and_sees_a_section_value(
+    stem: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(import_module("apeCAD.section_draft"), "__version__", "9.9.9")
+    draft = _draft(_replay(stem))
+    assert cast(Json, draft["producer"])["apeCAD_version"] == "9.9.9"
+    assert _section_sha256(draft) == SECTION_SHA256[stem]
+    bar = _items(_section(draft), "bars")[0]
+    bar["x_mm"] = cast(float, bar["x_mm"]) + 1.0
+    assert _section_sha256(draft) != SECTION_SHA256[stem]
 
 
 @pytest.mark.parametrize("stem", sorted(p.stem for p in LOG_DIR.glob("*.json")))

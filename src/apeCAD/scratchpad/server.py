@@ -333,6 +333,8 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             parsed: object = json.loads(raw.decode("utf-8") or "null")
         except ValueError as exc:
             raise OpArgumentError(f"body is not JSON: {exc}") from exc
+        except RecursionError:  # the parser's own stack, at a depth that depends on the Python
+            raise OpArgumentError("body is nested too deeply to parse as JSON") from None
         if not isinstance(parsed, dict):
             raise OpArgumentError("JSON body must be an object")
         typed: dict[str, object] = {}

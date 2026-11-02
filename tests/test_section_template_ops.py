@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import math
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from threading import Thread
 from typing import cast
@@ -20,9 +20,11 @@ from urllib.request import Request, urlopen
 
 import pytest
 
+from _section_fixtures_v2 import T_BEAM_PARAMS
 from apeCAD import Document
 from apeCAD import document as document_module
 from apeCAD.agent import LocalTools, tools
+from apeCAD.agent.mcp_tools import TOOLS
 from apeCAD.agent.session import Session
 from apeCAD.catalog import CATALOG, apply, list_ops
 from apeCAD.draft import dispatch
@@ -43,13 +45,14 @@ from apeCAD.entities import (
     SectionTemplate,
 )
 from apeCAD.errors import INVALID_ARGUMENT, REFUSED, DocumentError, OpArgumentError
-from apeCAD.ops import AddSectionTemplate, op_from_dict, op_to_dict
-from apeCAD.ops.templates import MAX_PARAMS_DEPTH
+from apeCAD.ops import AddSectionTemplate, EditSectionTemplate, op_from_dict, op_to_dict
+from apeCAD.ops.templates import MAX_PARAMS_DEPTH, MAX_PARAMS_VALUES, freeze_params
 from apeCAD.ops.types import SCHEMA_ID
 from apeCAD.scratchpad.payload import scene_payload
 from apeCAD.scratchpad.server import ScratchpadServer
 from apeCAD.section.lint import lint_section_v2
 from apeCAD.section.templates.plan import (
+    MAX_TEMPLATE_BARS,
     Plan,
     PlanBar,
     PlanCircle,
@@ -59,6 +62,7 @@ from apeCAD.section.templates.plan import (
     PlanHoop,
     PlanRing,
     PlanSteelShape,
+    shown,
 )
 from apeCAD.section_draft import section_draft, section_seed
 
@@ -650,3 +654,243 @@ def test_deep_params_come_back_from_mcp_call_tool(levels: int) -> None:
 
     error = cast(dict[str, object], anyio.run(call)["error"])
     assert error["code"] == INVALID_ARGUMENT and TOO_DEEP in cast(str, error["message"])
+
+
+# --- oversized ints: a named INVALID_ARGUMENT, never REFUSED or a ValueError (apeSection#51) --
+
+
+# float(10**400) raises OverflowError; printing 10**5000 raises ValueError (the 4300-digit limit).
+FLOAT_OVERFLOW = 10**400
+UNPRINTABLE = 10**5000
+POLYGON: dict[str, object] = {
+    "material": "C30", "ring": [[0, 0], [600, 0], [600, 400], [0, 400]], "cover": 40,
+    "bar": "Ø16", "spacing_max": 150, "tie": "Ø10", "tie_spacing": 150,
+}  # fmt: skip
+OVERSIZED: list[tuple[str, dict[str, object], str, object, str]] = [
+    # template, its other params, the param, the value, the name the refusal must carry
+    ("rect_column", SMALL, "b", FLOAT_OVERFLOW, "rect_column: b: must be finite"),
+    ("rect_column", SMALL, "b", -FLOAT_OVERFLOW, "rect_column: b: must be finite"),
+    ("rect_column", SMALL, "b", UNPRINTABLE, "rect_column: b: must be finite"),
+    ("rect_column", SMALL, "b", [UNPRINTABLE], "rect_column: b: must be a number"),
+    ("rect_column", SMALL, "nx", -UNPRINTABLE, "rect_column: nx: must be 2 or more"),
+    ("rect_column", SMALL, "nx", UNPRINTABLE, "rect_column: nx: these parameters place"),
+    ("rect_column", SMALL, "nx", [UNPRINTABLE], "rect_column: nx: must be a whole number"),
+    ("rect_column", SMALL, "center_mm", [FLOAT_OVERFLOW, 0], "rect_column: center_mm: must be"),
+    ("rect_column", SMALL, "center_mm", UNPRINTABLE, "rect_column: center_mm: must be"),
+    ("rect_column", SMALL, "material", UNPRINTABLE, "rect_column: material: must be"),
+    ("rect_column", SMALL, "bar", UNPRINTABLE, "rect_column: bar: unknown bar designation"),
+    ("rect_column", SMALL, "crossties", UNPRINTABLE, "rect_column: crossties: must be one of"),
+    ("polygon_column", POLYGON, "ring", [[FLOAT_OVERFLOW, 0]] * 3, "ring[0]: must be finite"),
+    ("polygon_column", POLYGON, "ring", UNPRINTABLE, "polygon_column: ring: must be a list"),
+    ("t_beam", T_BEAM_PARAMS, "bottom", {"n": UNPRINTABLE}, "t_beam: bottom"),
+    ("t_beam", T_BEAM_PARAMS, "bottom", {"n": -UNPRINTABLE}, "t_beam: bottom"),
+]  # fmt: skip
+
+
+def _oversized_id(row: tuple[str, dict[str, object], str, object, str]) -> str:
+    return f"{row[0]}-{row[2]}-{row[4].split(': ')[-1].replace(' ', '_')}"
+
+
+@pytest.mark.parametrize("row", OVERSIZED, ids=[_oversized_id(r) for r in OVERSIZED])
+def test_an_oversized_int_is_invalid_argument_on_every_in_process_path(
+    row: tuple[str, dict[str, object], str, object, str],
+) -> None:
+    template, base, key, value, name = row
+    params = {**base, key: value}
+    add = {"template": template, "template_params": params}
+    doc, _ = _doc(SMALL)
+    before = doc.to_json()
+
+    session = Session(Document.from_json(before))
+    out = tools.apply_op(session, "AddSectionTemplate", add)
+    assert out["ok"] is False
+    error = cast(dict[str, object], out["error"])
+    assert error["code"] == INVALID_ARGUMENT and name in cast(str, error["message"])
+    assert session.document.to_json() == before
+
+    out = tools.apply_ops(session, [{"op": "AddSectionTemplate", "params": add}], None)
+    assert out["ok"] is False
+    error = cast(dict[str, object], out["error"])
+    assert error["code"] == INVALID_ARGUMENT and name in cast(str, error["message"])
+    assert session.document.to_json() == before
+
+    with pytest.raises(OpArgumentError, match=name.replace("[", r"\[")):
+        doc.add_section_template(template, params)
+    assert doc.to_json() == before
+
+    log = {"schema": SCHEMA_ID, "units": "mm", "ops": [{"op": "AddSectionTemplate", **add}]}
+    with pytest.raises(OpArgumentError, match=name.replace("[", r"\[")):
+        Document.from_dict(log)
+
+
+def test_an_oversized_int_is_invalid_argument_on_edit() -> None:
+    doc, template = _doc(SMALL)
+    before = doc.to_json()
+    session = Session(doc)
+    for params in ({**SMALL, "b": FLOAT_OVERFLOW}, {**SMALL, "nx": -UNPRINTABLE}):
+        edit = {"template_id": template.entity_id, "template_params": params}
+        out = tools.apply_op(session, "EditSectionTemplate", edit)
+        assert out["ok"] is False
+        assert cast(dict[str, object], out["error"])["code"] == INVALID_ARGUMENT
+    assert session.document.to_json() == before
+
+
+@pytest.mark.parametrize("version", [UNPRINTABLE, -UNPRINTABLE], ids=["big", "negative"])
+def test_an_oversized_template_version_is_refused_by_name(version: object) -> None:
+    doc, template = _doc(SMALL)
+    before = doc.to_json()
+    add = {"template": "rect_column", "template_version": version, "template_params": SMALL}
+    edit = {
+        "template_id": template.entity_id, "template_version": version, "template_params": SMALL,
+    }  # fmt: skip
+    session = Session(doc)
+    for name, params in (("AddSectionTemplate", add), ("EditSectionTemplate", edit)):
+        out = tools.apply_op(session, name, params)
+        assert out["ok"] is False, name
+        error = cast(dict[str, object], out["error"])
+        assert error["code"] == INVALID_ARGUMENT and "template_version" in cast(
+            str, error["message"]
+        )
+    assert session.document.to_json() == before
+
+
+def test_a_template_version_holding_an_oversized_int_is_refused_by_name() -> None:
+    version = cast(int, [UNPRINTABLE])  # JSON may carry anything
+    with pytest.raises(OpArgumentError, match="template_version: must be a whole number"):
+        AddSectionTemplate("rect_column", SMALL, template_version=version)
+    with pytest.raises(OpArgumentError, match="template_version: must be a whole number"):
+        EditSectionTemplate(1, SMALL, template_version=version)
+
+
+def test_an_oversized_key_is_refused_by_name() -> None:
+    with pytest.raises(DocumentError, match="keys must be strings"):
+        AddSectionTemplate("rect_column", {**SMALL, UNPRINTABLE: 1})
+
+
+@pytest.mark.parametrize(
+    ("path", "status", "wrap"),
+    [
+        ("/api/op", 400, "{}"),
+        ("/api/ops", 400, '{{"ops": [{}]}}'),
+        ("/api/section/transport", 422,
+         '{{"transport_version": 1, "action": "apply", "document": null, "op": {}}}'),
+    ],
+)  # fmt: skip
+def test_a_400_digit_b_is_answered_invalid_argument_over_http(
+    server: ScratchpadServer, path: str, status: int, wrap: str
+) -> None:
+    """A 400-digit int is JSON that parses (the limit is 4300 digits) and overflows a float."""
+    before = server.session.document.to_json()
+    params = json.dumps({**SMALL, "b": 0}).replace('"b": 0', f'"b": {FLOAT_OVERFLOW}')
+    op = f'{{"op": "AddSectionTemplate", "template": "rect_column", "template_params": {params}}}'
+    port = server.server_address[1]
+    body = wrap.format(op).encode("utf-8")
+    with pytest.raises(HTTPError) as caught:
+        urlopen(Request(f"http://127.0.0.1:{port}{path}", data=body, method="POST"))
+    assert caught.value.code == status
+    answer = json.loads(caught.value.read().decode("utf-8"))
+    error = answer["error"] if isinstance(answer["error"], dict) else answer
+    assert error["code"] == INVALID_ARGUMENT
+    assert "rect_column: b: must be finite" in (error.get("message") or error["error"])
+    assert server.session.document.to_json() == before
+
+
+# --- a shared-reference DAG: refused by name, never a hang (apeSection#51) ------------------
+
+
+def _dag(levels: int = 5, width: int = 1000) -> object:
+    """Few objects, within the depth cap, and `width ** levels` paths through them."""
+    value: object = 0
+    for _ in range(levels):
+        value = [value] * width
+    return value
+
+
+def _within(seconds: float, call: Callable[[], object]) -> object:
+    """`call()`, or a failure if it runs on: a daemon thread, so a hang cannot stall the suite."""
+    results: list[object] = []
+
+    def run() -> None:
+        try:
+            results.append(call())
+        except Exception as exc:  # the refusal, or whatever else it raises, for the caller to read
+            results.append(exc)
+
+    thread = Thread(target=run, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    assert not thread.is_alive(), f"still running after {seconds} s"
+    return results[0]
+
+
+TOO_MANY = f"template_params holds more than {MAX_PARAMS_VALUES} values"
+DAG_PARAMS: dict[str, object] = {**SMALL, "center_mm": _dag()}
+
+
+def test_a_shared_reference_dag_is_refused_by_name_and_quickly() -> None:
+    made = _within(10.0, lambda: AddSectionTemplate("rect_column", DAG_PARAMS))
+    assert isinstance(made, OpArgumentError) and str(made) == TOO_MANY
+    assert made.code == INVALID_ARGUMENT
+    one_wide = _within(10.0, lambda: AddSectionTemplate("rect_column", {"zz": [0] * 10**7}))
+    assert isinstance(one_wide, OpArgumentError) and str(one_wide) == TOO_MANY
+
+
+def test_a_shared_reference_dag_is_refused_on_every_in_process_path() -> None:
+    doc, template = _doc(SMALL)
+    before = doc.to_json()
+    session = Session(doc)
+    add = {"template": "rect_column", "template_params": DAG_PARAMS}
+    edit = {"template_id": template.entity_id, "template_params": DAG_PARAMS}
+    log = {"schema": SCHEMA_ID, "units": "mm", "ops": [{"op": "AddSectionTemplate", **add}]}
+    for call in (
+        lambda: tools.apply_op(session, "AddSectionTemplate", add),
+        lambda: tools.apply_op(session, "EditSectionTemplate", edit),
+        lambda: tools.apply_ops(session, [{"op": "AddSectionTemplate", "params": add}], None),
+    ):
+        out = cast(dict[str, object], _within(10.0, call))
+        assert out["ok"] is False
+        error = cast(dict[str, object], out["error"])
+        assert error["code"] == INVALID_ARGUMENT and TOO_MANY in cast(str, error["message"])
+        assert session.document.to_json() == before
+    replayed = _within(10.0, lambda: Document.from_dict(log))
+    assert isinstance(replayed, OpArgumentError) and str(replayed) == TOO_MANY
+
+
+def test_the_budget_clears_the_largest_params_any_expansion_accepts() -> None:
+    """The stop condition of the slice: a section accepted today is not refused by the budget."""
+    ring = [[float(i), float(i * i)] for i in range(MAX_TEMPLATE_BARS)]
+    largest = {**POLYGON, "bar_material": "A630", "ring": ring}
+    assert 1 + len(largest) + 3 * MAX_TEMPLATE_BARS <= MAX_PARAMS_VALUES
+    frozen = freeze_params(largest)
+    assert len(cast(tuple[object, ...], frozen["ring"])) == MAX_TEMPLATE_BARS
+    # A DAG inside the budget still freezes, and costs what a tree of that size costs.
+    assert freeze_params({"a": [[0] * 40] * 40})["a"] == ((0,) * 40,) * 40
+
+
+def test_a_ring_over_the_bar_cap_is_still_refused_as_a_ring() -> None:
+    ring = [[float(i), 0.0] for i in range(MAX_TEMPLATE_BARS + 1)]
+    with pytest.raises(OpArgumentError, match="polygon_column: ring: has 1001 vertices"):
+        Document().add_section_template("polygon_column", {**POLYGON, "ring": ring})
+
+
+# --- the docs name the templates (apeSection#51) ------------------------------------------
+
+
+def test_the_list_ops_tool_description_names_the_templates() -> None:
+    assert "section templates" in TOOLS["list_ops"].description
+
+
+def test_the_agent_surface_spec_and_its_readme_row_name_adr_0040() -> None:
+    specs = Path(__file__).resolve().parents[1] / "AProjects" / "specs"
+    header = (specs / "agent-surface-mcp.md").read_text(encoding="utf-8").splitlines()[3]
+    assert header.startswith("**ADRs:**") and "0040" in header
+    rows = (specs / "README.md").read_text(encoding="utf-8").splitlines()
+    (row,) = [line for line in rows if "(agent-surface-mcp.md)" in line]
+    assert "0040" in row
+    assert header.removeprefix("**ADRs:** ") == row.split("|")[3].strip()
+
+
+def test_shown_prints_what_it_can_and_names_what_it_cannot() -> None:
+    assert shown(5) == "5" and shown([1, "a"]) == "[1, 'a']"
+    assert shown(UNPRINTABLE) == "an unprintable int"
+    assert shown([UNPRINTABLE]) == "an unprintable list"

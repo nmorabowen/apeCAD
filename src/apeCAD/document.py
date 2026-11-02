@@ -229,7 +229,10 @@ class Document(TemplateTypedOps, SectionTypedOps):
 
     @classmethod
     def from_json(cls, text: str) -> Document:
-        parsed: object = json.loads(text)
+        try:
+            parsed: object = json.loads(text)
+        except RecursionError:  # the parser's own stack, at a depth that depends on the Python
+            raise DocumentError("document JSON is nested too deeply to parse") from None
         return cls.from_dict(_as_string_dict(parsed))
 
     def _apply(self, op: Op, *, from_redo: bool = False) -> Entity | None:
