@@ -59,6 +59,19 @@ class TemplateParamError(OpArgumentError):
         self.param = param
 
 
+def shown(value: object) -> str:
+    """`repr(value)` for a refusal message, whatever `value` is.
+
+    A value Python will not print is named by its type: an int past the 4300-digit limit
+    (`sys.set_int_max_str_digits`) raises `ValueError`, and deep nesting `RecursionError`. A
+    refusal must not crash on the value it refuses (apeSection#51).
+    """
+    try:
+        return repr(value)
+    except (ValueError, RecursionError):
+        return f"an unprintable {type(value).__name__}"
+
+
 # --- the Plan ---------------------------------------------------------------------------
 
 
@@ -387,7 +400,7 @@ def require_bar_count(p: Params, counts: Mapping[str, int]) -> None:
         name = max(counts, key=lambda k: counts[k])
         raise p.error(
             name,
-            f"these parameters place {total} bars; a template places at most "
+            f"these parameters place {shown(total)} bars; a template places at most "
             f"{MAX_TEMPLATE_BARS}",
         )
 
@@ -457,7 +470,7 @@ class Params:
     def choice(self, name: str, options: Sequence[str], default: str) -> str:
         value = self._data.get(name, default)
         if not isinstance(value, str) or value not in options:
-            raise self.error(name, f"must be one of {', '.join(options)}, got {value!r}")
+            raise self.error(name, f"must be one of {', '.join(options)}, got {shown(value)}")
         return value
 
     def mapping(self, name: str, *, required: bool) -> Mapping[str, object] | None:
@@ -481,17 +494,20 @@ def _str_keys(p: Params, name: str, value: Mapping[object, object]) -> Mapping[s
     out: dict[str, object] = {}
     for k, v in value.items():
         if not isinstance(k, str):
-            raise p.error(name, f"keys must be strings, got {k!r}")
+            raise p.error(name, f"keys must be strings, got {shown(k)}")
         out[k] = v
     return out
 
 
 def number(p: Params, name: str, value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
-        raise p.error(name, f"must be a number in mm, got {value!r}")
-    result = float(value)
+        raise p.error(name, f"must be a number in mm, got {shown(value)}")
+    try:
+        result = float(value)
+    except OverflowError:
+        raise p.error(name, "must be finite, got an int too large for a float") from None
     if not math.isfinite(result):
-        raise p.error(name, f"must be finite, got {value!r}")
+        raise p.error(name, f"must be finite, got {value!r}")  # a float always prints
     return result
 
 
@@ -503,29 +519,29 @@ def positive(p: Params, name: str, value: float) -> float:
 
 def count_value(p: Params, name: str, value: object, minimum: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
-        raise p.error(name, f"must be a whole number, got {value!r}")
+        raise p.error(name, f"must be a whole number, got {shown(value)}")
     if value < minimum:
-        raise p.error(name, f"must be {minimum} or more, got {value}")
+        raise p.error(name, f"must be {minimum} or more, got {shown(value)}")
     return value
 
 
 def designation_value(p: Params, name: str, value: object) -> tuple[str, float]:
     if not isinstance(value, str) or value not in DESIGNATIONS:
         raise p.error(
-            name, f"unknown bar designation {value!r}; known: {', '.join(DESIGNATIONS)}"
+            name, f"unknown bar designation {shown(value)}; known: {', '.join(DESIGNATIONS)}"
         )
     return value, DESIGNATIONS[value]
 
 
 def name_value(p: Params, name: str, value: object) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise p.error(name, f"must be a non-empty material name, got {value!r}")
+        raise p.error(name, f"must be a non-empty material name, got {shown(value)}")
     return value
 
 
 def point_value(p: Params, name: str, value: object) -> Point2:
     if isinstance(value, str | bytes) or not isinstance(value, Sequence):
-        raise p.error(name, f"must be [x_mm, y_mm], got {value!r}")
+        raise p.error(name, f"must be [x_mm, y_mm], got {shown(value)}")
     items: list[object] = list(value)  # pyright: ignore[reportUnknownArgumentType]
     if len(items) != 2:
         raise p.error(name, f"must be [x_mm, y_mm], got {len(items)} values")

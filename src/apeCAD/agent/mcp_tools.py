@@ -92,8 +92,9 @@ TOOLS: dict[str, McpTool] = {
     for tool in (
         _tool(
             "list_ops",
-            "List the op catalog: each op's summary, params JSON Schema and an example. "
-            "Pass name for one op.",
+            "List the op catalog: each op's summary, params JSON Schema and an example; and the "
+            "section templates AddSectionTemplate takes: each one's versions, params JSON Schema "
+            "and an example. Pass name for one op; the templates stay listed.",
             {"name": {"type": ["string", "null"]}},
             lambda t, a: t.list_ops(a.get("name")),
         ),

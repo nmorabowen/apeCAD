@@ -1,7 +1,7 @@
 # Spec — agent surface: op catalog, MCP server, render and query tools
 
 **Status:** Implemented (2026-10-14)
-**ADRs:** 0006, 0019, 0023, 0026, 0027, 0028
+**ADRs:** 0006, 0019, 0023, 0026, 0027, 0028, 0034, 0040
 
 What agents call to draw with apeCAD, and the order to build it in. ADR 0028 holds the
 reasons; this file holds the shapes. Units are millimetres throughout (ADR 0006). Every JSON
