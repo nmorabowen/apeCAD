@@ -858,11 +858,15 @@ def test_a_shared_reference_dag_is_refused_on_every_in_process_path() -> None:
 
 def test_the_budget_clears_the_largest_params_any_expansion_accepts() -> None:
     """The stop condition of the slice: a section accepted today is not refused by the budget."""
-    ring = [[float(i), float(i * i)] for i in range(MAX_TEMPLATE_BARS)]
-    largest = {**POLYGON, "bar_material": "A630", "ring": ring}
-    assert 1 + len(largest) + 3 * MAX_TEMPLATE_BARS <= MAX_PARAMS_VALUES
-    frozen = freeze_params(largest)
-    assert len(cast(tuple[object, ...], frozen["ring"])) == MAX_TEMPLATE_BARS
+    n, radius = MAX_TEMPLATE_BARS, 90_000.0
+    ring = [
+        [radius * math.cos(2 * math.pi * i / n), radius * math.sin(2 * math.pi * i / n)]
+        for i in range(n)
+    ]  # a regular polygon: one bar per vertex, at the bar cap, and strictly convex
+    largest = {**POLYGON, "bar_material": "A630", "spacing_max": 1000, "ring": ring}
+    assert 1 + len(largest) + 3 * n <= MAX_PARAMS_VALUES
+    made = Document().add_section_template("polygon_column", largest)
+    assert len(cast(tuple[object, ...], made.params["ring"])) == n
     # A DAG inside the budget still freezes, and costs what a tree of that size costs.
     assert freeze_params({"a": [[0] * 40] * 40})["a"] == ((0,) * 40,) * 40
 

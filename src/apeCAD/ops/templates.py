@@ -10,8 +10,8 @@ expansion no longer matches (ADR 0040 decision 4, Errata 3).
 `params` is stored read-only: `freeze_params` turns lists into tuples and objects into
 read-only mappings, and `thaw_params` turns them back for JSON. The structure is checked
 here (a known template and version, an object of params, at most `MAX_PARAMS_DEPTH` levels
-deep and `MAX_PARAMS_VALUES` values); the params themselves are checked by the expansion, which refuses a bad one with
-`TemplateParamError` (`INVALID_ARGUMENT`).
+deep and `MAX_PARAMS_VALUES` values); the params themselves are checked by the expansion,
+which refuses a bad one with `TemplateParamError` (`INVALID_ARGUMENT`).
 """
 
 from __future__ import annotations
