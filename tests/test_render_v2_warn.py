@@ -25,6 +25,8 @@ from apeCAD.agent import tools as agent_tools
 from apeCAD.agent.session import Session
 from apeCAD.agent.tools import render
 from apeCAD.entities import Entity, EntityId
+from apeCAD.geometry import XYZ
+from apeCAD.ops import PointAt
 from apeCAD.render.scene import entity_map
 from apeCAD.render.section import not_drawn
 from test_render import _fake_png  # pyright: ignore[reportPrivateUsage]
@@ -104,7 +106,26 @@ def test_render_names_an_unknown_kind_with_its_kind() -> None:
     assert warning["code"] == "not-drawn"
     assert warning["ids"] == [GADGET_ID]
     message = cast(str, warning["message"])
-    assert f"[{GADGET_ID}]" in message and f"Gadget {GADGET_ID}" in message
+    assert message == (
+        f"1 entities [{GADGET_ID}] draw nothing (Gadget {GADGET_ID}); "
+        "the rest of the drawing is drawn"
+    )  # a whole sentence (review of #63, finding 1)
+
+
+def test_a_collapsed_cover_ring_on_a_v1_face_is_named_with_its_reason() -> None:
+    """Review of #63, finding 2: the generic warning is new for v1 documents, so it says why.
+
+    A 100 x 100 face with 60 mm of cover: the cover ring insets 60 mm from each side, which
+    leaves nothing of a 100 mm width (cover > 50 mm), so the guide draws nothing."""
+    doc = Document()
+    corners = [PointAt(XYZ(x, y, 0.0)) for x, y in ((0, 0), (100, 0), (100, 100), (0, 100))]
+    face = doc.add_concrete_face(corners, "C30")
+    guide = doc.set_cover(face.entity_id, 60.0, 10.0, 16.0)
+    (warning,) = _warnings(render(Session(doc)))
+    assert warning["ids"] == [guide.entity_id]
+    message = cast(str, warning["message"])
+    assert f"CoverGuide {guide.entity_id}: the cover ring at 60 mm collapses" in message
+    assert message.endswith("the rest of the drawing is drawn")
 
 
 @pytest.mark.usefixtures("gadget_map")

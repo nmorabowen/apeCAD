@@ -75,6 +75,18 @@ def not_drawn(entities: Mapping[EntityId, Entity], draw_ids: Iterable[EntityId])
     return skipped
 
 
+def not_drawn_reason(entities: Mapping[EntityId, Entity], entity_id: EntityId) -> str | None:
+    """Why an entity `not_drawn` names draws nothing, when the geometry says: a cover guide
+    whose cover ring collapses gives `CoverRings.reason`. None when no reason is known."""
+    guide = entities.get(entity_id)
+    if not isinstance(guide, CoverGuide):
+        return None
+    found = _cover_rings(entities, guide)
+    if found is None or found[0].cover_ring_mm is not None:
+        return None
+    return found[0].reason
+
+
 def bar_point_ids(entities: Mapping[EntityId, Entity]) -> set[EntityId]:
     """Points that only place a bar: the bar's disc stands for them, so they draw no dot."""
     return {e.point_id for e in entities.values() if isinstance(e, Bar)}

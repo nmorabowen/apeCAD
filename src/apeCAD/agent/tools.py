@@ -35,7 +35,7 @@ from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import render_png, render_svg
 from apeCAD.render.dxf import export_dxf as _export_dxf
 from apeCAD.render.scene import closure, entity_map
-from apeCAD.render.section import NOT_DRAWN, not_drawn
+from apeCAD.render.section import NOT_DRAWN, not_drawn, not_drawn_reason
 from apeCAD.section_draft import section_draft
 
 RENDER_DEFAULTS: dict[str, object] = {
@@ -254,9 +254,14 @@ def _with_not_drawn(
     skipped = not_drawn(entities, draw_ids)
     if not skipped:
         return fields
-    named = ", ".join(f"{type(entities[i]).__name__} {i}" for i in skipped)
+    named: list[str] = []
+    for i in skipped:
+        reason = not_drawn_reason(entities, i)
+        kind = f"{type(entities[i]).__name__} {i}"
+        named.append(kind if reason is None else f"{kind}: {reason}")
     message = (
-        f"{len(skipped)} entities {skipped} draw nothing ({named}); the rest of the drawing is"
+        f"{len(skipped)} entities {skipped} draw nothing ({'; '.join(named)}); "
+        "the rest of the drawing is drawn"
     )
     return {**fields, "warnings": [{"code": NOT_DRAWN, "ids": skipped, "message": message}]}
 
