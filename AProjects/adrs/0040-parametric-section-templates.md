@@ -103,7 +103,8 @@ question open.
    table names no material. Every template also takes `material` (required: the name of its
    concrete face) and an optional `bar_material` (the name of the bar steel). Without
    `bar_material` the bars carry no `material`, so the consumer's default applies (ADR 0039
-   decision 6). Names only: apeCAD stores no property and no law.
+   decision 6). Names only: apeCAD stores no property and no law. (`bar_material` is narrowed
+   to templates that place bars by 11.3.)
 2. **Version 1 starts narrow (owner's ruling Q4, "Yes, start narrow").** `polygon_column` v1
    is convex only (a reflex vertex is refused; see 8.4 for straight vertices), `rect_hollow`
    v1 places no crossties, and `t_beam` v1 is symmetric. Widening any of them is a new
@@ -182,7 +183,29 @@ question open.
        new version. Overlapping bars are refused by `n_bars`. The template and
        `AddBarsOnCircle` share one formula, `section/layout.py::on_circle`.
 
-    *Orchestrator reading, awaiting the owner (not part of the ratification above).* When even
-    the fewest bars, three, overlap, the refusal names `diameter` rather than `n_bars`, because
-    no `n_bars` could cure it. The record does not say this. It is consistent with the record's
-    row 2 and mirrors `rect_column` naming `b` when its two corner bars overlap.
+    5. *Three overlapping bars name `diameter` (owner's ruling, apeSection#2 comment 1181,
+       "Name `diameter` (Recommended)").* When even the fewest bars, three, overlap, the
+       refusal names `diameter` rather than `n_bars`, because no `n_bars` could cure it; above
+       three bars an overlap still names `n_bars`. This mirrors `rect_column` naming `b` when
+       its two corner bars overlap. It was recorded at C4-S1 as an orchestrator reading
+       awaiting the owner, and is ratified here at C4-S2.
+11. **The CFT core exemption and `cft_round` v1 (stage C4-S2, 2026-11-02; apeSection#2,
+    comment 1170, rulings in comments 1172 and 1181).**
+    1. *Exact probe ends.* `section/regions.py::segment_probes` probes the ends of a segment as
+       `a` and `b` themselves, as its docstring promised, not as `a + 1.0 * (b - a)`, which
+       rounds past a corner at fractional coordinates. So `curve_within` holds for identical
+       rings, and a concrete core equal to its steel tube's hole no longer warns
+       `face-without-cover-guide` against ADR 0039 Errata 9.2. The record's probe found 414
+       false positives in 14,400 cases before and none after, with no false negative either
+       way. The other readers of the probes, the v1 and v2 crosstie lints, only gain exact
+       ends.
+    2. *`cft_round` v1.* `material` names the core's concrete (Errata 1) and `steel_material`,
+       required, the tube's steel. The core is a circle of diameter / 2 - t; the tube is a
+       circle of diameter / 2 with a circle hole of the core's radius, the same floats. A `t`
+       is refused unless the core sits strictly inside the tube in floats (a positive core
+       radius below the outer one). It draws no bars, ties, cover guides or steel `shape`.
+    3. *`bar_material` only where there are bars (owner's ruling Q1, comment 1172, "Refuse it
+       (Recommended)").* A template that places no bars, `cft_round` and `cft_rect`, refuses
+       `bar_material` by name whenever it is given, null included: an accepted parameter that
+       draws nothing would stay in v1 for ever (decision 4), and a refused one can arrive in a
+       later version. Errata 1's `bar_material` narrows to templates that place bars.
