@@ -9,7 +9,7 @@ from xml.sax.saxutils import escape
 
 from apeCAD.entities import EntityId
 from apeCAD.render.annotate import Layout, notes_svg, scale_note
-from apeCAD.render.drawable import SECTION_LAYERS, Drawable, Path3
+from apeCAD.render.drawable import CUT_LAYERS, SECTION_LAYERS, Drawable, Path3
 from apeCAD.render.labels import CHAR_PX, TEXT_GAP_PX, LabelText, obstacles, place_labels
 from apeCAD.render.style import (
     ANNOTATION_PEN_PX,
@@ -181,15 +181,20 @@ def _paths(d: Drawable, view: View, viewport: Viewport) -> Iterable[str]:
     return (_path_data(path, view, viewport) for path in d.paths if len(path[0]) > 1)
 
 
+EVEN_ODD = ' fill-rule="evenodd"'
+
+
 def _plain_body(d: Drawable, view: View, viewport: Viewport) -> str:
+    if d.compound:  # a v2 face: outer and holes in one path, so the holes stay open
+        return f'<path d="{" ".join(_paths(d, view, viewport))}"{EVEN_ODD}/>'
     return "".join(f'<path d="{data}"/>' for data in _paths(d, view, viewport))
 
 
 def _accent_fill_body(d: Drawable, view: View, viewport: Viewport) -> str:
-    return "".join(
-        f'<path d="{data}" fill="{ACCENT}" fill-opacity="0.35"/>'
-        for data in _paths(d, view, viewport)
-    )
+    paint = f'fill="{ACCENT}" fill-opacity="0.35"'
+    if d.compound:
+        return f'<path d="{" ".join(_paths(d, view, viewport))}" {paint}{EVEN_ODD}/>'
+    return "".join(f'<path d="{data}" {paint}/>' for data in _paths(d, view, viewport))
 
 
 def _accent_stroke_body(d: Drawable, view: View, viewport: Viewport) -> str:
@@ -230,6 +235,9 @@ def _dot_body(radius: float, color: str) -> _BodyFn:
 _HIGHLIGHT_BODIES: dict[str, _BodyFn] = {
     "face": _accent_fill_body,
     "concrete": _accent_fill_body,
+    "steel": _accent_fill_body,
+    "void": _accent_fill_body,
+    "circular-tie": _accent_stroke_body,
     "solid": _accent_stroke_body,
     "edge": _accent_stroke_body,
     "cover": _accent_stroke_body,
@@ -311,10 +319,11 @@ def scale_bar_mm(viewport: Viewport) -> float:
 
 
 def view_title(view: View, items: list[Drawable]) -> str:
-    """English view title (spec §3.3); a plan of a section is SECTION plus the face label."""
-    concrete = [d for d in items if d.layer == "concrete"]
-    if view.name == "top" and concrete:
-        label = concrete[0].label
+    """English view title (spec §3.3); a plan of a section is SECTION plus the label of its
+    first cut face, concrete or steel (C5 record §3)."""
+    cut = [d for d in items if d.layer in CUT_LAYERS]
+    if view.name == "top" and cut:
+        label = cut[0].label
         return f"{SECTION_TITLE} {label}" if label else SECTION_TITLE
     return VIEW_TITLES.get(view.name, view.name.upper())
 

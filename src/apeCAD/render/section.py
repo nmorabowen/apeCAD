@@ -1,4 +1,4 @@
-"""Section-mode entities (ADR 0024) as drawables: concrete, cover ring, leg axis, ties, bars.
+"""Section-mode entities (ADR 0024, 0039) as drawables: faces, cover ring, leg axis, ties, bars.
 
 Everything is plan geometry on the bars' and outline's own z. A hoop draws as a tie around
 its bars: the hull of the bar centres, offset by each bar's radius plus half the tie
@@ -6,8 +6,11 @@ diameter, with round corners. Hoops and crossties carry their hook ticks (spec Â
 extra open paths after the main one, so `paths[0]` is always the ring or the tie itself.
 Nothing here is mechanics; apeConcrete owns that.
 
-v2 faces and circular ties (ADR 0039) are not drawn yet (stage C5). `not_drawn` names them,
-so the `render` tool warns `not-drawn` instead of answering a silent ok (apeSection#39).
+A v2 face (ADR 0039) draws on the layer of its role, its outer boundary then its holes as
+one compound drawable; a circle is tessellated here for display only (`circle_points`), the
+contract keeps it exact. A circular tie draws its centreline circle. `not_drawn` names
+whatever still draws nothing, so the `render` tool warns `not-drawn` instead of answering a
+silent ok (apeSection#39).
 """
 
 from __future__ import annotations
@@ -16,43 +19,60 @@ import math
 from collections.abc import Iterable, Mapping
 
 from apeCAD.entities import (
+    Arc,
     Bar,
+    Bezier,
+    Box,
+    Circle,
+    CircleBoundary,
     CircularTie,
     ConcreteFace,
     CoverGuide,
     Crosstie,
+    Ellipse,
     Entity,
     EntityId,
+    Face,
+    FaceBoundary,
     Hoop,
+    Line,
     Point,
+    Polyline,
     SectionEntity,
     SectionFace,
     SectionTemplate,
+    Solid,
     WallLeg,
 )
 from apeCAD.render.drawable import Drawable, Path3
-from apeCAD.render.tessellate import fan_points
+from apeCAD.render.tessellate import circle_points, fan_points
 from apeCAD.render.views import Vec3
-from apeCAD.section.cover import cover_rings
+from apeCAD.section.cover import CoverRings, circle_cover_rings, cover_rings
 
 HOOK_DEG = 135.0  # a hoop's closing hooks (`Hoop.hooks` is only "135")
 
 NOT_DRAWN = "not-drawn"
-"""The `render` warning code for entities `section_drawable` skips (apeSection#39)."""
+"""The `render` warning code for entities that draw nothing (apeSection#39)."""
+
+SKETCH_KINDS = (Point, Line, Polyline, Box, Face, Solid, Circle, Arc, Ellipse, Bezier)
+"""The kinds `scene.py` draws itself; every other kind is drawn here or not at all."""
 
 
 def not_drawn(entities: Mapping[EntityId, Entity], draw_ids: Iterable[EntityId]) -> list[EntityId]:
-    """What `section_drawable` skips among `draw_ids`, ascending: v2 faces, circular ties,
-    and cover guides whose face is not a v1 `ConcreteFace` (`_cover` draws only those)."""
+    """Each id among `draw_ids` that draws nothing, ascending: any kind `scene.py` does not
+    draw itself for which `section_drawable` answers None, so a kind added without a drawing
+    is named by construction. A template draws its children instead (ADR 0040), and a bar's
+    point is drawn by the bar's disc (a sketch kind), so neither is named."""
     skipped: list[EntityId] = []
-    for i in draw_ids:
+    for i in sorted(draw_ids):
         entity = entities.get(i)
-        if isinstance(entity, (SectionFace, CircularTie)) or (
-            isinstance(entity, CoverGuide)
-            and not isinstance(entities.get(entity.face_id), ConcreteFace)
-        ):
+        if entity is None or isinstance(entity, SKETCH_KINDS):
+            continue
+        if isinstance(entity, SectionTemplate):
+            continue
+        if section_drawable(entities, entity, None) is None:
             skipped.append(i)
-    return sorted(skipped)
+    return skipped
 
 
 def bar_point_ids(entities: Mapping[EntityId, Entity]) -> set[EntityId]:
@@ -91,7 +111,56 @@ def section_drawable(
         return Drawable(eid, "leg", ((tuple(ends), False),), _mean(ends), label)
     if isinstance(entity, CoverGuide):
         return _cover(entities, entity)
-    return None  # v2 faces and circular ties (ADR 0039) are not drawn here yet
+    if isinstance(entity, SectionFace):
+        return _section_face(entities, entity, tol_mm)
+    # Checked, not assumed: a kind the union does not list yet must reach `return None`.
+    if isinstance(entity, CircularTie):  # pyright: ignore[reportUnnecessaryIsInstance]
+        return _circular_tie(entities, entity, tol_mm)
+    return None  # a kind with no drawing: `not_drawn` names it
+
+
+def _section_face(
+    entities: Mapping[EntityId, Entity], face: SectionFace, tol_mm: float | None
+) -> Drawable | None:
+    """A v2 face on its role's layer: `paths[0]` is the outer boundary, then each hole, all
+    one shape (`compound`), which `svg.py` fills even-odd so a hole stays open whatever its
+    winding. Painting follows the layer (`SECTION_LAYERS`), never the id (ADR 0039 D3)."""
+    paths: list[Path3] = []
+    for boundary in (face.boundary, *face.holes):
+        loop = _boundary(entities, boundary, tol_mm)
+        if loop is None:
+            return None  # an unresolved hole would fill: draw nothing, and be named
+        paths.append((tuple(loop), True))
+    outer = face.boundary
+    anchor = (
+        _xyz(entities, outer.center_id) if isinstance(outer, CircleBoundary)
+        else _mean(list(paths[0][0]))
+    )
+    return Drawable(
+        face.entity_id, face.role, tuple(paths), anchor, face.label, compound=True
+    )
+
+
+def _boundary(
+    entities: Mapping[EntityId, Entity], boundary: FaceBoundary, tol_mm: float | None
+) -> list[Vec3] | None:
+    if isinstance(boundary, CircleBoundary):
+        centre = _xyz(entities, boundary.center_id)
+        return None if centre is None else circle_points(centre, boundary.radius_mm, tol_mm)
+    ring = _xyz_all(entities, boundary.point_ids)
+    return ring if len(ring) == len(boundary.point_ids) and len(ring) >= 3 else None
+
+
+def _circular_tie(
+    entities: Mapping[EntityId, Entity], tie: CircularTie, tol_mm: float | None
+) -> Drawable | None:
+    """The tie's centreline circle, at `centerline_radius_mm` about its centre (no hooks:
+    the entity carries none)."""
+    centre = _xyz(entities, tie.center_id)
+    if centre is None:
+        return None
+    loop = circle_points(centre, tie.centerline_radius_mm, tol_mm)
+    return Drawable(tie.entity_id, "circular-tie", ((tuple(loop), True),), centre, tie.label)
 
 
 def _hoop(
@@ -214,18 +283,41 @@ def _right_normal(a: Vec3, b: Vec3) -> tuple[float, float]:
 
 
 def _cover(entities: Mapping[EntityId, Entity], guide: CoverGuide) -> Drawable | None:
-    face = entities.get(guide.face_id)
-    if not isinstance(face, ConcreteFace):
+    """The cover ring, from `section/cover.py` as the scene computes it
+    (`scratchpad/payload.py::_guide_rings`): a ring insets by mitred offset, a v2 circle by
+    radius."""
+    found = _cover_rings(entities, guide)
+    if found is None:
         return None
-    outline = _xyz_all(entities, face.point_ids)
-    if len(outline) < 3:
-        return None
-    ring = cover_rings([(p[0], p[1]) for p in outline], guide).cover_ring_mm
+    rings, z = found
+    ring = rings.cover_ring_mm
     if ring is None:
         return None
-    z = outline[0][2]
     pts = tuple((x, y, z) for x, y in ring)
     return Drawable(guide.entity_id, "cover", ((pts, True),), None, guide.label)
+
+
+def _cover_rings(
+    entities: Mapping[EntityId, Entity], guide: CoverGuide
+) -> tuple[CoverRings, float] | None:
+    face = entities.get(guide.face_id)
+    if isinstance(face, SectionFace):
+        boundary = face.boundary
+        if isinstance(boundary, CircleBoundary):
+            centre = _xyz(entities, boundary.center_id)
+            if centre is None:
+                return None
+            xy = (centre[0], centre[1])
+            return circle_cover_rings(xy, boundary.radius_mm, guide), centre[2]
+        point_ids = boundary.point_ids
+    elif isinstance(face, ConcreteFace):
+        point_ids = face.point_ids
+    else:
+        return None
+    outline = _xyz_all(entities, point_ids)
+    if len(outline) < 3:
+        return None
+    return cover_rings([(p[0], p[1]) for p in outline], guide), outline[0][2]
 
 
 def _xyz(entities: Mapping[EntityId, Entity], entity_id: EntityId) -> Vec3 | None:

@@ -24,7 +24,18 @@ from pathlib import Path
 from typing import Any
 
 from apeCAD.document import Document
-from apeCAD.entities import Arc, Circle, Ellipse, Entity, EntityId
+from apeCAD.entities import (
+    Arc,
+    Circle,
+    CircleBoundary,
+    CircularTie,
+    Ellipse,
+    Entity,
+    EntityId,
+    FaceBoundary,
+    Point,
+    SectionFace,
+)
 from apeCAD.render.annotate import (
     DIM_OFFSET_PX,
     Layout,
@@ -35,7 +46,7 @@ from apeCAD.render.annotate import (
     section_notes,
 )
 from apeCAD.render.api import RenderArgumentError, known_ids, save_text
-from apeCAD.render.drawable import Drawable, Path3
+from apeCAD.render.drawable import CUT_LAYERS, SECTION_LAYERS, Drawable, Path3
 from apeCAD.render.scene import closure, drawables, entity_map
 from apeCAD.render.style import SECTION_STYLE, SKETCH_STYLE, LayerStyle
 from apeCAD.render.svg import legend_geometry, view_title
@@ -56,9 +67,10 @@ TEXT_STYLE = "Note - 2.0mm ArialNarrow Transparent"  # ADR-007
 TITLE_STYLE = "Title - Bahnschrift SemiBold Condensed"  # ADR-009 display face
 DIM_STYLE = "Arrow - 2.5mm ArialNarrow Transparent"  # ADR-006 default linear
 
-# Layers the style table does not name: annotation and the concrete fill.
+# Layers the style table does not name: annotation and the concrete and steel fills.
 EXTRA_LAYERS: dict[str, tuple[str, str]] = {  # name: (ADR-005 line style, colour key)
     "CONCRETE-FILL": ("0.10mm S-Grey210", "Grey210"),
+    "STEEL-FILL": ("0.10mm S-Dark Grey", "Dark Grey"),  # ADR-010 Grey128 is ACI 8
     "TAG": ("0.10mm S-Blue", "Blue"),
     "DIMENSION": ("0.10mm S-Blue", "Blue"),
     "VIEW-TITLE": ("0.30mm S-Blue", "Blue"),
@@ -106,13 +118,18 @@ def export_dxf(
         set(entities) if ids is None else closure(known_ids("ids", ids, entities), children)
     )
     items = drawables(entities, draw_ids, CHORD_ERROR_MM)
+    _refuse_void_holes(entities, items)
     doc: Any = new_drawing(DXF_VERSION, setup=True, units=4)  # 4 = millimetres
     doc.header["$MEASUREMENT"] = 1  # metric
     _styles(doc)
     msp: Any = doc.modelspace()
     used: set[str] = set()
-    for d in items:
-        used.add(_write(msp, d, entities.get(d.entity_id)))
+    for d in sorted(items, key=_paint_rank):  # file order is draw order: a void masks last
+        entity = entities.get(d.entity_id)
+        if isinstance(entity, SectionFace):
+            used |= _write_face(msp, d, entity, entities)
+            continue
+        used.add(_write(msp, d, entity))
         if d.layer == "concrete":
             used.add("CONCRETE-FILL")
     layout = _layout(entities, items) if annotate else None
@@ -216,6 +233,73 @@ def _write(msp: Any, d: Drawable, entity: Entity | None) -> str:
     return layer
 
 
+FILL_LAYERS = {"concrete": "CONCRETE-FILL", "steel": "STEEL-FILL"}
+BOUNDARY_EXTERNAL = 1  # ezdxf `const.BOUNDARY_PATH_EXTERNAL`: a hatch's outer boundary
+BOUNDARY_OUTERMOST = 16  # `const.BOUNDARY_PATH_OUTERMOST`: an island, left unfilled
+
+
+def _paint_rank(d: Drawable) -> int:
+    """`SECTION_LAYERS` order, as the SVG paints; the sketch layers after (sort is stable)."""
+    return SECTION_LAYERS.index(d.layer) if d.layer in SECTION_LAYERS else len(SECTION_LAYERS)
+
+
+def _refuse_void_holes(entities: dict[EntityId, Entity], items: list[Drawable]) -> None:
+    """A WIPEOUT has no islands, so a void with holes cannot be masked: refuse it by id."""
+    holed = [
+        d.entity_id for d in items
+        if isinstance(e := entities.get(d.entity_id), SectionFace) and e.role == "void"
+        and e.holes
+    ]
+    if holed:
+        raise RenderArgumentError(
+            f"DXF cannot mask void faces {holed} with holes: a WIPEOUT has no islands"
+        )
+
+
+def _write_face(
+    msp: Any, d: Drawable, face: SectionFace, entities: dict[EntityId, Entity]
+) -> set[str]:
+    """A v2 face on its role's layer (ADR 0039): each boundary as a native CIRCLE or an
+    LWPOLYLINE, over its fill. Concrete and steel hatch with the holes as islands; a void is
+    a WIPEOUT, written after the faces it cuts (`_paint_rank`). Returns the layers used."""
+    layer = _layer(d)
+    boundaries = (face.boundary, *face.holes)
+    z = d.paths[0][0][0][2]
+    if face.role == "void":
+        msp.add_wipeout([(p[0], p[1]) for p in d.paths[0][0]], dxfattribs={"layer": layer})
+        used = {layer}
+    else:
+        fill = FILL_LAYERS[face.role]
+        hatch = msp.add_hatch(dxfattribs={"layer": fill, "elevation": (0.0, 0.0, z)})
+        hatch.set_solid_fill(color=256)  # ByLayer
+        for i, (boundary, (points, _closed)) in enumerate(zip(boundaries, d.paths, strict=True)):
+            flags = BOUNDARY_EXTERNAL if i == 0 else BOUNDARY_OUTERMOST
+            circle = _circle(boundary, entities)
+            if circle is None:
+                hatch.paths.add_polyline_path(
+                    [(p[0], p[1]) for p in points], is_closed=True, flags=flags
+                )
+            else:
+                edges = hatch.paths.add_edge_path(flags=flags)
+                edges.add_arc(circle[0][:2], circle[1], 0.0, 360.0)
+        used = {layer, fill}
+    for boundary, path in zip(boundaries, d.paths, strict=True):
+        circle = _circle(boundary, entities)
+        if circle is None:
+            _polyline(msp, path, {"layer": layer})
+        else:
+            msp.add_circle(circle[0], circle[1], dxfattribs={"layer": layer})
+    return used
+
+
+def _circle(boundary: FaceBoundary, entities: dict[EntityId, Entity]) -> tuple[Vec3, float] | None:
+    if not isinstance(boundary, CircleBoundary):
+        return None
+    centre = entities.get(boundary.center_id)
+    assert isinstance(centre, Point)  # the drawable resolved it
+    return centre.xyz_mm.to_tuple(), boundary.radius_mm
+
+
 def _polyline(msp: Any, path: Path3, attribs: dict[str, object]) -> None:
     points, closed = path
     if len(points) < 2:
@@ -235,15 +319,17 @@ def _native_curve(
     msp: Any, entity: Entity | None, d: Drawable, attribs: dict[str, object]
 ) -> bool:
     """Circles, arcs and ellipses in a horizontal plane stay native DXF curves (ADR 0034
-    decision 3); anything else is written as its tessellation."""
-    if not isinstance(entity, (Circle, Arc, Ellipse)) or d.anchor is None:
+    decision 3), and so does a circular tie's centreline; anything else is written as its
+    tessellation."""
+    if not isinstance(entity, (Circle, Arc, Ellipse, CircularTie)) or d.anchor is None:
         return False
     points = [p for path, _ in d.paths for p in path]
     z = points[0][2]
     if any(abs(p[2] - z) > 1e-6 for p in points):
         return False
-    if isinstance(entity, Circle):
-        msp.add_circle(d.anchor, entity.radius_mm, dxfattribs=attribs)
+    if isinstance(entity, (Circle, CircularTie)):
+        radius = entity.radius_mm if isinstance(entity, Circle) else entity.centerline_radius_mm
+        msp.add_circle(d.anchor, radius, dxfattribs=attribs)
         return True
     if isinstance(entity, Ellipse):
         rx, ry = entity.radius_x_mm, entity.radius_y_mm
@@ -276,7 +362,7 @@ def _circumcircle(a: Vec3, b: Vec3, c: Vec3) -> tuple[Vec2, float] | None:
 
 
 def _plane_z(items: list[Drawable]) -> float:
-    concrete = [d for d in items if d.layer == "concrete"]
+    concrete = [d for d in items if d.layer in CUT_LAYERS]
     return concrete[0].paths[0][0][0][2] if concrete else 0.0
 
 
