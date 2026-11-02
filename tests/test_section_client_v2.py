@@ -92,12 +92,7 @@ def _render_layers(document: Document) -> list[list[object]]:
     """`render`'s section drawables as `[[id, layer], ...]`, in the order it paints them."""
     entities = entity_map(document)
     found = drawables(entities, set(entities), None)
-    return [
-        [d.entity_id, d.layer]
-        for layer in SECTION_LAYERS
-        for d in found
-        if d.layer == layer
-    ]
+    return [[d.entity_id, d.layer] for layer in SECTION_LAYERS for d in found if d.layer == layer]
 
 
 def _v1_says(document: Document) -> bool:

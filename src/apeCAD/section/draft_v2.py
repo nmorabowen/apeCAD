@@ -302,9 +302,7 @@ def project_seed_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
             for e in ordered
             if isinstance(e, Crosstie)
         ],
-        "circular_ties": [
-            circular_tie_item(e, xy) for e in ordered if isinstance(e, CircularTie)
-        ],
+        "circular_ties": [circular_tie_item(e, xy) for e in ordered if isinstance(e, CircularTie)],
         "cover_guides": [
             {
                 "face_id": face_idx[e.face_id],
