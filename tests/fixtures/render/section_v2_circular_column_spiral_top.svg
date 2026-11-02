@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="top">
+<rect width="800" height="600" fill="#ffffff"/>
+<g class="faces" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="concrete" fill="#d2d2d2" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="2"><path d="M571.25 275.75 L569.31 251.69 L563.53 228.25 L554.07 206.04 L541.17 185.64 L525.16 167.57 L506.46 152.3 L485.55 140.23 L462.98 131.67 L439.33 126.84 L415.21 125.87 L391.25 128.78 L368.06 135.5 L346.25 145.85 L326.38 159.56 L308.97 176.28 L294.47 195.58 L283.25 216.96 L275.61 239.85 L271.74 263.68 L271.74 287.82 L275.61 311.65 L283.25 334.54 L294.47 355.92 L308.97 375.22 L326.38 391.94 L346.25 405.65 L368.06 416 L391.25 422.72 L415.21 425.63 L439.33 424.66 L462.98 419.83 L485.55 411.27 L506.46 399.2 L525.16 383.93 L541.17 365.86 L554.07 345.46 L563.53 323.25 L569.31 299.81 Z" fill-rule="evenodd"/></g>
+</g>
+<g class="cover" fill="none" stroke="#808080" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2">
+<g data-id="20"><path d="M551.25 275.75 L550.97 267.25 L550.14 258.78 L548.75 250.39 L546.82 242.1 L544.35 233.96 L541.35 226 L537.84 218.25 L533.83 210.75 L529.34 203.53 L524.39 196.61 L518.99 190.04 L513.17 183.83 L506.96 178.01 L500.39 172.61 L493.47 167.66 L486.25 163.17 L478.75 159.16 L471 155.65 L463.04 152.65 L454.9 150.18 L446.61 148.25 L438.22 146.86 L429.75 146.03 L421.25 145.75 L412.75 146.03 L404.28 146.86 L395.89 148.25 L387.6 150.18 L379.46 152.65 L371.5 155.65 L363.75 159.16 L356.25 163.17 L349.03 167.66 L342.11 172.61 L335.54 178.01 L329.33 183.83 L323.51 190.04 L318.11 196.61 L313.16 203.53 L308.67 210.75 L304.66 218.25 L301.15 226 L298.15 233.96 L295.68 242.1 L293.75 250.39 L292.36 258.78 L291.53 267.25 L291.25 275.75 L291.53 284.25 L292.36 292.72 L293.75 301.11 L295.68 309.4 L298.15 317.54 L301.15 325.5 L304.66 333.25 L308.67 340.75 L313.16 347.97 L318.11 354.89 L323.51 361.46 L329.33 367.67 L335.54 373.49 L342.11 378.89 L349.03 383.84 L356.25 388.33 L363.75 392.34 L371.5 395.85 L379.46 398.85 L387.6 401.32 L395.89 403.25 L404.28 404.64 L412.75 405.47 L421.25 405.75 L429.75 405.47 L438.22 404.64 L446.61 403.25 L454.9 401.32 L463.04 398.85 L471 395.85 L478.75 392.34 L486.25 388.33 L493.47 383.84 L500.39 378.89 L506.96 373.49 L513.17 367.67 L518.99 361.46 L524.39 354.89 L529.34 347.97 L533.83 340.75 L537.84 333.25 L541.35 325.5 L544.35 317.54 L546.82 309.4 L548.75 301.11 L550.14 292.72 L550.97 284.25 Z"/></g>
+</g>
+<g class="circular-tie" fill="none" stroke="#000077" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="19"><path d="M548.75 275.75 L546.81 253.61 L541.06 232.14 L531.67 212 L518.92 193.79 L503.21 178.08 L485 165.33 L464.86 155.94 L443.39 150.19 L421.25 148.25 L399.11 150.19 L377.64 155.94 L357.5 165.33 L339.29 178.08 L323.58 193.79 L310.83 212 L301.44 232.14 L295.69 253.61 L293.75 275.75 L295.69 297.89 L301.44 319.36 L310.83 339.5 L323.58 357.71 L339.29 373.42 L357.5 386.17 L377.64 395.56 L399.11 401.31 L421.25 403.25 L443.39 401.31 L464.86 395.56 L485 386.17 L503.21 373.42 L518.92 357.71 L531.67 339.5 L541.06 319.36 L546.81 297.89 Z"/></g>
+</g>
+<g class="bar" fill="#000077" stroke="#000077" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="4"><circle cx="541.25" cy="275.75" r="5"/></g>
+<g data-id="6"><circle cx="506.1" cy="190.9" r="5"/></g>
+<g data-id="8"><circle cx="421.25" cy="155.75" r="5"/></g>
+<g data-id="10"><circle cx="336.4" cy="190.9" r="5"/></g>
+<g data-id="12"><circle cx="301.25" cy="275.75" r="5"/></g>
+<g data-id="14"><circle cx="336.4" cy="360.6" r="5"/></g>
+<g data-id="16"><circle cx="421.25" cy="395.75" r="5"/></g>
+<g data-id="18"><circle cx="506.1" cy="360.6" r="5"/></g>
+</g>
+<g class="edges" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="points" fill="#000000">
+<g data-id="1"><circle cx="421.25" cy="275.75" r="1.25" fill="#000000" stroke="none"/></g>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="tag"><path d="M421.25 155.75 L368.85 109.75 L368.85 86.25" fill="none"/><circle cx="421.25" cy="155.75" r="1" stroke="none"/><text x="374.85" y="89.75" stroke="none" font-size="10">8 Φ20</text></g>
+<g class="tag"><path d="M384.24 153.74 L368.85 109.75 L368.85 100.25" fill="none"/><circle cx="384.24" cy="153.74" r="1" stroke="none"/><text x="374.85" y="103.75" stroke="none" font-size="10">Spiral Φ10 @ 75 mm</text></g>
+<g class="tag"><path d="M471 155.65 L491.65 109.75 L491.65 100.25" fill="none"/><circle cx="471" cy="155.65" r="1" stroke="none"/><text x="497.65" y="103.75" stroke="none" font-size="10">Cover 40 mm</text></g>
+<g class="dimension" data-dim="width"><path d="M271.25 428.75 L271.25 453.75 M571.25 428.75 L571.25 453.75 M271.25 449.75 L571.25 449.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(271.25 449.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(571.25 449.75) rotate(180)"/><text x="421.25" y="446.75" text-anchor="middle" stroke="none" font-size="12.5">600</text></g>
+<g class="dimension" data-dim="depth"><path d="M268.25 125.75 L243.25 125.75 M268.25 425.75 L243.25 425.75 M247.25 125.75 L247.25 425.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(247.25 125.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(247.25 425.75) rotate(-90)"/><text transform="translate(244.25 275.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">600</text></g>
+</g>
+<g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
+</g>
+<g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
+<path d="M12 584 L12 588 L112 588 L112 584" fill="none"/>
+<text x="118" y="588" stroke="none">200 mm</text>
+<text class="view-title" x="12" y="560" stroke="none" font-family="Bahnschrift SemiBold Condensed, Bahnschrift, Saira SemiCondensed, Archivo Narrow, sans-serif" font-size="17.5" font-weight="600" data-view="top">SECTION</text>
+<path class="view-title-rule" d="M12 563 L79.38 563" fill="none" stroke-width="1.5"/>
+<text class="scale-note" x="12" y="575" stroke="none">SCALE 1:10</text>
+</g>
+</svg>

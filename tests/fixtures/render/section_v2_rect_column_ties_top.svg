@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="top">
+<rect width="800" height="600" fill="#ffffff"/>
+<g class="faces" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="concrete" fill="#d2d2d2" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="5"><path d="M239.05 400.75 L439.05 400.75 L439.05 100.75 L239.05 100.75 Z" fill-rule="evenodd"/></g>
+</g>
+<g class="cover" fill="none" stroke="#808080" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 2">
+<g data-id="6"><path d="M259.05 380.75 L419.05 380.75 L419.05 120.75 L259.05 120.75 Z"/></g>
+</g>
+<g class="hoop" fill="none" stroke="#000077" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="23"><path d="M261.55 370.75 L261.69 372.21 L262.12 373.62 L262.81 374.92 L263.75 376.05 L264.88 376.99 L266.18 377.68 L267.59 378.11 L269.05 378.25 L409.05 378.25 L410.51 378.11 L411.92 377.68 L413.22 376.99 L414.35 376.05 L415.29 374.92 L415.98 373.62 L416.41 372.21 L416.55 370.75 L416.55 130.75 L416.41 129.29 L415.98 127.88 L415.29 126.58 L414.35 125.45 L413.22 124.51 L411.92 123.82 L410.51 123.39 L409.05 123.25 L269.05 123.25 L267.59 123.39 L266.18 123.82 L264.88 124.51 L263.75 125.45 L262.81 126.58 L262.12 127.88 L261.69 129.29 L261.55 130.75 Z"/><path d="M274.35 376.05 L295.57 354.84"/><path d="M263.75 365.45 L284.96 344.23"/></g>
+</g>
+<g class="crosstie" fill="none" stroke="#000077" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="24"><path d="M269.05 250.75 L409.05 250.75"/><path d="M263.75 256.05 L284.96 277.27"/><path d="M414.35 245.45 L393.14 224.23"/></g>
+<g data-id="25"><path d="M339.05 370.75 L339.05 130.75"/><path d="M344.35 376.05 L365.57 354.84"/><path d="M339.05 138.25 L309.05 138.25"/></g>
+</g>
+<g class="bar" fill="#000077" stroke="#000077" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="8"><circle cx="269.05" cy="370.75" r="5"/></g>
+<g data-id="10"><circle cx="409.05" cy="370.75" r="5"/></g>
+<g data-id="12"><circle cx="409.05" cy="130.75" r="5"/></g>
+<g data-id="14"><circle cx="269.05" cy="130.75" r="5"/></g>
+<g data-id="16"><circle cx="269.05" cy="250.75" r="5"/></g>
+<g data-id="18"><circle cx="409.05" cy="250.75" r="5"/></g>
+<g data-id="20"><circle cx="339.05" cy="370.75" r="5"/></g>
+<g data-id="22"><circle cx="339.05" cy="130.75" r="5"/></g>
+</g>
+<g class="edges" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="points" fill="#000000">
+<g data-id="1"><circle cx="239.05" cy="400.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="2"><circle cx="439.05" cy="400.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="3"><circle cx="439.05" cy="100.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="4"><circle cx="239.05" cy="100.75" r="1.25" fill="#000000" stroke="none"/></g>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="tag"><path d="M409.05 250.75 L461.05 236.25" fill="none"/><circle cx="409.05" cy="250.75" r="1" stroke="none"/><text x="467.05" y="239.75" stroke="none" font-size="10">8 Φ20</text></g>
+<g class="tag"><path d="M416.55 130.75 L461.05 250.25" fill="none"/><circle cx="416.55" cy="130.75" r="1" stroke="none"/><text x="467.05" y="253.75" stroke="none" font-size="10">Tie Φ10 @ 150 mm</text></g>
+<g class="tag"><path d="M339.05 250.75 L461.05 264.25" fill="none"/><circle cx="339.05" cy="250.75" r="1" stroke="none"/><text x="467.05" y="267.75" stroke="none" font-size="10">Crosstie Φ10 @ 150 mm ×2</text></g>
+<g class="tag"><path d="M419.05 283.25 L461.05 292.25" fill="none"/><circle cx="419.05" cy="283.25" r="1" stroke="none"/><text x="467.05" y="295.75" stroke="none" font-size="10">Cover 40 mm</text></g>
+<g class="dimension" data-dim="width"><path d="M239.05 403.75 L239.05 428.75 M439.05 403.75 L439.05 428.75 M239.05 424.75 L439.05 424.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(239.05 424.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(439.05 424.75) rotate(180)"/><text x="339.05" y="421.75" text-anchor="middle" stroke="none" font-size="12.5">400</text></g>
+<g class="dimension" data-dim="depth"><path d="M236.05 100.75 L211.05 100.75 M236.05 400.75 L211.05 400.75 M215.05 100.75 L215.05 400.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(215.05 100.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(215.05 400.75) rotate(-90)"/><text transform="translate(212.05 250.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">600</text></g>
+</g>
+<g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
+</g>
+<g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
+<path d="M12 584 L12 588 L112 588 L112 584" fill="none"/>
+<text x="118" y="588" stroke="none">200 mm</text>
+<text class="view-title" x="12" y="560" stroke="none" font-family="Bahnschrift SemiBold Condensed, Bahnschrift, Saira SemiCondensed, Archivo Narrow, sans-serif" font-size="17.5" font-weight="600" data-view="top">SECTION</text>
+<path class="view-title-rule" d="M12 563 L79.38 563" fill="none" stroke-width="1.5"/>
+<text class="scale-note" x="12" y="575" stroke="none">SCALE 1:10</text>
+</g>
+</svg>
