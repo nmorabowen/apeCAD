@@ -17,8 +17,9 @@ from apeCAD.section.templates import TEMPLATES
 _TEMPLATE = f"Template name: one of {', '.join(TEMPLATES)}."
 _PARAMS = (
     "The template's parameters, an object: lengths in mm, bars as designations from the "
-    "closed vocabulary, `material` (required) and `bar_material` (optional) as names. A "
-    "missing, unknown or out-of-range one is refused by name (INVALID_ARGUMENT)."
+    "closed vocabulary, `material` (required) and, on a template that places bars, "
+    "`bar_material` (optional) as names. A missing, unknown or out-of-range one is refused "
+    "by name (INVALID_ARGUMENT)."
 )
 _VERSION = (
     "The template version to expand, a whole number; null means the latest. The committed "

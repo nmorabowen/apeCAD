@@ -85,7 +85,12 @@ def segment_inside(a: Point2, b: Point2, ring: Sequence[Point2]) -> bool:
 
 
 def segment_probes(a: Point2, b: Point2, ring: Sequence[Point2]) -> list[Point2]:
-    """Both ends of ab and the midpoint of every piece between its cuts by the ring."""
+    """Both ends of ab, exactly, and the midpoint of every piece between its cuts by the ring.
+
+    The ends are `a` and `b` themselves. `a + 1.0 * (b - a)` is not `b` at fractional
+    coordinates: it can round past a corner, and a ring then looked as if it left an identical
+    ring (the CFT core in its tube's hole, ADR 0040 Errata 11).
+    """
     cuts = {0.0, 1.0}
     n = len(ring)
     rx, ry = b[0] - a[0], b[1] - a[1]
@@ -104,8 +109,8 @@ def segment_probes(a: Point2, b: Point2, ring: Sequence[Point2]) -> list[Point2]
             if 0.0 <= t <= 1.0:
                 cuts.add(t)  # a vertex the segment may graze
     ordered = sorted(cuts)
-    probes = [0.0, 1.0, *((s + e) / 2.0 for s, e in zip(ordered, ordered[1:], strict=False))]
-    return [(a[0] + t * rx, a[1] + t * ry) for t in probes]
+    middles = [(s + e) / 2.0 for s, e in zip(ordered, ordered[1:], strict=False)]
+    return [a, b, *((a[0] + t * rx, a[1] + t * ry) for t in middles)]
 
 
 _CIRCLE_ARCS = 64

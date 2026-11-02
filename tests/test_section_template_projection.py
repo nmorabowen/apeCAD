@@ -25,6 +25,7 @@ from _section_fixtures_v2 import (
     RECT_COLUMN_PARAMS,
     T_BEAM_PARAMS,
     T_RING,
+    cft_round,
     circular_column_spiral,
     fixture_path_v2,
     fixture_text,
@@ -73,6 +74,7 @@ LOG_OF_FIXTURE = {"rect_column@v1": "rect_column_template", "t_beam@v1": "t_beam
 # hold only for templates with no trig: `circular_column@v1` has its own comparison at rel 1e-12
 # (`_recorded_circular_section`), because libm's sin and cos differ by an ulp between platforms.
 SECTION_SHA256 = {
+    "cft_round@v1": "c10d6182b321ee813f49e6c894bbb0e422d405ac7ef913f2baa663e0763de1de",
     "polygon_column@v1": "b55388e7fc6f89609884e72f2aa99549ede4e02e76a525fa775d1baefa4f72cc",
     "rect_hollow@v1": "dc43d3fa41ad050a63a866ea5b1bfbbd2ec8a281db5df9ab4b81eb2ace09be3a",
 }
@@ -473,6 +475,57 @@ def test_list_ops_says_tie_kind_is_required_with_no_default() -> None:
     assert "default" not in cast(dict[str, Json], schema["properties"])["tie_kind"]
 
 
+CFT_ROUND: Json = {"material": "C50", "steel_material": "S355", "diameter": 400, "t": 10}
+
+
+def test_cft_round_log_oracle_row_3() -> None:
+    """C4 record §6 row 3, by hand: D 400, t 10, C50, S355."""
+    draft = _draft(_replay("cft_round@v1"))
+    assert draft["warnings"] == []
+    section = _section(draft)
+    core, tube = _items(section, "faces")
+    assert (core["role"], core["material"], core["holes"]) == ("concrete", "C50", [])
+    assert core["boundary"] == {"kind": "circle", "center_mm": [0.0, 0.0], "radius_mm": 190.0}
+    assert (tube["role"], tube["material"]) == ("steel", "S355")
+    assert tube["boundary"] == {"kind": "circle", "center_mm": [0.0, 0.0], "radius_mm": 200.0}
+    assert tube["holes"] == [core["boundary"]]  # core and hole: the same floats
+    assert "shape" not in tube
+    for name in ("bars", "hoops", "crossties", "circular_ties", "cover_guides", "wall_legs"):
+        assert _items(section, name) == [], name
+    assert section["materials_used"] == ["C50", "S355"]
+
+
+def test_cft_round_seed_is_the_freehand_builders_exactly() -> None:
+    assert section_seed(_replay("cft_round@v1"), version=2) == section_seed(cft_round(), version=2)
+
+
+def test_cft_round_lints_clean_after_explode_and_seed_replay() -> None:
+    doc = Document()
+    params: Json = {**CFT_ROUND, "center_mm": [40000.3, 0.1], "diameter": 406.4, "t": 9.53}
+    template = doc.add_section_template("cft_round", params)
+    assert lint_section_v2(_entities(doc)) == ()
+    seed = section_seed(doc, version=2)
+    replayed = document_from_section_seed(seed)
+    assert lint_section_v2(_entities(replayed)) == ()
+    doc.explode_section_template(template.entity_id)
+    assert lint_section_v2(_entities(doc)) == ()
+    assert section_seed(doc, version=2) == seed
+
+
+def test_cft_round_children_are_locked() -> None:
+    doc = Document()
+    doc.add_section_template("cft_round", CFT_ROUND)
+    entities = _entities(doc)
+    tube = next(e for e in entities.values() if isinstance(e, SectionFace) and e.role == "steel")
+    with pytest.raises(TemplateLockedError):
+        doc.add_face_hole(tube.entity_id, center_id=_at(100, 0), radius_mm=20.0)
+    assert isinstance(tube.boundary, CircleBoundary)
+    with pytest.raises(TemplateLockedError):
+        doc.delete([tube.boundary.center_id])
+    with pytest.raises(TemplateLockedError):
+        doc.delete([tube.entity_id])
+
+
 @pytest.mark.parametrize("stem", sorted(p.stem for p in LOG_DIR.glob("*.json")))
 def test_each_oracle_section_has_no_lint(stem: str) -> None:
     doc = _replay(stem)
@@ -512,8 +565,13 @@ def test_the_recorded_section_ignores_a_version_bump_and_sees_a_section_value(
     draft = _draft(_replay(stem))
     assert cast(Json, draft["producer"])["apeCAD_version"] == "9.9.9"
     assert _section_sha256(draft) == SECTION_SHA256[stem]
-    bar = _items(_section(draft), "bars")[0]
-    bar["x_mm"] = cast(float, bar["x_mm"]) + 1.0
+    face = _items(_section(draft), "faces")[0]  # every template has a face; not every one bars
+    boundary = cast(Json, face["boundary"])
+    if "radius_mm" in boundary:
+        boundary["radius_mm"] = cast(float, boundary["radius_mm"]) + 1.0
+    else:
+        corner = cast(list[list[float]], boundary["ring_mm"])[0]
+        corner[0] += 1.0
     assert _section_sha256(draft) != SECTION_SHA256[stem]
 
 

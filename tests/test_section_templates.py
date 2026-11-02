@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 import time
 from collections.abc import Sequence
 from dataclasses import replace
@@ -57,13 +58,19 @@ CIRCULAR_COLUMN: dict[str, object] = {
     "material": "concrete", "diameter": 600, "cover": 40, "n_bars": 8, "bar": "Ø20",
     "tie_kind": "spiral", "tie": "Ø10", "pitch": 75,
 }  # fmt: skip
+CFT_ROUND: dict[str, object] = {
+    "material": "C50", "steel_material": "S355", "diameter": 400, "t": 10,
+}  # fmt: skip
 ORACLES = {
     "rect_column": RECT_COLUMN,
     "polygon_column": POLYGON_COLUMN,
     "rect_hollow": RECT_HOLLOW,
     "t_beam": T_BEAM,
     "circular_column": CIRCULAR_COLUMN,
+    "cft_round": CFT_ROUND,
 }
+BAR_TEMPLATES = set(ORACLES) - {"cft_round"}
+"""The templates that place bars, and so take `bar_material` (ADR 0040 Errata 11)."""
 
 
 def _ring(plan: Plan, face: int = 0) -> tuple[Point2, ...]:
@@ -355,7 +362,7 @@ def test_every_hoop_is_the_strict_ccw_hull_of_its_bars(template: str) -> None:
 # --- materials (owner ruling Q1) and layouts ---------------------------------------------
 
 
-@pytest.mark.parametrize("template", sorted(ORACLES))
+@pytest.mark.parametrize("template", sorted(BAR_TEMPLATES))
 def test_material_and_bar_material(template: str) -> None:
     plain = expand(template, ORACLES[template])
     assert all(bar.material is None for bar in plain.bars)  # the draft's default
@@ -364,6 +371,69 @@ def test_material_and_bar_material(template: str) -> None:
     assert {bar.material for bar in named.bars} == {"A630"}
     with pytest.raises(TemplateParamError, match="material: required"):
         expand(template, _with(ORACLES[template], material=_DROP))
+
+
+@pytest.mark.parametrize("template", sorted(set(ORACLES) - BAR_TEMPLATES))
+@pytest.mark.parametrize("value", ["A630", None, 7])
+def test_a_template_without_bars_refuses_bar_material_by_name(template: str, value: object) -> None:
+    """Owner's ruling Q1 on `cft_*` (apeSection#2 comment 1172): refuse it, given at all."""
+    assert expand(template, ORACLES[template]).bars == ()
+    with pytest.raises(TemplateParamError) as caught:
+        expand(template, _with(ORACLES[template], bar_material=value))
+    assert caught.value.param == "bar_material"
+    assert str(caught.value) == (
+        f"{template}: bar_material: {template} v1 places no bars, so it takes no bar_material "
+        "(ADR 0040 Errata 11)"
+    )
+    named = expand(template, _with(ORACLES[template], material="C40"))
+    assert named.faces[0].material == "C40"
+    with pytest.raises(TemplateParamError, match="material: required"):
+        expand(template, _with(ORACLES[template], material=_DROP))
+
+
+# --- cft_round (C4 record §6 row 3) --------------------------------------------------------
+
+
+def test_cft_round_oracle_row_3_the_fixture_tube() -> None:
+    plan = expand("cft_round", CFT_ROUND)
+    core, tube = plan.faces
+    assert (core.role, core.material, core.holes) == ("concrete", "C50", ())
+    assert core.boundary == PlanCircle((0.0, 0.0), 190.0)  # 400 / 2 - 10
+    assert (tube.role, tube.material, tube.shape) == ("steel", "S355", None)
+    assert tube.boundary == PlanCircle((0.0, 0.0), 200.0)
+    assert tube.holes == (core.boundary,)  # the same floats as the core
+    assert math.isclose(math.pi * 190.0**2, 113_411.495, abs_tol=5e-4)  # A_c
+    assert math.isclose(math.pi * (200.0**2 - 190.0**2), 12_252.211, abs_tol=5e-4)  # A_s
+    assert plan.bars == () and plan.hoops == () and plan.crossties == ()
+    assert plan.circular_ties == () and plan.cover_guides == ()
+
+
+def test_cft_round_core_and_hole_are_the_same_floats_at_fractional_sizes() -> None:
+    """C4 record §4 invariant 3: one computation for both, so they never differ by an ulp."""
+    rng = random.Random(56)
+    for _ in range(2000):
+        g = rng.choice((0.01, 0.1, 1.0, 5.0))
+        diameter = 100.0 + rng.randint(0, 20_000) * g
+        t = rng.randint(1, 200) * g
+        if t >= diameter / 2.0:
+            continue
+        params = _with(CFT_ROUND, diameter=diameter, t=t, center_mm=[rng.uniform(-1e4, 1e4), 0.1])
+        core, tube = expand("cft_round", params).faces
+        assert tube.holes == (core.boundary,), (diameter, t)
+        assert isinstance(core.boundary, PlanCircle)
+        assert core.boundary.radius_mm == diameter / 2.0 - t
+
+
+def test_cft_round_wall_limit_and_placement() -> None:
+    thin = expand("cft_round", _with(CFT_ROUND, t=199.9))
+    assert thin.faces[0].boundary == PlanCircle((0.0, 0.0), 200.0 - 199.9)
+    for t in (200, 250):
+        with pytest.raises(TemplateParamError, match="^cft_round: t: .* no core strictly inside"):
+            expand("cft_round", _with(CFT_ROUND, t=t))
+    moved = expand("cft_round", _with(CFT_ROUND, center_mm=[100.5, -50.25]))
+    assert moved.faces[0].boundary == PlanCircle((100.5, -50.25), 190.0)
+    assert moved.faces[1].boundary == PlanCircle((100.5, -50.25), 200.0)
+    assert moved.faces[1].holes == (PlanCircle((100.5, -50.25), 190.0),)
 
 
 def test_rect_column_crosstie_patterns_and_bar_count() -> None:
@@ -517,6 +587,20 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("circular_column", {"center_mm": [1, 2, 3]}, "center_mm"),
     ("circular_column", {"start_angle_deg": 45}, "start_angle_deg"),
     ("circular_column", {"b": 300}, "b"),
+    ("cft_round", {"material": ""}, "material"),
+    ("cft_round", {"steel_material": _DROP}, "steel_material"),
+    ("cft_round", {"steel_material": ""}, "steel_material"),
+    ("cft_round", {"diameter": _DROP}, "diameter"),
+    ("cft_round", {"diameter": 0}, "diameter"),
+    ("cft_round", {"diameter": "400"}, "diameter"),
+    ("cft_round", {"t": _DROP}, "t"),
+    ("cft_round", {"t": -10}, "t"),
+    ("cft_round", {"t": 200}, "t"),  # core radius 0
+    ("cft_round", {"t": 1e-14}, "t"),  # 200 - 1e-14 == 200 in floats: no wall
+    ("cft_round", {"center_mm": [2.0**21, 0]}, "center_mm"),
+    ("cft_round", {"bar_material": "A630"}, "bar_material"),
+    ("cft_round", {"bar": "Ø20"}, "bar"),
+    ("cft_round", {"cover": 40}, "cover"),
 ]
 
 
