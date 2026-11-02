@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="top">
+<rect width="800" height="600" fill="#ffffff"/>
+<g class="faces" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="concrete" fill="#d2d2d2" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="2"><path d="M611.25 250.75 L609.32 223.71 L603.55 197.22 L594.08 171.82 L581.09 148.03 L564.84 126.33 L545.67 107.16 L523.97 90.91 L500.18 77.92 L474.78 68.45 L448.29 62.68 L421.25 60.75 L394.21 62.68 L367.72 68.45 L342.32 77.92 L318.53 90.91 L296.83 107.16 L277.66 126.33 L261.41 148.03 L248.42 171.82 L238.95 197.22 L233.18 223.71 L231.25 250.75 L233.18 277.79 L238.95 304.28 L248.42 329.68 L261.41 353.47 L277.66 375.17 L296.83 394.34 L318.53 410.59 L342.32 423.58 L367.72 433.05 L394.21 438.82 L421.25 440.75 L448.29 438.82 L474.78 433.05 L500.18 423.58 L523.97 410.59 L545.67 394.34 L564.84 375.17 L581.09 353.47 L594.08 329.68 L603.55 304.28 L609.32 277.79 Z" fill-rule="evenodd"/></g>
+</g>
+<g class="steel" fill="#808080" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="3"><path d="M621.25 250.75 L619.3 222.92 L613.5 195.62 L603.96 169.4 L590.86 144.77 L574.46 122.19 L555.08 102.12 L533.09 84.94 L508.92 70.99 L483.05 60.54 L455.98 53.79 L428.23 50.87 L400.34 51.85 L372.87 56.69 L346.33 65.31 L321.25 77.54 L298.12 93.15 L277.38 111.82 L259.45 133.19 L244.66 156.86 L233.31 182.35 L225.62 209.17 L221.74 236.8 L221.74 264.7 L225.62 292.33 L233.31 319.15 L244.66 344.64 L259.45 368.31 L277.38 389.68 L298.12 408.35 L321.25 423.96 L346.33 436.19 L372.87 444.81 L400.34 449.65 L428.23 450.63 L455.98 447.71 L483.05 440.96 L508.92 430.51 L533.09 416.56 L555.08 399.38 L574.46 379.31 L590.86 356.73 L603.96 332.1 L613.5 305.88 L619.3 278.58 Z M611.25 250.75 L609.32 223.71 L603.55 197.22 L594.08 171.82 L581.09 148.03 L564.84 126.33 L545.67 107.16 L523.97 90.91 L500.18 77.92 L474.78 68.45 L448.29 62.68 L421.25 60.75 L394.21 62.68 L367.72 68.45 L342.32 77.92 L318.53 90.91 L296.83 107.16 L277.66 126.33 L261.41 148.03 L248.42 171.82 L238.95 197.22 L233.18 223.71 L231.25 250.75 L233.18 277.79 L238.95 304.28 L248.42 329.68 L261.41 353.47 L277.66 375.17 L296.83 394.34 L318.53 410.59 L342.32 423.58 L367.72 433.05 L394.21 438.82 L421.25 440.75 L448.29 438.82 L474.78 433.05 L500.18 423.58 L523.97 410.59 L545.67 394.34 L564.84 375.17 L581.09 353.47 L594.08 329.68 L603.55 304.28 L609.32 277.79 Z" fill-rule="evenodd"/></g>
+</g>
+<g class="edges" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="points" fill="#000000">
+<g data-id="1"><circle cx="421.25" cy="250.75" r="1.25" fill="#000000" stroke="none"/></g>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="dimension" data-dim="width"><path d="M221.25 453.75 L221.25 478.75 M621.25 453.75 L621.25 478.75 M221.25 474.75 L621.25 474.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(221.25 474.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(621.25 474.75) rotate(180)"/><text x="421.25" y="471.75" text-anchor="middle" stroke="none" font-size="12.5">400</text></g>
+<g class="dimension" data-dim="depth"><path d="M218.25 50.75 L193.25 50.75 M218.25 450.75 L193.25 450.75 M197.25 50.75 L197.25 450.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(197.25 50.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(197.25 450.75) rotate(-90)"/><text transform="translate(194.25 250.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">400</text></g>
+</g>
+<g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
+</g>
+<g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
+<path d="M12 584 L12 588 L212 588 L212 584" fill="none"/>
+<text x="218" y="588" stroke="none">200 mm</text>
+<text class="view-title" x="12" y="560" stroke="none" font-family="Bahnschrift SemiBold Condensed, Bahnschrift, Saira SemiCondensed, Archivo Narrow, sans-serif" font-size="17.5" font-weight="600" data-view="top">SECTION</text>
+<path class="view-title-rule" d="M12 563 L79.38 563" fill="none" stroke-width="1.5"/>
+<text class="scale-note" x="12" y="575" stroke="none">SCALE 1:5</text>
+</g>
+</svg>

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" data-view="top">
+<rect width="800" height="600" fill="#ffffff"/>
+<g class="faces" fill="none" stroke="#000000" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="concrete" fill="#d2d2d2" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="6"><path d="M352.25 369.75 L490.25 369.75 L490.25 131.75 L352.25 131.75 Z" fill-rule="evenodd"/></g>
+</g>
+<g class="steel" fill="#808080" stroke="#000000" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<g data-id="15"><path d="M346.25 375.75 L496.25 375.75 L496.25 125.75 L346.25 125.75 Z M352.25 369.75 L352.25 131.75 L490.25 131.75 L490.25 369.75 Z" fill-rule="evenodd"/></g>
+</g>
+<g class="edges" fill="none" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+</g>
+<g class="points" fill="#000000">
+<g data-id="2"><circle cx="352.25" cy="369.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="3"><circle cx="490.25" cy="369.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="4"><circle cx="490.25" cy="131.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="5"><circle cx="352.25" cy="131.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="7"><circle cx="346.25" cy="375.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="8"><circle cx="496.25" cy="375.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="9"><circle cx="496.25" cy="125.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="10"><circle cx="346.25" cy="125.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="11"><circle cx="352.25" cy="369.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="12"><circle cx="352.25" cy="131.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="13"><circle cx="490.25" cy="131.75" r="1.25" fill="#000000" stroke="none"/></g>
+<g data-id="14"><circle cx="490.25" cy="369.75" r="1.25" fill="#000000" stroke="none"/></g>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="dimension" data-dim="width"><path d="M346.25 378.75 L346.25 403.75 M496.25 378.75 L496.25 403.75 M346.25 399.75 L496.25 399.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(346.25 399.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(496.25 399.75) rotate(180)"/><text x="421.25" y="396.75" text-anchor="middle" stroke="none" font-size="12.5">300</text></g>
+<g class="dimension" data-dim="depth"><path d="M343.25 125.75 L318.25 125.75 M343.25 375.75 L318.25 375.75 M322.25 125.75 L322.25 375.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(322.25 125.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(322.25 375.75) rotate(-90)"/><text transform="translate(319.25 250.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">500</text></g>
+</g>
+<g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
+</g>
+<g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">
+<path d="M12 584 L12 588 L112 588 L112 584" fill="none"/>
+<text x="118" y="588" stroke="none">200 mm</text>
+<text class="view-title" x="12" y="560" stroke="none" font-family="Bahnschrift SemiBold Condensed, Bahnschrift, Saira SemiCondensed, Archivo Narrow, sans-serif" font-size="17.5" font-weight="600" data-view="top">SECTION</text>
+<path class="view-title-rule" d="M12 563 L79.38 563" fill="none" stroke-width="1.5"/>
+<text class="scale-note" x="12" y="575" stroke="none">SCALE 1:10</text>
+</g>
+</svg>
