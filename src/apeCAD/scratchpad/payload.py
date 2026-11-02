@@ -1,23 +1,48 @@
-"""Scene payload for the scratchpad client. Derived from the document."""
+"""Scene payload for the scratchpad client. Derived from the document.
+
+The v2 keys (C5 record §3 "Client data", option A) are `section_faces`, `circular_ties` and
+`templates`: each item is `section/draft_v2.py`'s projector output with `entity_id` in place
+of `id` (no second projector), so a `section_faces` or `circular_ties` item equals the v2
+draft's, less `id` and `template_id`. A template lists its `child_ids`; its children are drawn
+from their own lists (ADR 0040 D7). `concrete_faces` keeps the v1 faces only.
+
+`warnings` is the v1 lint while v1 can say the document, else the v2 lint (C5 record §3).
+"""
 
 from __future__ import annotations
+
+from collections.abc import Mapping
 
 from apeCAD.document import Document
 from apeCAD.entities import (
     Bar,
     CircleBoundary,
+    CircularTie,
     ConcreteFace,
     CoverGuide,
+    Entity,
+    EntityId,
     Hoop,
     LegSteel,
     Point,
     SectionFace,
+    SectionTemplate,
 )
+from apeCAD.errors import DocumentError
 from apeCAD.render.section import rounded_ring
 from apeCAD.section.cover import CoverRings, bar_centre_inset_mm, circle_cover_rings, cover_rings
+from apeCAD.section.draft_v2 import (
+    circular_tie_item,
+    face_item,
+    points_xy,
+    require_v1_expressible,
+    template_item,
+)
+from apeCAD.section.lint import lint_section_v2
 
 
 def scene_payload(document: Document) -> dict[str, object]:
+    entities = {i: document.entity(i) for i in sorted(document.entity_ids())}
     return {
         "document": document.to_dict(),
         "points": [
@@ -131,6 +156,7 @@ def scene_payload(document: Document) -> dict[str, object]:
                 "point_id": bar.point_id,
                 "designation": bar.designation,
                 "diameter_mm": bar.diameter_mm,
+                "material": bar.material,  # v2 (ADR 0039 D6); None is the consumer's default
                 "label": bar.label,
             }
             for bar in document.bars()
@@ -174,10 +200,48 @@ def scene_payload(document: Document) -> dict[str, object]:
             for leg in document.wall_legs()
         ],
         "cover_guides": [_cover_guide(document, guide) for guide in document.cover_guides()],
-        "warnings": [warning.to_dict() for warning in document.section_lint()],
+        **_v2_lists(entities),
+        "warnings": _warnings(document, entities),
         "tags": {name: sorted(ids) for name, ids in document.tags().items()},
         "brep": document.brep().to_payload(),
     }
+
+
+def _v2_lists(entities: Mapping[EntityId, Entity]) -> dict[str, object]:
+    """The v2 scene keys, from the v2 draft's item projectors, in entity-id order."""
+    ordered = list(entities.values())
+    xy = points_xy(ordered)
+    return {
+        "section_faces": [
+            {"entity_id": e.entity_id, **face_item(e, xy)}
+            for e in ordered
+            if isinstance(e, SectionFace)
+        ],
+        "circular_ties": [
+            {"entity_id": e.entity_id, **circular_tie_item(e, xy)}
+            for e in ordered
+            if isinstance(e, CircularTie)
+        ],
+        "templates": [
+            {
+                "entity_id": e.entity_id,
+                **{k: v for k, v in template_item(e).items() if k != "id"},
+                "child_ids": list(e.child_ids),
+                "label": e.label,
+            }
+            for e in ordered
+            if isinstance(e, SectionTemplate)
+        ],
+    }
+
+
+def _warnings(document: Document, entities: Mapping[EntityId, Entity]) -> list[dict[str, object]]:
+    """v1's lint while v1 can say the document, so a v1 scene is unchanged; else v2's."""
+    try:
+        require_v1_expressible(entities, "the scene")
+    except DocumentError:
+        return [warning.to_dict() for warning in lint_section_v2(entities)]
+    return [warning.to_dict() for warning in document.section_lint()]
 
 
 def _hoop_display_ring(document: Document, hoop: Hoop) -> list[list[float]]:

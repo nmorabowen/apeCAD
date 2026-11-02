@@ -75,7 +75,8 @@ def _ordered(entities: Mapping[EntityId, Entity]) -> list[Entity]:
     return [entities[i] for i in sorted(entities)]
 
 
-def _points(ordered: Sequence[Entity]) -> _XY:
+def points_xy(ordered: Sequence[Entity]) -> _XY:
+    """Each point's plan `[x, y]` by id: what the item projectors read a ring or centre from."""
     return {
         e.entity_id: [float(e.xyz_mm.x_mm), float(e.xyz_mm.y_mm)]
         for e in ordered
@@ -93,8 +94,10 @@ def _boundary(boundary: FaceBoundary, xy: _XY) -> Json:
     }
 
 
-def _face(face: ConcreteFace | SectionFace, xy: _XY) -> Json:
-    """One `faces[]` item without its `id` (the seed form); the draft adds the id first."""
+def face_item(face: ConcreteFace | SectionFace, xy: _XY) -> Json:
+    """One `faces[]` item without its `id` (the seed form); the draft adds the id first.
+
+    Public so the scratchpad scene (`scratchpad/payload.py`) reuses it: one projector."""
     if isinstance(face, ConcreteFace):
         return {
             "label": face.label,
@@ -120,7 +123,8 @@ def _face(face: ConcreteFace | SectionFace, xy: _XY) -> Json:
     return item
 
 
-def _circular_tie(tie: CircularTie, xy: _XY) -> Json:
+def circular_tie_item(tie: CircularTie, xy: _XY) -> Json:
+    """One `circular_ties[]` item without its `id` (the seed form)."""
     return {
         "label": tie.label,
         "kind": tie.kind,
@@ -168,7 +172,7 @@ def _plain(value: object) -> object:
     return value
 
 
-def _template_item(template: SectionTemplate) -> Json:
+def template_item(template: SectionTemplate) -> Json:
     """One `templates[]` item: the block's four fields (the label is not part of the contract)."""
     return {
         "id": template.entity_id,
@@ -202,13 +206,13 @@ def _with_template_ids(block: Json, ordered: Sequence[Entity]) -> Json:
 def project_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
     """The v2 `section` block of these entities (specs/section-draft-v2.md)."""
     ordered = _ordered(entities)
-    xy = _points(ordered)
+    xy = points_xy(ordered)
     v1 = project_section(entities)  # wall legs, hoops, crossties and cover guides are as in v1
     bars = [e for e in ordered if isinstance(e, Bar)]
     v1_bars = cast(list[Json], v1["bars"])
     block: Json = {
         "faces": [
-            {"id": e.entity_id, **_face(e, xy)}
+            {"id": e.entity_id, **face_item(e, xy)}
             for e in ordered
             if isinstance(e, (ConcreteFace, SectionFace))
         ],
@@ -217,12 +221,12 @@ def project_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
         "hoops": v1["hoops"],
         "crossties": v1["crossties"],
         "circular_ties": [
-            {"id": e.entity_id, **_circular_tie(e, xy)}
+            {"id": e.entity_id, **circular_tie_item(e, xy)}
             for e in ordered
             if isinstance(e, CircularTie)
         ],
         "cover_guides": v1["cover_guides"],
-        "templates": [_template_item(e) for e in ordered if isinstance(e, SectionTemplate)],
+        "templates": [template_item(e) for e in ordered if isinstance(e, SectionTemplate)],
         "materials_used": _materials_used(ordered),
     }
     return _with_template_ids(block, ordered)
@@ -235,13 +239,13 @@ def project_seed_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
     document seeds as its children, which replay as a plain drawing (ADR 0040 Context).
     """
     ordered = _ordered(entities)
-    xy = _points(ordered)
+    xy = points_xy(ordered)
     faces = [e for e in ordered if isinstance(e, (ConcreteFace, SectionFace))]
     bars = [e for e in ordered if isinstance(e, Bar)]
     face_idx = {e.entity_id: idx for idx, e in enumerate(faces)}
     bar_idx = {e.entity_id: idx for idx, e in enumerate(bars)}
     return {
-        "faces": [_face(e, xy) for e in faces],
+        "faces": [face_item(e, xy) for e in faces],
         "wall_legs": [
             {
                 "label": e.label,
@@ -298,7 +302,9 @@ def project_seed_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
             for e in ordered
             if isinstance(e, Crosstie)
         ],
-        "circular_ties": [_circular_tie(e, xy) for e in ordered if isinstance(e, CircularTie)],
+        "circular_ties": [
+            circular_tie_item(e, xy) for e in ordered if isinstance(e, CircularTie)
+        ],
         "cover_guides": [
             {
                 "face_id": face_idx[e.face_id],
