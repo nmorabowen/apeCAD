@@ -7,6 +7,7 @@
     t_beam           symmetric T beam, version 1
     circular_column  circular column with a spiral or a hoop, version 1
     cft_round        round concrete-filled steel tube, version 1
+    cft_rect         rectangular concrete-filled steel tube, version 1
 
 `TEMPLATES[name][version]` is the expansion function of one template version. A version is
 kept for ever once released (ADR 0040 decision 4): a change to how a template expands adds a
@@ -23,6 +24,7 @@ from collections.abc import Callable, Mapping
 from types import MappingProxyType
 
 from apeCAD.section.templates import (
+    cft_rect,
     cft_round,
     circular_column,
     polygon_column,
@@ -42,6 +44,7 @@ TEMPLATES: Mapping[str, Mapping[int, Expansion]] = MappingProxyType(
         t_beam.TEMPLATE: MappingProxyType({1: t_beam.expand_v1}),
         circular_column.TEMPLATE: MappingProxyType({1: circular_column.expand_v1}),
         cft_round.TEMPLATE: MappingProxyType({1: cft_round.expand_v1}),
+        cft_rect.TEMPLATE: MappingProxyType({1: cft_rect.expand_v1}),
     }
 )
 

@@ -1,0 +1,40 @@
+{
+  "schema": "apeCAD.document.v1",
+  "units": "mm",
+  "ops": [
+    {
+      "op": "AddSectionTemplate",
+      "template": "cft_rect",
+      "template_version": 1,
+      "template_params": {
+        "material": "C50",
+        "steel_material": "S355",
+        "center_mm": [
+          100,
+          200
+        ],
+        "b": 300,
+        "h": 500,
+        "t": 12
+      },
+      "label": null,
+      "entity_id": 1,
+      "child_ids": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ]
+    }
+  ]
+}
