@@ -12,8 +12,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from apeCAD.entities import Bar, CoverGuide, Crosstie, Entity, EntityId, Hoop, WallLeg
-from apeCAD.render.drawable import Drawable
+from apeCAD.entities import (
+    Bar,
+    CircularTie,
+    CoverGuide,
+    Crosstie,
+    Entity,
+    EntityId,
+    Hoop,
+    WallLeg,
+)
+from apeCAD.render.drawable import CUT_LAYERS, Drawable
 from apeCAD.render.views import Vec2, View
 
 TAG_CHAR_PX = 5.6  # a generous Arial Narrow average at 2.0 mm (10 px)
@@ -63,7 +72,7 @@ def section_notes(
     `labels`, a hoop's label heads its tie tag."""
     if view.name != "top":
         return None
-    concrete = [d for d in items if d.layer == "concrete"]
+    concrete = [d for d in items if d.layer in CUT_LAYERS]  # steel joins concrete (C5 §3)
     if not concrete:
         return None
     corners = [view.project(p) for d in concrete for path, _ in d.paths for p in path]
@@ -76,7 +85,7 @@ def section_notes(
     groups: list[Group] = []
     for d in items:
         hoop = entities.get(d.entity_id)
-        if not isinstance(hoop, Hoop):
+        if not isinstance(hoop, (Hoop, CircularTie)):
             continue
         ring = [view.project(p) for p in d.paths[0][0]]  # the ring, not its hook ticks
         in_bars = [(bd, b) for bd, b in bars if b.entity_id not in used
@@ -85,7 +94,7 @@ def section_notes(
                    and _inside(_mid(view, td), ring)]
         used.update(b.entity_id for _, b in in_bars)
         used.update(t.entity_id for _, t in in_ties)
-        tie_text = f"Tie {phi(hoop.designation)} @ {_mm(hoop.spacing_mm)} mm"
+        tie_text = _tie_text(hoop)
         if labels and hoop.label:
             tie_text = f"{hoop.label}: {tie_text}"
             named.add(hoop.entity_id)
@@ -103,6 +112,14 @@ def section_notes(
         groups.append(Group(tuple(whole), ((u0 + u1) / 2.0, (v0 + v1) / 2.0)))
     merged = tuple(_merged(g) for g in groups)
     return SectionNotes(((u0, v0), (u1, v1)), merged, frozenset(named))
+
+
+def _tie_text(tie: Hoop | CircularTie) -> str:
+    """`Tie Φd @ s mm` for a hoop or a circular hoop, `Spiral Φd @ p mm` for a spiral."""
+    if isinstance(tie, CircularTie):
+        word = "Spiral" if tie.kind == "spiral" else "Tie"
+        return f"{word} {phi(tie.designation)} @ {_mm(tie.pitch_mm)} mm"
+    return f"Tie {phi(tie.designation)} @ {_mm(tie.spacing_mm)} mm"
 
 
 def _merged(group: Group) -> Group:

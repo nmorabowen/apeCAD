@@ -35,7 +35,7 @@ from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import render_png, render_svg
 from apeCAD.render.dxf import export_dxf as _export_dxf
 from apeCAD.render.scene import closure, entity_map
-from apeCAD.render.section import NOT_DRAWN, not_drawn
+from apeCAD.render.section import NOT_DRAWN, not_drawn, not_drawn_reason
 from apeCAD.section_draft import section_draft
 
 RENDER_DEFAULTS: dict[str, object] = {
@@ -178,10 +178,11 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
     `save_to` resolves under `root`. `format: "png"` uses `render_png` (`apeCAD[png]`);
     without the extra it fails `UNAVAILABLE` and never falls back to SVG. `overlay` is an
     `apeCAD.section-overlay` v1 object (ADR 0041 decision 3), drawn and never stored; the
-    envelope then carries its `overlay_revision` beside `revision`. When the drawing holds
-    v2 faces, circular ties or cover guides on v2 faces, which are not drawn yet (stage C5),
-    the envelope carries `warnings: [{code: "not-drawn", ids, message}]` naming each one;
-    otherwise it has no `warnings`.
+    envelope then carries its `overlay_revision` beside `revision`. When an entity in the
+    drawing draws nothing (a kind with no drawing yet, or one whose geometry does not
+    resolve), the envelope carries `warnings: [{code: "not-drawn", ids, message}]` naming
+    each one and its kind; otherwise it has no `warnings`. Templates (their children draw)
+    and bar points (their bar draws) are never named.
     """
 
     def body() -> Envelope:
@@ -243,7 +244,7 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
 def _with_not_drawn(
     session: Session, ids: list[int] | None, fields: dict[str, object]
 ) -> dict[str, object]:
-    """Add the `not-drawn` warning when the drawn set holds v2 entities (apeSection#39).
+    """Add the `not-drawn` warning when something in the drawn set draws nothing (#39).
 
     `ids` was already checked by the renderer; the drawn set is its closure, as there.
     """
@@ -253,9 +254,14 @@ def _with_not_drawn(
     skipped = not_drawn(entities, draw_ids)
     if not skipped:
         return fields
+    named: list[str] = []
+    for i in skipped:
+        reason = not_drawn_reason(entities, i)
+        kind = f"{type(entities[i]).__name__} {i}"
+        named.append(kind if reason is None else f"{kind}: {reason}")
     message = (
-        f"{len(skipped)} entities {skipped} are not drawn yet (stage C5): v2 faces, "
-        "circular ties and cover guides on v2 faces; the rest of the drawing is"
+        f"{len(skipped)} entities {skipped} draw nothing ({'; '.join(named)}); "
+        "the rest of the drawing is drawn"
     )
     return {**fields, "warnings": [{"code": NOT_DRAWN, "ids": skipped, "message": message}]}
 

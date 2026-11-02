@@ -23,6 +23,33 @@ def _arc_segments(radius_mm: float, sweep_rad: float, tol_mm: float | None) -> i
     return max(MIN_SEGMENTS, min(MAX_SEGMENTS, count))
 
 
+def circle_segments(radius_mm: float, tol_mm: float | None) -> int:
+    """Sides of a polygon within `tol_mm` of a v2 circle (ADR 0039), from `sqrt` alone.
+
+    An n-gon's chord error is r (1 - cos(pi / n)) <= r (pi / n)^2 / 2, which is at most the
+    tolerance once n >= pi sqrt(r / (2 tol)). `*`, `/` and `sqrt` are correctly rounded, so
+    the count is the same on every platform, where `acos` (as in `_arc_segments`) may differ
+    by an ulp and flip a `ceil` (C5 record §2, goldens).
+    """
+    if tol_mm is None:
+        return EXTENTS_SEGMENTS
+    if radius_mm <= tol_mm:
+        return MIN_SEGMENTS
+    count = math.ceil(math.pi * math.sqrt(radius_mm / (2.0 * tol_mm)))
+    return max(MIN_SEGMENTS, min(MAX_SEGMENTS, count))
+
+
+def circle_points(center: Vec3, radius_mm: float, tol_mm: float | None) -> list[Vec3]:
+    """A v2 circle as a closed CCW loop from angle 0 (first point not repeated)."""
+    count = circle_segments(radius_mm, tol_mm)
+    cx, cy, cz = center
+    step = 2.0 * math.pi / count
+    return [
+        (cx + radius_mm * math.cos(k * step), cy + radius_mm * math.sin(k * step), cz)
+        for k in range(count)
+    ]
+
+
 def ellipse_points(
     center: Vec3, radius_x_mm: float, radius_y_mm: float, tol_mm: float | None
 ) -> list[Vec3]:

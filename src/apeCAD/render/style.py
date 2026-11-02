@@ -73,7 +73,7 @@ def _line(mm: float, pattern: str, colour: str, ink: str, layer: str, **kw: str)
     )
 
 
-# Back to front: the writer draws the section layers in this order.
+# Back to front: the writer draws the section layers in this order (`SECTION_LAYERS`).
 SECTION_STYLE: dict[str, LayerStyle] = {
     "concrete": LayerStyle(
         fill=GREY210,
@@ -83,12 +83,32 @@ SECTION_STYLE: dict[str, LayerStyle] = {
         fill_name="Solid - Grey210 - Transparent",
         layer_name="CONCRETE-CUT",
     ),
+    # A v2 steel face (ADR 0039): cut like concrete, on Grey128 so it reads apart from it.
+    "steel": LayerStyle(
+        fill=DARK_GREY,
+        stroke=BLACK,
+        stroke_width=pen_px(0.40),
+        line_style="0.40mm S-Black",
+        fill_name="Steel - Grey128 - Opaque",
+        layer_name="STEEL-CUT",
+    ),
+    # A void has no fill of its own: it is painted in the paper colour, above concrete and
+    # steel, so it takes away what it cuts (the DXF writes it as a WIPEOUT).
+    "void": LayerStyle(
+        fill=BACKGROUND,
+        stroke=BLACK,
+        stroke_width=pen_px(0.40),
+        line_style="0.40mm S-Black",
+        layer_name="VOID",
+    ),
     # Dark Grey, not ADR-005 Grey: Grey 192 vanishes on the Grey210 cut.
     "cover": _line(0.10, "H", "Dark Grey", DARK_GREY, "COVER-GUIDE", dash=COVER_DASH),
     "leg": _line(0.10, "H", "Dark Grey", DARK_GREY, "WALL-AXIS"),
     "hoop": _line(0.30, "S", "Blue", BLUE, "HOOP"),
     # Its own DXF layer: its pen (0.20) differs from the hoop's, and ByLayer holds one weight.
     "crosstie": _line(0.20, "S", "Blue", BLUE, "CROSSTIE"),
+    # A spiral or circular hoop's centreline (ADR 0039 decision 5), the hoop's pen.
+    "circular-tie": _line(0.30, "S", "Blue", BLUE, "CIRCULAR-TIE"),
     "bar": LayerStyle(
         fill=BLUE,
         stroke=BLUE,
