@@ -29,6 +29,7 @@ from apeCAD.entities import (
     Point,
     Polyline,
     SectionFace,
+    SectionTemplate,
     Solid,
     WallLeg,
 )
@@ -46,6 +47,8 @@ from apeCAD.ops import (
     ArrayLinear,
     ArrayPolar,
     Delete,
+    EditSectionTemplate,
+    ExplodeSectionTemplate,
     Mirror,
     Op,
     Rotate,
@@ -63,9 +66,10 @@ from apeCAD.ops import (
 )
 from apeCAD.section.lint import LintWarning, lint_section
 from apeCAD.typed_section_ops import SectionTypedOps
+from apeCAD.typed_template_ops import TemplateTypedOps
 
 
-class Document(SectionTypedOps):
+class Document(TemplateTypedOps, SectionTypedOps):
     """In-memory scratchpad. Mutate only through ops; JSON replays the log."""
 
     def __init__(self) -> None:
@@ -151,6 +155,10 @@ class Document(SectionTypedOps):
 
     def circular_ties(self) -> tuple[CircularTie, ...]:
         return tuple(e for e in self._state.ordered() if isinstance(e, CircularTie))
+
+    def section_templates(self) -> tuple[SectionTemplate, ...]:
+        """The section templates (ADR 0040), by id."""
+        return self._state.templates()
 
     def section_lint(self) -> tuple[LintWarning, ...]:
         """Section drawing warnings (`section.lint`); returned, never raised. The
@@ -278,6 +286,8 @@ _NO_PRODUCT = (
     AddBarsAlongEdge,
     AddBarsOnCircle,
     AddFaceHole,
+    EditSectionTemplate,
+    ExplodeSectionTemplate,
 )
 """Ops that change the draft without producing exactly one entity to return."""
 

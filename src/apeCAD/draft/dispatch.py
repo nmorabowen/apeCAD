@@ -1,12 +1,18 @@
-"""One table from op type to handler. A new op adds one row here (ADR 0023)."""
+"""One table from op type to handler. A new op adds one row here (ADR 0023).
+
+`apply_op` is also where the section-template lock runs (ADR 0040 decision 3): while the
+draft holds a template, the entity map records what the op writes (`RecordingEntities`)
+and `templates.check_template_lock` checks those writes, whatever the op. With no template
+it costs one test and the map stays a plain dict.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
 
-from apeCAD.draft import create, edit, meta, rebar, section, transform
-from apeCAD.draft.state import DraftState
+from apeCAD.draft import create, edit, meta, rebar, section, templates, transform
+from apeCAD.draft.state import DraftState, RecordingEntities
 from apeCAD.errors import DocumentError
 from apeCAD.ops import (
     AddArc,
@@ -31,6 +37,7 @@ from apeCAD.ops import (
     AddPolyline,
     AddSectionFace,
     AddSectionOutline,
+    AddSectionTemplate,
     AddSteelShape,
     AddWallChain,
     AddWallLeg,
@@ -39,6 +46,8 @@ from apeCAD.ops import (
     BreakCrossing,
     ChamferCorner,
     Delete,
+    EditSectionTemplate,
+    ExplodeSectionTemplate,
     Extrude,
     FilletCorner,
     InsertNode,
@@ -109,6 +118,9 @@ HANDLERS: dict[type[object], Handler] = {
     AddSteelShape: section.add_steel_shape,
     AddCircularTie: rebar.add_circular_tie,
     AddBarsOnCircle: rebar.add_bars_on_circle,
+    AddSectionTemplate: templates.add_section_template,
+    EditSectionTemplate: templates.edit_section_template,
+    ExplodeSectionTemplate: templates.explode_section_template,
 }
 
 
@@ -117,4 +129,15 @@ def apply_op(state: DraftState, op: Op) -> Op:
     handler = HANDLERS.get(type(op))
     if handler is None:
         raise DocumentError(f"internal error: no handler for {type(op).__name__}")
-    return handler(state, op)
+    if not state.template_ids:
+        if isinstance(state.entities, RecordingEntities):  # the last template went
+            state.entities = dict(state.entities)
+        return handler(state, op)
+    if not isinstance(state.entities, RecordingEntities):
+        state.entities = RecordingEntities(state.entities)
+    entities = state.entities
+    entities.reset()
+    before_templates = frozenset(state.template_ids)
+    committed = handler(state, op)
+    templates.check_template_lock(entities.written, before_templates, state)
+    return committed

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from apeCAD.catalog.section_entries import SECTION_ENTRIES
 from apeCAD.catalog.spec import ENTITY_IDS, LABEL, OUTPUT_ID, VERTEX, VERTICES, OpSpec, entry
+from apeCAD.catalog.template_entries import TEMPLATE_ENTRIES
 from apeCAD.ops import (
     AddArc,
     AddBezier,
@@ -369,5 +370,7 @@ _ENTRIES: tuple[OpSpec, ...] = (
     ),
 )
 
-CATALOG: dict[str, OpSpec] = {spec.name: spec for spec in (*_ENTRIES, *SECTION_ENTRIES)}
+CATALOG: dict[str, OpSpec] = {
+    spec.name: spec for spec in (*_ENTRIES, *SECTION_ENTRIES, *TEMPLATE_ENTRIES)
+}
 """One entry per `draft.dispatch.HANDLERS` row, keyed by the codec's "op" name."""

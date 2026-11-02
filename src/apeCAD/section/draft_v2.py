@@ -30,6 +30,7 @@ from apeCAD.entities import (
     Point,
     RingBoundary,
     SectionFace,
+    SectionTemplate,
     WallLeg,
 )
 from apeCAD.errors import DocumentError, OpArgumentError
@@ -142,8 +143,25 @@ def _materials_used(ordered: Sequence[Entity]) -> list[str]:
     return sorted(names)
 
 
+def refuse_templates(entities: Mapping[EntityId, Entity], what: str) -> None:
+    """Refuse, by name, a document holding a section template (ADR 0040), until stage C3-S3.
+
+    The v2 block's `templates[]` and `template_id` are declared (ADR 0039 Errata 4, 5) but
+    not yet written; a draft or seed of a templated document would silently drop them.
+    """
+    found = [e for e in entities.values() if isinstance(e, SectionTemplate)]
+    if found:
+        e = min(found, key=lambda t: t.entity_id)
+        raise DocumentError(
+            f"{what} cannot yet say a document holding section templates: entity "
+            f"{e.entity_id} is a {e.template} template; the projection lands in stage "
+            "C3-S3 (explode it to write a freehand drawing)"
+        )
+
+
 def project_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
     """The v2 `section` block of these entities (specs/section-draft-v2.md)."""
+    refuse_templates(entities, f"{DRAFT_SCHEMA} version 2")
     ordered = _ordered(entities)
     xy = _points(ordered)
     v1 = project_section(entities)  # wall legs, hoops, crossties and cover guides are as in v1
@@ -175,6 +193,7 @@ def project_seed_section_v2(entities: Mapping[EntityId, Entity]) -> Json:
 
     No `templates[]`, no `template_id` and no `materials_used` (ADR 0039 Errata 5).
     """
+    refuse_templates(entities, f"{SEED_SCHEMA} version 2")
     ordered = _ordered(entities)
     xy = _points(ordered)
     faces = [e for e in ordered if isinstance(e, (ConcreteFace, SectionFace))]
@@ -259,8 +278,9 @@ def require_v1_expressible(entities: Mapping[EntityId, Entity], what: str) -> No
     v1 knows `ConcreteFace` outlines and bars without a material only: a v2 section face (a
     void, a steel face, a circle, a hole or any `AddSectionFace` face), a circular tie, or a
     bar with a `material` is refused for `version=1`. Nothing is dropped to fit (ADR 0039
-    decision 1, Errata 8.2). `template_id` has no entity field until stage C3.
+    decision 1, Errata 8.2). A section template is refused first, by name (`refuse_templates`).
     """
+    refuse_templates(entities, f"{what} version 1")
     for e in _ordered(entities):
         reason: str | None = None
         if isinstance(e, SectionFace):

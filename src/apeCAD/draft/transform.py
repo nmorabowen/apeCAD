@@ -30,11 +30,12 @@ from apeCAD.entities import (
     Polyline,
     RingBoundary,
     SectionFace,
+    SectionTemplate,
     Solid,
     SteelShape,
     WallLeg,
 )
-from apeCAD.errors import DocumentError
+from apeCAD.errors import DocumentError, TemplateLockedError
 from apeCAD.geometry import XYZ, mirror_xy, rotate_xy
 from apeCAD.ops import ArrayLinear, ArrayPolar, Mirror, Rotate, Translate
 from apeCAD.section.geometry import Point2, canonical_ring, signed_area
@@ -265,6 +266,15 @@ def _clone_graph(
     turn_deg: float = 0.0,
 ) -> None:
     """Copy the selected subgraph through mapper as new unlabelled entities."""
+    for entity_id in entity_ids:
+        entity = state.entity(entity_id)
+        if isinstance(entity, SectionTemplate):
+            # Template v1 is not cloned (ADR 0040): a copy with fresh params is a later
+            # feature. Its children may be arrayed; their copies are freehand.
+            raise TemplateLockedError(
+                f"an array cannot copy section template {entity_id} ({entity.template}); "
+                "explode the template first to array its contents"
+            )
     extras: list[EntityId] = []
     for entity_id in entity_ids:
         entity = state.entity(entity_id)

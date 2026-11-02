@@ -56,6 +56,14 @@ _DESIGNATIONS = ("Ø16", "Ø10", "Ø32", "#4", "16", "")
 _MATERIALS = ("H30", "H35", "  ")
 _HOOKS = ("135", "135-135", "135-90", "90-90", "180")
 # ADR 0039 v2 ops: a face's role, a circular tie's kind, a steel shape's catalog.
+# ADR 0040 template ops: a template name, a version, and params from a valid set, a mutated
+# one or junk, so an expansion refusal is exercised as well as a successful draw.
+_TEMPLATES = ("rect_column", "t_beam", "box_column")
+_VERSIONS = (None, 1, 2, 0)
+_GOOD_PARAMS: dict[str, object] = {
+    "material": "C30", "b": 400, "h": 600, "cover": 40, "nx": 3, "ny": 3, "bar": "Ø20",
+    "tie": "Ø10", "tie_spacing": 150, "center_mm": [20000, 0],
+}  # fmt: skip
 _WORDS = {
     "role": ("concrete", "steel", "void", "solid", ""),
     "kind": ("spiral", "hoop", "helix"),
@@ -166,10 +174,22 @@ def _value(
         return rng.choice(pool)
     if name in _WORDS:
         return rng.choice(_WORDS[name])
+    if name == "template":
+        return rng.choice(_TEMPLATES)
+    if name == "template_version":
+        return rng.choice(_VERSIONS)
+    if name == "template_params":
+        pick = rng.random()
+        if pick < 0.4:
+            return dict(_GOOD_PARAMS)
+        if pick < 0.8:
+            key = rng.choice(sorted(_GOOD_PARAMS))
+            return {**_GOOD_PARAMS, key: rng.choice((*_FLOATS, *_INTS, "", None, [1, 2]))}
+        return rng.choice(({}, {"nx": 10**9}, {"material": "C30", "b": -1}))
     vertex = _mentions(hint, PointAt)
     if name == "ring" and rng.random() < 0.5:
         return None
-    if name in ("leg_ids", "bar_ids", "bar_point_ids") and rng.random() < 0.7:
+    if name in ("leg_ids", "bar_ids", "bar_point_ids", "child_ids") and rng.random() < 0.7:
         return ()  # ids the handler allocates, not references
     if name in ("count", "spacing_mm") and optional and rng.random() < 0.5:
         return None  # a bar layout takes one of count and spacing_mm (stage C3)

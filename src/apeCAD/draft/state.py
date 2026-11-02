@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Mapping
+from typing import Any, Protocol
 
 from apeCAD.entities import (
     Arc,
@@ -21,6 +22,7 @@ from apeCAD.entities import (
     Point,
     Polyline,
     SectionFace,
+    SectionTemplate,
     Solid,
     WallLeg,
     section_face_point_ids,
@@ -43,6 +45,60 @@ def produced_id(op: Produced) -> EntityId:
     return op.entity_id
 
 
+class RecordingEntities(dict[EntityId, Entity]):
+    """The entity map while a section template exists (ADR 0040): remembers, per key, the
+    value it held before the first write since `reset` (None for a new key).
+
+    Handlers write the map directly (`entities[id] = ...`, `pop`, `del`), so recording here
+    lets the template lock look at what an op changed instead of copying the whole draft
+    (review of apeCAD #57). A draft without templates keeps a plain dict.
+    """
+
+    __slots__ = ("written",)
+
+    def __init__(self, *args: Any) -> None:
+        super().__init__(*args)
+        self.written: dict[EntityId, Entity | None] = {}
+
+    def reset(self) -> None:
+        self.written = {}
+
+    def _note(self, key: EntityId) -> None:
+        if key not in self.written:
+            self.written[key] = super().get(key)
+
+    def __setitem__(self, key: EntityId, value: Entity) -> None:
+        self._note(key)
+        super().__setitem__(key, value)
+
+    def __delitem__(self, key: EntityId) -> None:
+        self._note(key)
+        super().__delitem__(key)
+
+    def pop(self, key: EntityId, *default: Any) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
+        self._note(key)
+        return super().pop(key, *default)
+
+    def popitem(self) -> tuple[EntityId, Entity]:
+        raise NotImplementedError("RecordingEntities does not support popitem")
+
+    def clear(self) -> None:
+        raise NotImplementedError("RecordingEntities does not support clear")
+
+    def setdefault(self, key: EntityId, default: Entity) -> Entity:  # pyright: ignore[reportIncompatibleMethodOverride]
+        if key not in self:
+            self[key] = default
+        return super().__getitem__(key)
+
+    def update(self, other: Mapping[EntityId, Entity]) -> None:  # pyright: ignore[reportIncompatibleMethodOverride]
+        for key, value in other.items():
+            self[key] = value
+
+    def __ior__(self, other: Any) -> RecordingEntities:  # pyright: ignore[reportIncompatibleMethodOverride]
+        self.update(other)
+        return self
+
+
 class DraftState:
     """Entities, labels, tags, and the id counter. Replaying the ops log rebuilds it."""
 
@@ -51,15 +107,32 @@ class DraftState:
         self.entities: dict[EntityId, Entity] = {}
         self.labels: dict[str, EntityId] = {}
         self.tags: dict[str, set[EntityId]] = {}
+        # Ids of the SectionTemplate entities, kept by `draft.templates` and `drop_entity`,
+        # so the template lock costs one emptiness test while there are none (ADR 0040).
+        self.template_ids: set[EntityId] = set()
 
     def copy(self) -> DraftState:
         """An independent trial copy. Entities are frozen, so sharing them is safe."""
         trial = DraftState()
         trial.next_id = self.next_id
-        trial.entities = dict(self.entities)
+        trial.entities = (
+            RecordingEntities(self.entities)
+            if isinstance(self.entities, RecordingEntities)
+            else dict(self.entities)
+        )
         trial.labels = dict(self.labels)
         trial.tags = {name: set(members) for name, members in self.tags.items()}
+        trial.template_ids = set(self.template_ids)
         return trial
+
+    def templates(self) -> tuple[SectionTemplate, ...]:
+        """The section templates, by id."""
+        found = (self.entities.get(i) for i in sorted(self.template_ids))
+        return tuple(e for e in found if isinstance(e, SectionTemplate))
+
+    def template_children(self) -> dict[EntityId, EntityId]:
+        """Child id -> the id of the template that owns it (ADR 0040 Errata 4)."""
+        return {child: t.entity_id for t in self.templates() for child in t.child_ids}
 
     def entity(self, entity_id: EntityId) -> Entity:
         try:
@@ -109,6 +182,7 @@ class DraftState:
 
     def drop_entity(self, entity_id: EntityId) -> None:
         entity = self.entities.pop(entity_id)
+        self.template_ids.discard(entity_id)
         if entity.label is not None:
             self.labels.pop(entity.label, None)
         empty_tags: list[str] = []
@@ -130,9 +204,12 @@ class DraftState:
     ) -> tuple[EntityId, bool]:
         """Reuse a point within tolerance, else create an unlabelled one.
 
-        A bar's point is never reused: bars own their points (ADR 0024 decision 5).
+        A bar's point is never reused: bars own their points (ADR 0024 decision 5). Neither
+        is a section template's point: a template owns its children (ADR 0040).
         """
-        owned = self.bar_points()
+        owned: set[EntityId] = set(self.bar_points())
+        if self.template_ids:
+            owned.update(self.template_children())
         for point in self.points():
             if point.entity_id in owned:
                 continue
@@ -211,6 +288,10 @@ class DraftState:
             return (entity.center_id,)
         if isinstance(entity, Arc):
             return (entity.start_id, entity.mid_id, entity.end_id)
+        if isinstance(entity, SectionTemplate):  # its own points: a move reaches the lock
+            return tuple(
+                c for c in entity.child_ids if isinstance(self.entities.get(c), Point)
+            )
         if isinstance(entity, Solid):
             ids = list(self.point_ids_of(self.entity(entity.face_id)))
             if entity.cap_id is not None:

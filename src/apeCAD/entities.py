@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -289,6 +290,25 @@ class CircularTie:
     label: str | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class SectionTemplate:
+    """A parametric section template (ADR 0040): its intent and the entities it owns.
+
+    `params` is what the op recorded (a read-only mapping, lists as tuples), and
+    `template_version` the expansion it ran (`section.templates.TEMPLATES`). `child_ids`
+    lists, in allocation order, every entity the expansion made: points, faces, bars,
+    hoops, crossties, circular ties and cover guides. Membership lives only here (ADR 0040
+    Errata 4): a child carries no field, and its `template_id` is found by looking it up.
+    """
+
+    entity_id: EntityId
+    template: str
+    template_version: int
+    params: Mapping[str, object]
+    child_ids: tuple[EntityId, ...]
+    label: str | None = None
+
+
 def boundary_point_ids(boundary: FaceBoundary) -> tuple[EntityId, ...]:
     if isinstance(boundary, RingBoundary):
         return boundary.point_ids
@@ -309,5 +329,16 @@ SectionEntity = (
 """Section-mode kinds (ADR 0024, and ADR 0039's v2 faces and circular ties)."""
 
 Entity = (
-    Point | Line | Polyline | Box | Face | Solid | Circle | Arc | Ellipse | Bezier | SectionEntity
+    Point
+    | Line
+    | Polyline
+    | Box
+    | Face
+    | Solid
+    | Circle
+    | Arc
+    | Ellipse
+    | Bezier
+    | SectionEntity
+    | SectionTemplate
 )

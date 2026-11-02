@@ -17,6 +17,7 @@ TOO_LARGE = "TOO_LARGE"
 DETACHED = "DETACHED"
 UNAVAILABLE = "UNAVAILABLE"
 IO_ERROR = "IO_ERROR"
+TEMPLATE_LOCKED = "TEMPLATE_LOCKED"
 
 ERROR_CODES: tuple[str, ...] = (
     UNKNOWN_OP,
@@ -28,6 +29,7 @@ ERROR_CODES: tuple[str, ...] = (
     DETACHED,
     UNAVAILABLE,
     IO_ERROR,
+    TEMPLATE_LOCKED,
 )
 
 
@@ -41,6 +43,16 @@ class OpArgumentError(DocumentError):
     """A missing, extra or mistyped op argument, caught before the document sees the op."""
 
     code: ClassVar[str] = INVALID_ARGUMENT
+
+
+class TemplateLockedError(DocumentError):
+    """An op would change, delete or reference a section-template child (ADR 0040 decision 3).
+
+    A refusal like `REFUSED`, under its own code so a host can offer the two ways out: edit
+    the template's params, or explode it into a freehand drawing.
+    """
+
+    code: ClassVar[str] = TEMPLATE_LOCKED
 
 
 class UnknownOpError(OpArgumentError):

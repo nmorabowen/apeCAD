@@ -58,6 +58,7 @@ Error codes used by every surface:
 | `DETACHED` | environment | Attach mode lost its scratchpad, or the identity changed | After the human restarts it |
 | `UNAVAILABLE` | environment | An optional extra is missing (`png`) | After installing it |
 | `IO_ERROR` | environment | A file could not be read or written | Maybe |
+| `TEMPLATE_LOCKED` | refusal | The op would change, delete or reference a section-template child (ADR 0040 decision 3). Edit the template's params, delete it, or explode it | No |
 
 ## 2. Envelope
 
