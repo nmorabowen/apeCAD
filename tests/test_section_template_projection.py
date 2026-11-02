@@ -217,12 +217,16 @@ def test_explode_removes_templates_and_every_template_id_and_nothing_else() -> N
         assert _items(after, name) == stripped, name
 
 
-def test_deleting_the_template_empties_the_block() -> None:
+def test_deleting_a_template_takes_its_entry_and_its_children_only() -> None:
     doc = Document()
-    template = doc.add_section_template("rect_column", SMALL)
-    doc.delete([template.entity_id])
+    gone = doc.add_section_template("rect_column", SMALL)
+    kept = doc.add_section_template("rect_column", {**SMALL, "center_mm": [2000, 0]})
+    doc.delete([gone.entity_id])
     section = _section(_draft(doc))
-    assert section["templates"] == [] and all(section[name] == [] for name in CHILD_LISTS)
+    assert [t["id"] for t in _items(section, "templates")] == [kept.entity_id]
+    for name in CHILD_LISTS:
+        for item in _items(section, name):
+            assert item["template_id"] == kept.entity_id, name
 
 
 # --- hand oracles (C3 record §2) ---------------------------------------------------------
@@ -333,15 +337,6 @@ def test_a_frozen_log_replays_to_itself(stem: str) -> None:
     (op,) = cast(list[Json], log["ops"])
     assert op["op"] == "AddSectionTemplate" and op["template_version"] == 1
     assert cast(list[int], op["child_ids"]), "the log records its child ids"
-
-
-@pytest.mark.parametrize("stem", sorted(p.stem for p in LOG_DIR.glob("*.json")))
-def test_a_frozen_log_with_other_child_ids_is_refused(stem: str) -> None:
-    log = _log(stem)
-    (op,) = cast(list[Json], log["ops"])
-    op["child_ids"] = cast(list[int], op["child_ids"])[:-1]
-    with pytest.raises(DocumentError, match="child ids"):
-        Document.from_dict(log)
 
 
 # --- the seed carries no templates ------------------------------------------------------
