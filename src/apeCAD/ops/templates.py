@@ -9,29 +9,53 @@ expansion no longer matches (ADR 0040 decision 4, Errata 3).
 
 `params` is stored read-only: `freeze_params` turns lists into tuples and objects into
 read-only mappings, and `thaw_params` turns them back for JSON. The structure is checked
-here (a known template and version, an object of params); the params themselves are checked
-by the expansion, which refuses a bad one with `TemplateParamError` (`INVALID_ARGUMENT`).
+here (a known template and version, an object of params, at most `MAX_PARAMS_DEPTH` levels
+deep); the params themselves are checked by the expansion, which refuses a bad one with
+`TemplateParamError` (`INVALID_ARGUMENT`).
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
 
 from apeCAD.entities import EntityId
-from apeCAD.errors import DocumentError
+from apeCAD.errors import DocumentError, OpArgumentError
 from apeCAD.ops.base import optional_label
 from apeCAD.section.templates import TEMPLATES, TemplateParamError
+
+MAX_PARAMS_DEPTH = 16
+"""Most levels of objects and lists a template's params may nest; the params object is the
+first. The deepest real param, a polygon's `ring`, is three. The cap keeps the recursive
+`_freeze`, `thaw_params` and JSON encoder far from Python's recursion limit."""
 
 
 def freeze_params(params: object, path: str = "params") -> Mapping[str, object]:
     """A read-only deep copy of a params object: objects as mappings, lists as tuples."""
+    _require_depth(params, path)
     frozen = _freeze(params, path)
     if not isinstance(frozen, MappingProxyType):
         raise DocumentError(f"{path} must be an object, got {type(params).__name__}")
     return cast(Mapping[str, object], frozen)
+
+
+def _require_depth(params: object, path: str) -> None:
+    """Refuse params nested past the cap. A loop, not a recursion, so it cannot overflow."""
+    stack: list[tuple[object, int]] = [(params, 1)]
+    while stack:
+        value, depth = stack.pop()
+        children: Iterable[object]
+        if isinstance(value, Mapping):
+            children = cast(Mapping[object, object], value).values()
+        elif isinstance(value, list | tuple):
+            children = cast(Sequence[object], value)
+        else:
+            continue
+        if depth > MAX_PARAMS_DEPTH:
+            raise OpArgumentError(f"{path} nests deeper than {MAX_PARAMS_DEPTH} levels")
+        stack.extend((child, depth + 1) for child in children)
 
 
 def _freeze(value: object, path: str) -> object:

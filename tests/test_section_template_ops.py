@@ -15,13 +15,15 @@ from collections.abc import Iterator
 from pathlib import Path
 from threading import Thread
 from typing import cast
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
 
 from apeCAD import Document
 from apeCAD import document as document_module
-from apeCAD.agent import LocalTools
+from apeCAD.agent import LocalTools, tools
+from apeCAD.agent.session import Session
 from apeCAD.catalog import CATALOG, apply, list_ops
 from apeCAD.draft import dispatch
 from apeCAD.draft.state import DraftState
@@ -42,6 +44,8 @@ from apeCAD.entities import (
 )
 from apeCAD.errors import INVALID_ARGUMENT, REFUSED, DocumentError, OpArgumentError
 from apeCAD.ops import AddSectionTemplate, op_from_dict, op_to_dict
+from apeCAD.ops.templates import MAX_PARAMS_DEPTH
+from apeCAD.ops.types import SCHEMA_ID
 from apeCAD.scratchpad.payload import scene_payload
 from apeCAD.scratchpad.server import ScratchpadServer
 from apeCAD.section.lint import lint_section_v2
@@ -523,3 +527,126 @@ def test_the_flat_form_reaches_the_document_over_http(server: ScratchpadServer) 
     templates = server.session.document.section_templates()
     assert [dict(t.params)["nx"] for t in templates] == [2, 2]
     assert [dict(t.params).get("center_mm") for t in templates] == [None, (3000, 0)]
+
+
+# --- deep params: a named refusal, never a RecursionError (review of #57) ----------------
+
+
+TOO_DEEP = "template_params nests deeper than 16 levels"
+# Levels inside `center_mm`; the params object is one more. The first is one past the cap;
+# 900 is the deepest the HTTP rows send, under what Python 3.11's JSON parser accepts.
+DEEP = [MAX_PARAMS_DEPTH, 500, 900]
+
+
+def _nested(levels: int) -> object:
+    value: object = 0
+    for _ in range(levels):
+        value = [value]
+    return value
+
+
+def _deep(levels: int) -> dict[str, object]:
+    return {**SMALL, "center_mm": _nested(levels)}
+
+
+def _too_deep_raw(levels: int) -> str:
+    """The op as text, so the test client's own JSON encoder never recurses."""
+    head = json.dumps(SMALL)[:-1]
+    center = "[" * levels + "0" + "]" * levels
+    return (
+        '{"op": "AddSectionTemplate", "template": "rect_column", '
+        f'"template_params": {head}, "center_mm": {center}}}}}'
+    )
+
+
+def test_params_at_the_cap_pass_it_and_one_more_level_is_refused() -> None:
+    # 16 levels reach the template's own check, which names center_mm and not the depth.
+    with pytest.raises(OpArgumentError, match="center_mm: must be") as at_cap:
+        Document().add_section_template("rect_column", _deep(MAX_PARAMS_DEPTH - 1))
+    assert TOO_DEEP not in str(at_cap.value)
+    with pytest.raises(OpArgumentError, match=TOO_DEEP):
+        Document().add_section_template("rect_column", _deep(MAX_PARAMS_DEPTH))
+
+
+def test_objects_count_as_levels_and_a_cycle_terminates() -> None:
+    chain: object = 0
+    for _ in range(MAX_PARAMS_DEPTH):
+        chain = {"a": chain}
+    with pytest.raises(OpArgumentError, match=TOO_DEEP):
+        AddSectionTemplate("rect_column", {**SMALL, "zz": chain})
+    cycle: list[object] = []
+    cycle.append(cycle)
+    with pytest.raises(OpArgumentError, match=TOO_DEEP):
+        AddSectionTemplate("rect_column", {**SMALL, "center_mm": cycle})
+
+
+@pytest.mark.parametrize("levels", [*DEEP, 5000])
+def test_deep_params_are_invalid_argument_in_process(levels: int) -> None:
+    doc, _ = _doc(SMALL)
+    before = doc.to_json()
+    deep = _deep(levels)
+    for name, params in (
+        ("AddSectionTemplate", {"template": "rect_column", "template_params": deep}),
+        ("EditSectionTemplate", {"template_id": 1, "template_params": deep}),
+    ):
+        session = Session(Document.from_json(before))
+        out = tools.apply_op(session, name, params)
+        assert out["ok"] is False
+        error = cast(dict[str, object], out["error"])
+        assert error["code"] == INVALID_ARGUMENT and TOO_DEEP in cast(str, error["message"])
+        assert session.document.to_json() == before
+    log = {"schema": SCHEMA_ID, "units": "mm", "ops": [
+        {"op": "AddSectionTemplate", "template": "rect_column", "template_params": deep},
+    ]}  # fmt: skip
+    with pytest.raises(OpArgumentError, match=TOO_DEEP):
+        Document.from_dict(log)
+
+
+@pytest.mark.parametrize("levels", DEEP)
+@pytest.mark.parametrize(
+    ("path", "wrap", "status"),
+    [
+        ("/api/op", "{}", 400),
+        ("/api/ops", '{{"ops": [{}]}}', 400),
+        ("/api/load", '{{"schema": "' + SCHEMA_ID + '", "units": "mm", "ops": [{}]}}', 400),
+        ("/api/section/transport",
+         '{{"transport_version": 1, "action": "apply", "document": null, "op": {}}}', 422),
+    ],
+)  # fmt: skip
+def test_deep_params_are_answered_over_http(
+    server: ScratchpadServer, path: str, wrap: str, status: int, levels: int
+) -> None:
+    before = server.session.document.to_json()
+    port = server.server_address[1]
+    body = wrap.format(_too_deep_raw(levels)).encode("utf-8")
+    with pytest.raises(HTTPError) as caught:
+        urlopen(Request(f"http://127.0.0.1:{port}{path}", data=body, method="POST"))
+    assert caught.value.code == status
+    answer = json.loads(caught.value.read().decode("utf-8"))
+    error = answer["error"] if isinstance(answer["error"], dict) else answer
+    assert error["code"] == INVALID_ARGUMENT
+    assert TOO_DEEP in (error.get("message") or error["error"])
+    assert server.session.document.to_json() == before
+
+
+@pytest.mark.parametrize("levels", [MAX_PARAMS_DEPTH, 40])  # the SDK client won't send 100
+def test_deep_params_come_back_from_mcp_call_tool(levels: int) -> None:
+    pytest.importorskip("mcp", reason="the mcp extra is not installed")
+    anyio = pytest.importorskip("anyio")
+    from mcp import Client
+
+    from apeCAD.agent.mcp import build_server
+
+    async def call() -> dict[str, object]:
+        async with Client(build_server()) as client:
+            opened = await client.call_tool("new_document", {})
+            result = await client.call_tool("apply_op", {
+                "document": cast(dict[str, object], opened.structured_content)["document"],
+                "op": "AddSectionTemplate",
+                "params": {"template": "rect_column", "template_params": _deep(levels)},
+            })  # fmt: skip
+            assert result.is_error
+            return cast(dict[str, object], result.structured_content)
+
+    error = cast(dict[str, object], anyio.run(call)["error"])
+    assert error["code"] == INVALID_ARGUMENT and TOO_DEEP in cast(str, error["message"])
