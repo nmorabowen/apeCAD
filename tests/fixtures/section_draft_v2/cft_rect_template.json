@@ -1,0 +1,167 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 2,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddSectionTemplate",
+        "template": "cft_rect",
+        "template_version": 1,
+        "template_params": {
+          "material": "C50",
+          "steel_material": "S355",
+          "center_mm": [
+            100,
+            200
+          ],
+          "b": 300,
+          "h": 500,
+          "t": 12
+        },
+        "label": null,
+        "entity_id": 1,
+        "child_ids": [
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ]
+      }
+    ]
+  },
+  "section": {
+    "faces": [
+      {
+        "id": 6,
+        "label": null,
+        "role": "concrete",
+        "material": "C50",
+        "boundary": {
+          "kind": "ring",
+          "ring_mm": [
+            [
+              -38.0,
+              -38.0
+            ],
+            [
+              238.0,
+              -38.0
+            ],
+            [
+              238.0,
+              438.0
+            ],
+            [
+              -38.0,
+              438.0
+            ]
+          ]
+        },
+        "holes": [],
+        "template_id": 1
+      },
+      {
+        "id": 15,
+        "label": null,
+        "role": "steel",
+        "material": "S355",
+        "boundary": {
+          "kind": "ring",
+          "ring_mm": [
+            [
+              -50.0,
+              -50.0
+            ],
+            [
+              250.0,
+              -50.0
+            ],
+            [
+              250.0,
+              450.0
+            ],
+            [
+              -50.0,
+              450.0
+            ]
+          ]
+        },
+        "holes": [
+          {
+            "kind": "ring",
+            "ring_mm": [
+              [
+                -38.0,
+                -38.0
+              ],
+              [
+                -38.0,
+                438.0
+              ],
+              [
+                238.0,
+                438.0
+              ],
+              [
+                238.0,
+                -38.0
+              ]
+            ]
+          }
+        ],
+        "template_id": 1
+      }
+    ],
+    "wall_legs": [],
+    "bars": [],
+    "hoops": [],
+    "crossties": [],
+    "circular_ties": [],
+    "cover_guides": [],
+    "templates": [
+      {
+        "id": 1,
+        "template": "cft_rect",
+        "template_version": 1,
+        "params": {
+          "material": "C50",
+          "steel_material": "S355",
+          "center_mm": [
+            100,
+            200
+          ],
+          "b": 300,
+          "h": 500,
+          "t": 12
+        }
+      }
+    ],
+    "materials_used": [
+      "C50",
+      "S355"
+    ]
+  },
+  "warnings": []
+}

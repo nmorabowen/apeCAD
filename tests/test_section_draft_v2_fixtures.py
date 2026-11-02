@@ -61,12 +61,13 @@ def test_the_fixtures_pin_the_v2_contract_hash() -> None:
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == CONTRACT_SHA256_V2
 
 
-def test_the_fixture_set_is_decision_8s_and_the_two_template_fixtures() -> None:
+def test_the_fixture_set_is_decision_8s_and_the_three_template_fixtures() -> None:
     assert sorted(path.stem for path in FIXTURE_DIR.glob("*.json")) == NAMES == sorted(
         [
             "rect_column_ties", "circular_column_spiral", "box_with_void", "t_beam",
             "src_w_in_rect", "cft_round", "bare_w_shape", "rect_boundary_hoops",
             "rect_column_template", "t_beam_template",  # additive (C3 record, ruling Q3)
+            "cft_rect_template",  # additive (C4 record §5, C4-S3)
         ]
     )  # fmt: skip
 
@@ -150,6 +151,10 @@ EXPECTED: dict[str, dict[str, tuple[float, float, float]]] = {
     "rect_boundary_hoops": {"concrete": (3000 * 300, 1500.0, -150.0)},
     "rect_column_template": {"concrete": (400 * 600, 200.0, 300.0)},
     "t_beam_template": {"concrete": (_T_AREA, 0.0, _T_CY)},
+    "cft_rect_template": {  # C4 record §6 row 4: the core 276 x 476, the tube's hole the same
+        "concrete": (276 * 476, 100.0, 200.0),
+        "steel": (300 * 500 - 276 * 476, 100.0, 200.0),
+    },
 }
 MINUS = {"box_with_void": ("void",), "src_w_in_rect": ("steel",)}
 
@@ -203,6 +208,16 @@ def test_cft_tube_hole_is_the_concrete_core() -> None:
     """Why `cft_round` subtracts nothing: the tube's hole is exactly the core's circle."""
     faces = {f["role"]: f for f in _items(_section(_load("cft_round"))["faces"])}
     assert _items(faces["steel"]["holes"]) == [_obj(faces["concrete"]["boundary"])]
+
+
+def test_cft_rect_tube_hole_is_the_concrete_core_clockwise() -> None:
+    """Why `cft_rect_template` subtracts nothing: the hole is the core's four corners, CW."""
+    section = _section(_load("cft_rect_template"))
+    faces = {f["role"]: f for f in _items(section["faces"])}
+    (hole,) = _items(faces["steel"]["holes"])
+    core = cast(list[list[float]], _obj(faces["concrete"]["boundary"])["ring_mm"])
+    assert hole == {"kind": "ring", "ring_mm": [core[0], core[3], core[2], core[1]]}
+    assert _load("cft_rect_template")["warnings"] == []  # no cover guide wanted (Errata 9.2)
 
 
 def test_t_beam_is_non_convex_and_its_stirrup_hull_is_strict() -> None:

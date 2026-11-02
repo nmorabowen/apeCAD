@@ -70,6 +70,9 @@ def expand_v1(data: Mapping[str, object]) -> Plan:
     """The `cft_round` v1 plan of a parameter mapping."""
     q = parse(data)
     radius = q.diameter / 2.0
+    # The size alone first, so a huge diameter is refused by its own name, not as a wall t
+    # (review of apeCAD #61); the placed tube is checked against `center_mm` below.
+    require_extent(TEMPLATE, "diameter", ((-radius, -radius), (radius, radius)))
     core = radius - q.t
     if not 0.0 < core < radius:
         raise Params(TEMPLATE, {}, ()).error(

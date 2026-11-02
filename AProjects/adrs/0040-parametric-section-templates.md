@@ -197,8 +197,15 @@ question open.
        rings, and a concrete core equal to its steel tube's hole no longer warns
        `face-without-cover-guide` against ADR 0039 Errata 9.2. The record's probe found 414
        false positives in 14,400 cases before and none after, with no false negative either
-       way. The other readers of the probes, the v1 and v2 crosstie lints, only gain exact
-       ends.
+       way. The other readers of the probes, the v1 and v2 crosstie lints, gain exact ends
+       too, and their verdicts can move. The review of apeCAD #61 found 19 of 19,203 random
+       segments flipped: 18 toward the exact answer, and 1 away from it. In that one, a
+       crosstie whose end bar's centre sits at the float midpoint of a slanted edge now warns
+       `crosstie-crosses-outside` although exact rationals put it strictly inside; the bar
+       already warns `bar-outside-concrete`. The cause predates the exact ends: `locate`
+       (`regions.py`) crosses rays in inexact floats. It is tracked on apeSection#54.
+       (Reworded at C4-S3, apeSection#57; it first said the crosstie lints "only gain exact
+       ends".)
     2. *`cft_round` v1.* `material` names the core's concrete (Errata 1) and `steel_material`,
        required, the tube's steel. The core is a circle of diameter / 2 - t; the tube is a
        circle of diameter / 2 with a circle hole of the core's radius, the same floats. A `t`
@@ -209,3 +216,28 @@ question open.
        `bar_material` by name whenever it is given, null included: an accepted parameter that
        draws nothing would stay in v1 for ever (decision 4), and a refused one can arrive in a
        later version. Errata 1's `bar_material` narrows to templates that place bars.
+12. **`cft_rect` v1 (stage C4-S3, 2026-11-02; apeSection#57, the C4 record in apeSection#2
+    comment 1170 §3 and §6 row 4).**
+    1. *The core and the hole are one set of floats.* The tube is the b x h ring centred on
+       `center_mm`, from its corners `x0 = cx - b / 2`, `x1 = cx + b / 2` (and `y0`, `y1`
+       likewise). The core is that ring inset by `t`, computed once from those corners as
+       `x0 + t`, `x1 - t`, `y0 + t`, `y1 - t`, counter-clockwise; the tube's one hole is the
+       same four floats, clockwise from the south-west corner. A core recomputed as
+       `cx ± (b - 2 t) / 2` can differ from the hole by an ulp. The corners are square: the
+       contract has no arc (the record's §7).
+    2. *Materials and refusals as `cft_round`* (Errata 11.2, 11.3): `material` is the core's
+       concrete, `steel_material`, required, the tube's steel, and `bar_material` is refused.
+       A `t` is refused unless the core sits strictly inside the tube in floats along both
+       axes, and the refusal names the axis.
+    3. *The size is checked before the wall* (review of apeCAD #61). `cft_round` checks
+       `diameter`, and `cft_rect` checks `b` and `h`, against the ADR 0032 extent before the
+       wall check, so a huge size is refused by its own name: `diameter` 1e308 had been
+       refused as `t`, because 1e308 / 2 - 10 == 1e308 / 2 in floats. The placed section is
+       then checked against `center_mm`, as before.
+    4. *A wall under 1 / sqrt(2) mm does not survive a seed replay.* The seed replays its
+       rings through `PointAt`, which reuses a point within 1 mm (ADR 0030): such a wall
+       puts each tube corner within 1 mm of a core corner, the replay merges them, and the
+       replayed tube warns `hole-outside-face`. The template, its draft and its
+       explosion are exact at any wall; only the seed path loses it. v1 does not refuse a
+       thin wall: a minimum wall would be the owner's to set, and could arrive in a later
+       version.

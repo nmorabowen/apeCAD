@@ -37,7 +37,14 @@ from apeCAD.agent.tools import list_ops
 from apeCAD.catalog import CATALOG, list_templates
 from apeCAD.catalog.schema import validate
 from apeCAD.cli import main as cli_main
-from apeCAD.entities import CircleBoundary, CircularTie, Entity, EntityId, SectionFace
+from apeCAD.entities import (
+    CircleBoundary,
+    CircularTie,
+    Entity,
+    EntityId,
+    RingBoundary,
+    SectionFace,
+)
 from apeCAD.errors import DocumentError, TemplateLockedError
 from apeCAD.geometry import XYZ
 from apeCAD.ops import PointAt
@@ -53,6 +60,7 @@ from apeCAD.section_draft import (
     section_seed,
 )
 from test_section_draft_v2_fixtures import _same
+from test_section_templates import cft_rect_fuzz, cft_rect_params
 
 Json = dict[str, object]
 
@@ -66,7 +74,11 @@ CIRCULAR_ROW_2: Json = {
     "material": "C30", "bar_material": "A630", "center_mm": [100, -50], "diameter": 500,
     "cover": 40, "n_bars": 6, "bar": "Ø16", "tie_kind": "hoop", "tie": "Ø8", "pitch": 150,
 }  # fmt: skip
-LOG_OF_FIXTURE = {"rect_column@v1": "rect_column_template", "t_beam@v1": "t_beam_template"}
+LOG_OF_FIXTURE = {
+    "rect_column@v1": "rect_column_template",
+    "t_beam@v1": "t_beam_template",
+    "cft_rect@v1": "cft_rect_template",  # C4-S3: a ring core in a ring hole
+}
 # Replayed drafts without a committed fixture of their own (the card names two new fixtures):
 # the SHA-256 of `fixture_text(section)`, recorded with the logs. Only the `section` block: the
 # whole draft also carries `producer.apeCAD_version`, which a version bump changes and no
@@ -526,6 +538,91 @@ def test_cft_round_children_are_locked() -> None:
         doc.delete([tube.entity_id])
 
 
+CFT_RECT: Json = {
+    "material": "C50", "steel_material": "S355", "center_mm": [100, 200], "b": 300, "h": 500,
+    "t": 12,
+}  # fmt: skip
+
+
+def test_cft_rect_log_oracle_row_4() -> None:
+    """C4 record §6 row 4, by hand: A_c = 276 x 476, A_s = 300 x 500 - A_c, both at (100, 200)."""
+    draft = _draft(_replay("cft_rect@v1"))
+    assert draft["warnings"] == []
+    section = _section(draft)
+    core, tube = _items(section, "faces")
+    assert (core["role"], core["material"], core["holes"]) == ("concrete", "C50", [])
+    assert (tube["role"], tube["material"]) == ("steel", "S355")
+    assert "shape" not in tube
+    ring = cast(list[list[float]], cast(Json, core["boundary"])["ring_mm"])
+    assert ring == [[-38.0, -38.0], [238.0, -38.0], [238.0, 438.0], [-38.0, 438.0]]
+    outer = cast(list[list[float]], cast(Json, tube["boundary"])["ring_mm"])
+    assert outer == [[-50.0, -50.0], [250.0, -50.0], [250.0, 450.0], [-50.0, 450.0]]
+    (hole,) = cast(list[Json], tube["holes"])
+    assert hole == {"kind": "ring", "ring_mm": [ring[0], ring[3], ring[2], ring[1]]}
+    assert _shoelace(ring) == (131_376.0, 100.0, 200.0)
+    a_o, a_h = _shoelace(outer)[0], _shoelace(cast(list[list[float]], hole["ring_mm"]))[0]
+    assert (a_o, a_h, a_o + a_h) == (150_000.0, -131_376.0, 18_624.0)
+    for name in ("bars", "hoops", "crossties", "circular_ties", "cover_guides", "wall_legs"):
+        assert _items(section, name) == [], name
+    assert section["materials_used"] == ["C50", "S355"]
+
+
+def _freehand_cft_rect(cx: float, cy: float, b: float, h: float, t: float) -> Document:
+    """The same tube drawn by hand, a core and a steel ring holed at the core's points."""
+    x0, y0, x1, y1 = cx - b / 2.0, cy - h / 2.0, cx + b / 2.0, cy + h / 2.0
+    core = [(x0 + t, y0 + t), (x1 - t, y0 + t), (x1 - t, y1 - t), (x0 + t, y1 - t)]
+    doc = Document()
+    doc.add_section_face("concrete", "C50", point_ids=[_at(x, y) for x, y in core])
+    tube = doc.add_section_face(
+        "steel", "S355", point_ids=[_at(x0, y0), _at(x1, y0), _at(x1, y1), _at(x0, y1)]
+    )
+    hole = [core[0], core[3], core[2], core[1]]  # clockwise from the south-west corner
+    doc.add_face_hole(tube.entity_id, point_ids=[_at(x, y) for x, y in hole])
+    return doc
+
+
+def test_cft_rect_seed_is_the_freehand_twins_exactly() -> None:
+    twin = _freehand_cft_rect(100.0, 200.0, 300.0, 500.0, 12.0)
+    assert section_seed(_replay("cft_rect@v1"), version=2) == section_seed(twin, version=2)
+
+
+def test_cft_rect_lints_clean_after_explode_and_seed_replay() -> None:
+    """C4 record §4 invariant 2 over fractional sizes; the §1 sample warned before C4-S2.
+
+    The seed replays through `PointAt`, which reuses a point within 1 mm (ADR 0030): a wall
+    under 1 / sqrt(2) mm puts each tube corner within 1 mm of a core corner, the replay
+    merges them, and the hole leaves the face (ADR 0040 Errata 12.4). So the seed replay is
+    checked from t = 1 mm; the expansion and its explosion at every t.
+    """
+    cases = cft_rect_fuzz(5703, 2880)
+    assert sum(t < 1.0 for *_, t in cases) > 10  # the thin walls are in the fuzz
+    for case in cases:
+        doc = Document()
+        template = doc.add_section_template("cft_rect", cft_rect_params(case))
+        assert lint_section_v2(_entities(doc)) == (), case
+        seed = section_seed(doc, version=2)
+        if case[-1] >= 1.0:
+            assert lint_section_v2(_entities(document_from_section_seed(seed))) == (), case
+        doc.explode_section_template(template.entity_id)
+        assert lint_section_v2(_entities(doc)) == (), case
+        assert section_seed(doc, version=2) == seed, case
+
+
+def test_cft_rect_children_are_locked() -> None:
+    doc = Document()
+    doc.add_section_template("cft_rect", CFT_RECT)
+    faces = [e for e in _entities(doc).values() if isinstance(e, SectionFace)]
+    core, tube = sorted(faces, key=lambda face: face.role)
+    with pytest.raises(TemplateLockedError):
+        doc.add_face_hole(tube.entity_id, center_id=_at(100, -44), radius_mm=2.0)
+    assert isinstance(core.boundary, RingBoundary) and isinstance(tube.boundary, RingBoundary)
+    for corner in (core.boundary.point_ids[0], tube.boundary.point_ids[0]):
+        with pytest.raises(TemplateLockedError):
+            doc.delete([corner])
+    with pytest.raises(TemplateLockedError):
+        doc.delete([core.entity_id])
+
+
 @pytest.mark.parametrize("stem", sorted(p.stem for p in LOG_DIR.glob("*.json")))
 def test_each_oracle_section_has_no_lint(stem: str) -> None:
     doc = _replay(stem)
@@ -740,7 +837,7 @@ def _rect() -> Json:
     return copy.deepcopy(_committed("rect_column_template"))
 
 
-@pytest.mark.parametrize("name", ["rect_column_template", "t_beam_template"])
+@pytest.mark.parametrize("name", ["rect_column_template", "t_beam_template", "cft_rect_template"])
 def test_a_committed_template_fixture_reopens_clean(name: str) -> None:
     document, warnings = document_from_draft(_committed(name))
     assert warnings == []

@@ -20,6 +20,7 @@ from apeCAD.catalog.schema import params_schema
 from apeCAD.section.designations import DESIGNATIONS
 from apeCAD.section.templates import (
     TEMPLATES,
+    cft_rect,
     cft_round,
     circular_column,
     latest_version,
@@ -188,6 +189,22 @@ _ROWS = (
             "t": "Wall thickness of the tube, in mm; the core keeps a positive radius.",
         },
         {"material": "C50", "steel_material": "S355", "diameter": 400, "t": 10},
+    ),
+    _Row(
+        cft_rect.TEMPLATE,
+        "A rectangular concrete-filled steel tube: the concrete core, and the steel tube "
+        "holed to the core's ring; square corners. No bars, ties or cover guides; "
+        "bar_material is refused.",
+        cft_rect.CftRectParams,
+        {
+            "material": "Name of the core's concrete. A name only: the host binds it.",
+            "steel_material": "Name of the tube's steel. A name only: the host binds it.",
+            "center_mm": "Centre of the tube, [x, y] in mm.",
+            "b": "Outer width of the tube along x, in mm.",
+            "h": "Outer depth of the tube along y, in mm.",
+            "t": "Wall thickness of the tube, in mm; the core keeps a positive width and depth.",
+        },
+        {"material": "C50", "steel_material": "S355", "b": 300, "h": 500, "t": 12},
     ),
 )  # fmt: skip
 
