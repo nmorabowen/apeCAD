@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 import time
 from collections.abc import Sequence
 from dataclasses import replace
@@ -405,6 +406,22 @@ def test_cft_round_oracle_row_3_the_fixture_tube() -> None:
     assert math.isclose(math.pi * (200.0**2 - 190.0**2), 12_252.211, abs_tol=5e-4)  # A_s
     assert plan.bars == () and plan.hoops == () and plan.crossties == ()
     assert plan.circular_ties == () and plan.cover_guides == ()
+
+
+def test_cft_round_core_and_hole_are_the_same_floats_at_fractional_sizes() -> None:
+    """C4 record §4 invariant 3: one computation for both, so they never differ by an ulp."""
+    rng = random.Random(56)
+    for _ in range(2000):
+        g = rng.choice((0.01, 0.1, 1.0, 5.0))
+        diameter = 100.0 + rng.randint(0, 20_000) * g
+        t = rng.randint(1, 200) * g
+        if t >= diameter / 2.0:
+            continue
+        params = _with(CFT_ROUND, diameter=diameter, t=t, center_mm=[rng.uniform(-1e4, 1e4), 0.1])
+        core, tube = expand("cft_round", params).faces
+        assert tube.holes == (core.boundary,), (diameter, t)
+        assert isinstance(core.boundary, PlanCircle)
+        assert core.boundary.radius_mm == diameter / 2.0 - t
 
 
 def test_cft_round_wall_limit_and_placement() -> None:

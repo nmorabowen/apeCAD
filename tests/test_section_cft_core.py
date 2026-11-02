@@ -157,13 +157,15 @@ def test_a_circle_core_in_its_circle_hole_still_lints_clean() -> None:
 
 @pytest.mark.parametrize(
     ("a", "b"),
-    [
-        ((0.1, 0.2), (0.7, 0.2)),
-        ((40000.3, 1234.5), (40000.3, 1234.51)),
-        ((-18.73, 15.15), (227.71, 608.93)),
+    [  # each one a case where a + 1.0 * (b - a) != b: an end across zero
+        ((-1.03, 5.0), (2.5500000000000003, 5.0)),
+        ((-9.47, 5.0), (3.31, 5.0)),
+        ((5.0, 38.7), (5.0, -55.1)),
     ],
 )
 def test_segment_probes_end_exactly_at_both_ends(a: Point2, b: Point2) -> None:
     ring = ((-1e5, -1e5), (1e5, -1e5), (1e5, 1e5), (-1e5, 1e5))
+    rounded = tuple(p + 1.0 * (q - p) for p, q in zip(a, b, strict=True))
+    assert rounded != b  # the old end probe misses b
     probes = segment_probes(a, b, ring)
-    assert probes[0] == a and probes[1] == b  # identical floats, not a + 1.0 * (b - a)
+    assert probes[0] == a and probes[1] == b  # identical floats
