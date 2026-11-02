@@ -297,7 +297,7 @@ def test_tie_kind_is_required_and_the_choice_with_a_default_is_as_it_was() -> No
         expand("rect_column", _with(RECT_COLUMN, crossties=None))
 
 
-@pytest.mark.parametrize("n", [3, 5, 7, 8, 11, 16, 24, 36])
+@pytest.mark.parametrize("n", range(3, 60))
 @pytest.mark.parametrize("radius", [240.0, 123.456, 0.1 + 0.2 + 300.0])
 def test_a_template_and_add_bars_on_circle_place_the_same_floats(n: int, radius: float) -> None:
     """One formula (`layout.on_circle`): the freehand op's bars, and the template's, exactly."""
@@ -492,6 +492,7 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("circular_column", {"diameter": _DROP}, "diameter"),
     ("circular_column", {"diameter": -600}, "diameter"),
     ("circular_column", {"diameter": 120}, "diameter"),  # r_b = 60 - 40 - 10 - 10 = 0
+    ("circular_column", {"diameter": 60}, "diameter"),  # r_t = 30 - 40 - 5 < 0: no tie either
     ("circular_column", {"diameter": 122}, "diameter"),  # r_b = 1: even three bars overlap
     ("circular_column", {"cover": 0}, "cover"),
     ("circular_column", {"n_bars": _DROP}, "n_bars"),
