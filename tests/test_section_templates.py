@@ -61,6 +61,10 @@ CIRCULAR_COLUMN: dict[str, object] = {
 CFT_ROUND: dict[str, object] = {
     "material": "C50", "steel_material": "S355", "diameter": 400, "t": 10,
 }  # fmt: skip
+CFT_RECT: dict[str, object] = {
+    "material": "C50", "steel_material": "S355", "center_mm": [100, 200], "b": 300, "h": 500,
+    "t": 12,
+}  # fmt: skip
 ORACLES = {
     "rect_column": RECT_COLUMN,
     "polygon_column": POLYGON_COLUMN,
@@ -68,8 +72,9 @@ ORACLES = {
     "t_beam": T_BEAM,
     "circular_column": CIRCULAR_COLUMN,
     "cft_round": CFT_ROUND,
+    "cft_rect": CFT_RECT,
 }
-BAR_TEMPLATES = set(ORACLES) - {"cft_round"}
+BAR_TEMPLATES = set(ORACLES) - {"cft_round", "cft_rect"}
 """The templates that place bars, and so take `bar_material` (ADR 0040 Errata 11)."""
 
 
@@ -436,6 +441,97 @@ def test_cft_round_wall_limit_and_placement() -> None:
     assert moved.faces[1].holes == (PlanCircle((100.5, -50.25), 190.0),)
 
 
+def test_cft_round_names_a_huge_diameter_not_the_wall() -> None:
+    """Review of apeCAD #61: 1e308 / 2 - 10 == 1e308 / 2, so the wall check named `t`."""
+    for diameter in (1e308, 2.0**22):
+        with pytest.raises(TemplateParamError, match=r"^cft_round: diameter: .*±1\.04858e\+06"):
+            expand("cft_round", _with(CFT_ROUND, diameter=diameter))
+    widest = expand("cft_round", _with(CFT_ROUND, diameter=2.0**21))  # r is the limit itself
+    assert widest.faces[1].boundary == PlanCircle((0.0, 0.0), 2.0**20)
+    with pytest.raises(TemplateParamError, match="^cft_round: center_mm: "):
+        expand("cft_round", _with(CFT_ROUND, diameter=2.0**21, center_mm=[0.5, 0]))
+
+
+# --- cft_rect (C4 record §6 row 4) ---------------------------------------------------------
+
+
+def _corners(boundary: object) -> tuple[Point2, ...]:
+    assert isinstance(boundary, PlanRing)
+    return boundary.points_mm
+
+
+def test_cft_rect_oracle_row_4() -> None:
+    """300 x 500, t 12, centre (100, 200): core x -38..238, y -38..438; tube x -50..250."""
+    plan = expand("cft_rect", CFT_RECT)
+    core, tube = plan.faces
+    assert (core.role, core.material, core.holes) == ("concrete", "C50", ())
+    assert (tube.role, tube.material, tube.shape) == ("steel", "S355", None)
+    sw, se, ne, nw = (-38.0, -38.0), (238.0, -38.0), (238.0, 438.0), (-38.0, 438.0)
+    assert _corners(core.boundary) == (sw, se, ne, nw)  # counter-clockwise
+    outer = ((-50.0, -50.0), (250.0, -50.0), (250.0, 450.0), (-50.0, 450.0))
+    assert _corners(tube.boundary) == outer
+    (hole,) = tube.holes
+    assert _corners(hole) == (sw, nw, ne, se)  # the core's corners, clockwise
+    a_c, sx_c, sy_c = _moments(_corners(core.boundary))
+    a_o, sx_o, sy_o = _moments(_corners(tube.boundary))
+    a_h, sx_h, sy_h = _moments(_corners(hole))  # clockwise: negative
+    assert a_c == 276 * 476 == 131_376 and a_h == -a_c
+    assert a_o + a_h == 300 * 500 - 276 * 476 == 18_624  # A_s
+    assert (sx_c / a_c, sy_c / a_c) == (100.0, 200.0)
+    assert ((sx_o + sx_h) / (a_o + a_h), (sy_o + sy_h) / (a_o + a_h)) == (100.0, 200.0)
+    assert plan.bars == () and plan.hoops == () and plan.crossties == ()
+    assert plan.circular_ties == () and plan.cover_guides == ()
+
+
+def test_cft_rect_wall_limit_on_each_axis() -> None:
+    thin = expand("cft_rect", _with(CFT_RECT, t=149.9))  # b = 300: a 0.2 mm core
+    assert _corners(thin.faces[0].boundary)[0] == (-50.0 + 149.9, -50.0 + 149.9)
+    for t in (150, 200):
+        with pytest.raises(TemplateParamError, match=r"^cft_rect: t: .* across b = 300 mm"):
+            expand("cft_rect", _with(CFT_RECT, t=t))
+    wide = _with(CFT_RECT, b=900)  # now h = 500 limits the wall
+    assert expand("cft_rect", _with(wide, t=249.9)).faces[0].boundary
+    with pytest.raises(TemplateParamError, match=r"^cft_rect: t: .* across h = 500 mm"):
+        expand("cft_rect", _with(wide, t=250))
+
+
+CftRectCase = tuple[float, float, float, float, float]
+"""(cx, cy, b, h, t) of one fuzzed `cft_rect`."""
+
+
+def cft_rect_fuzz(seed: int, cases: int) -> list[CftRectCase]:
+    """Fractional sizes on the record's grids and offsets (C4 record §6), and §1's sample."""
+    rng = random.Random(seed)
+    out: list[CftRectCase] = [(-18.73, 15.15, 246.44, 593.78, 14.09)]
+    while len(out) < cases:
+        g = rng.choice((0.01, 0.1, 1.0, 5.0))
+        offset = rng.choice((0.0, 0.1, 1234.5, 40000.3))
+        b, h = 100.0 + rng.randint(0, 20_000) * g, 100.0 + rng.randint(0, 20_000) * g
+        t = rng.randint(1, 400) * g
+        if 2.0 * t < min(b, h):
+            cx, cy = offset + rng.randint(-999, 999) * g, -offset + rng.randint(-999, 999) * g
+            out.append((cx, cy, b, h, t))
+    return out
+
+
+def cft_rect_params(case: CftRectCase) -> dict[str, object]:
+    cx, cy, b, h, t = case
+    return _with(CFT_RECT, center_mm=[cx, cy], b=b, h=h, t=t)
+
+
+def test_cft_rect_core_and_hole_are_the_same_floats_from_the_tube_corners() -> None:
+    """C4 record §4 invariant 3. A core recomputed as cx ± (b - 2t) / 2 differs by an ulp."""
+    for case in cft_rect_fuzz(57, 3000):
+        core, tube = expand("cft_rect", cft_rect_params(case)).faces
+        (hole,) = tube.holes
+        ring = _corners(core.boundary)
+        assert _corners(hole) == (ring[0], ring[3], ring[2], ring[1]), case
+        cx, cy, b, h, t = case
+        x0, y0, x1, y1 = cx - b / 2.0, cy - h / 2.0, cx + b / 2.0, cy + h / 2.0
+        assert _corners(tube.boundary) == ((x0, y0), (x1, y0), (x1, y1), (x0, y1)), case
+        assert ring == ((x0 + t, y0 + t), (x1 - t, y0 + t), (x1 - t, y1 - t), (x0 + t, y1 - t))
+
+
 def test_rect_column_crosstie_patterns_and_bar_count() -> None:
     base = _with(RECT_COLUMN, b=600, h=600, center_mm=[300, 300], nx=5, ny=4)
     assert len(expand("rect_column", base).bars) == 2 * 5 + 2 * 4 - 4
@@ -601,6 +697,30 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("cft_round", {"bar_material": "A630"}, "bar_material"),
     ("cft_round", {"bar": "Ø20"}, "bar"),
     ("cft_round", {"cover": 40}, "cover"),
+    ("cft_round", {"diameter": 1e308}, "diameter"),  # review of #61: was named t
+    ("cft_rect", {"material": ""}, "material"),
+    ("cft_rect", {"material": _DROP}, "material"),
+    ("cft_rect", {"steel_material": _DROP}, "steel_material"),
+    ("cft_rect", {"steel_material": 355}, "steel_material"),
+    ("cft_rect", {"b": _DROP}, "b"),
+    ("cft_rect", {"b": 0}, "b"),
+    ("cft_rect", {"b": "300"}, "b"),
+    ("cft_rect", {"b": 1e308}, "b"),  # not t, though 1e308 / 2 - 12 == 1e308 / 2
+    ("cft_rect", {"h": _DROP}, "h"),
+    ("cft_rect", {"h": -500}, "h"),
+    ("cft_rect", {"h": 2.0**22}, "h"),
+    ("cft_rect", {"t": _DROP}, "t"),
+    ("cft_rect", {"t": 0}, "t"),
+    ("cft_rect", {"t": 150}, "t"),  # b = 300: a core of width 0
+    ("cft_rect", {"t": 250}, "t"),  # past both walls
+    ("cft_rect", {"t": 1e-14}, "t"),  # 250 - 1e-14 == 250 in floats: no wall
+    ("cft_rect", {"center_mm": [2.0**20, 0]}, "center_mm"),
+    ("cft_rect", {"center_mm": [0, 0, 0]}, "center_mm"),
+    ("cft_rect", {"bar_material": "A630"}, "bar_material"),
+    ("cft_rect", {"bar_material": None}, "bar_material"),
+    ("cft_rect", {"diameter": 400}, "diameter"),
+    ("cft_rect", {"t_x": 12}, "t_x"),
+    ("cft_rect", {"cover": 40}, "cover"),
 ]
 
 

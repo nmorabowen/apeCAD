@@ -272,16 +272,20 @@ a pinned apeCAD sha (its ADR-0026). ADR 0039 decision 8:
 | `bare_w_shape` | one steel face, no concrete, no bars |
 | `rect_boundary_hoops` | v1's wall fixture written as v2: v1 and v2 describe the same wall |
 
-Two more are additive (C3-S3, C3 decision record §2): the eight above stay byte-identical.
+Three more are additive (C3-S3, C3 decision record §2; C4-S3, C4 decision record §5): the
+eight above stay byte-identical.
 
 | Fixture | Checks |
 |---|---|
 | `rect_column_template` | one `rect_column` v1: `templates[]`, `template_id` on its children, the same bars as `rect_column_ties` |
 | `t_beam_template` | one `t_beam` v1: the `T_RING` outline, bottom, top and slab bars |
+| `cft_rect_template` | one `cft_rect` v1: a concrete ring core under a steel ring whose clockwise hole is the core's own corners; no cover guide and no warning |
 
 `tests/fixtures/section_templates/<template>@v<version>.json` holds one frozen op log per
 template version (ADR 0040 decision 4), recorded once and never regenerated: `REGENERATE`
-does not touch them. `rect_column@v1` and `t_beam@v1` replay to the two fixtures above, byte
-for byte; `polygon_column@v1` and `rect_hollow@v1` have no fixture and replay to a recorded
-SHA-256 of their draft. A consumer gets the new fixtures only by a new vendoring at a pinned
-apeCAD sha.
+does not touch them. `rect_column@v1`, `t_beam@v1` and `cft_rect@v1` replay to the three
+fixtures above, byte for byte. The logs without a fixture are `polygon_column@v1`,
+`rect_hollow@v1`, `circular_column@v1` and `cft_round@v1`: all but `circular_column@v1`
+replay to a recorded SHA-256 of their draft's `section` block, and `circular_column@v1`, whose
+bars are placed by sine and cosine, to a recorded section compared at rel 1e-12. A consumer
+gets the new fixtures only by a new vendoring at a pinned apeCAD sha.
