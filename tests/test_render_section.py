@@ -80,7 +80,10 @@ def test_pier_draws_every_section_entity() -> None:
     doc = pier()
     root = ET.fromstring(render_svg(doc, view="top").svg)
     counts = {name: len(_layer(root, name)) for name in SECTION_STYLE}
-    assert counts == {"concrete": 1, "cover": 1, "leg": 1, "hoop": 2, "crosstie": 0, "bar": 32}
+    assert counts == {
+        "concrete": 1, "steel": 0, "void": 0, "cover": 1, "leg": 1, "hoop": 2, "crosstie": 0,
+        "circular-tie": 0, "bar": 32,
+    }  # fmt: skip
     # A bar's own point is drawn by its disc, not again as a dot.
     dots = {g.get("data-id") for g in _layer(root, "points")}
     assert not dots & {str(bar.point_id) for bar in doc.bars()}
