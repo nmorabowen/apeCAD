@@ -8,9 +8,9 @@ index in `Plan.faces`.
 
 All lengths are millimetres, in section coordinates (x right, y up, z = 0). Designations come
 from the closed vocabulary (`section.designations`). A boundary ring is counter-clockwise and
-a hole ring clockwise (specs/section-draft-v2.md "Ring orientation"). The `Plan` can carry
-circles, holes, steel faces with `shape` provenance and circular ties, which no C3 template
-emits yet (stage C4 does).
+a hole ring clockwise (specs/section-draft-v2.md "Ring orientation"). The `Plan` also carries
+circles, holes, steel faces with `shape` provenance and circular ties (`circular_column` emits
+a circle and a circular tie).
 
 A bad parameter raises `TemplateParamError`, an `OpArgumentError` (`INVALID_ARGUMENT`) that
 names the template and the parameter. A `Plan` that breaks its own invariants (an index out
@@ -467,8 +467,9 @@ class Params:
             return default
         return point_value(self, name, self._get(name))
 
-    def choice(self, name: str, options: Sequence[str], default: str) -> str:
-        value = self._data.get(name, default)
+    def choice(self, name: str, options: Sequence[str], default: str | None = None) -> str:
+        """One of `options`; without a `default` the parameter is required."""
+        value = self._get(name) if default is None else self._data.get(name, default)
         if not isinstance(value, str) or value not in options:
             raise self.error(name, f"must be one of {', '.join(options)}, got {shown(value)}")
         return value

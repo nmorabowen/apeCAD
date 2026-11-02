@@ -19,7 +19,7 @@ from apeCAD.ops import AddBarRow, AddBarsAlongEdge, AddBarsOnCircle, AddCircular
 from apeCAD.section.cover import cover_rings
 from apeCAD.section.designations import diameter_of
 from apeCAD.section.geometry import Point2
-from apeCAD.section.layout import DUPLICATE_BAR_MM, edge_positions, row_positions
+from apeCAD.section.layout import DUPLICATE_BAR_MM, edge_positions, on_circle, row_positions
 
 
 def add_bar_row(state: DraftState, op: AddBarRow) -> AddBarRow:
@@ -79,21 +79,13 @@ def add_bars_along_edge(state: DraftState, op: AddBarsAlongEdge) -> AddBarsAlong
 
 def add_bars_on_circle(state: DraftState, op: AddBarsOnCircle) -> AddBarsOnCircle:
     """`count` bars evenly on a circle, the first at `start_angle_deg` (ADR 0039)."""
+    center = (op.center_x_mm, op.center_y_mm)
     positions = [
-        _on_circle(op, op.start_angle_deg + 360.0 * k / op.count) for k in range(op.count)
+        on_circle(center, op.radius_mm, op.start_angle_deg + 360.0 * k / op.count)
+        for k in range(op.count)
     ]
     bar_ids, point_ids = _place_bars(state, positions, op.designation, op, op.material)
     return replace(op, bar_ids=bar_ids, bar_point_ids=point_ids)
-
-
-def _on_circle(op: AddBarsOnCircle, angle_deg: float) -> Point2:
-    """A point on the circle; a whole quarter turn is exact, so 0, 90, 180, 270 sit on axes."""
-    quarter = angle_deg / 90.0
-    if quarter.is_integer():
-        cos, sin = ((1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0))[int(quarter) % 4]
-    else:
-        cos, sin = math.cos(math.radians(angle_deg)), math.sin(math.radians(angle_deg))
-    return (op.center_x_mm + op.radius_mm * cos, op.center_y_mm + op.radius_mm * sin)
 
 
 def add_circular_tie(state: DraftState, op: AddCircularTie) -> AddCircularTie:

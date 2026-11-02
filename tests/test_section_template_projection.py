@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 import math
+import random
 from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
@@ -24,6 +25,7 @@ from _section_fixtures_v2 import (
     RECT_COLUMN_PARAMS,
     T_BEAM_PARAMS,
     T_RING,
+    circular_column_spiral,
     fixture_path_v2,
     fixture_text,
 )
@@ -34,7 +36,7 @@ from apeCAD.agent.tools import list_ops
 from apeCAD.catalog import CATALOG, list_templates
 from apeCAD.catalog.schema import validate
 from apeCAD.cli import main as cli_main
-from apeCAD.entities import Entity, EntityId
+from apeCAD.entities import CircleBoundary, CircularTie, Entity, EntityId, SectionFace
 from apeCAD.errors import DocumentError, TemplateLockedError
 from apeCAD.geometry import XYZ
 from apeCAD.ops import PointAt
@@ -49,6 +51,7 @@ from apeCAD.section_draft import (
     section_draft,
     section_seed,
 )
+from test_section_draft_v2_fixtures import _same
 
 Json = dict[str, object]
 
@@ -58,11 +61,17 @@ SMALL: Json = {
     "material": "C30", "b": 300, "h": 300, "cover": 40, "nx": 2, "ny": 2, "bar": "Ø16",
     "tie": "Ø10", "tie_spacing": 150,
 }  # fmt: skip
+CIRCULAR_ROW_2: Json = {
+    "material": "C30", "bar_material": "A630", "center_mm": [100, -50], "diameter": 500,
+    "cover": 40, "n_bars": 6, "bar": "Ø16", "tie_kind": "hoop", "tie": "Ø8", "pitch": 150,
+}  # fmt: skip
 LOG_OF_FIXTURE = {"rect_column@v1": "rect_column_template", "t_beam@v1": "t_beam_template"}
 # Replayed drafts without a committed fixture of their own (the card names two new fixtures):
 # the SHA-256 of `fixture_text(section)`, recorded with the logs. Only the `section` block: the
 # whole draft also carries `producer.apeCAD_version`, which a version bump changes and no
-# regeneration can repair (apeSection#51). The hand oracles below hold the numbers.
+# regeneration can repair (apeSection#51). The hand oracles below hold the numbers. Exact hashes
+# hold only for templates with no trig: `circular_column@v1` has its own comparison at rel 1e-12
+# (`_recorded_circular_section`), because libm's sin and cos differ by an ulp between platforms.
 SECTION_SHA256 = {
     "polygon_column@v1": "b55388e7fc6f89609884e72f2aa99549ede4e02e76a525fa775d1baefa4f72cc",
     "rect_hollow@v1": "dc43d3fa41ad050a63a866ea5b1bfbbd2ec8a281db5df9ab4b81eb2ace09be3a",
@@ -305,6 +314,165 @@ def test_rect_hollow_log_oracle() -> None:
     assert len(_items(section, "hoops")) == 2 and _items(section, "crossties") == []
 
 
+def _circular_column_section(section: Json) -> None:
+    """C4 record §6 row 1, by hand: D 600, cover 40, 8 Ø20, spiral Ø10 @ 75."""
+    (face,) = _items(section, "faces")
+    boundary = cast(Json, face["boundary"])
+    assert boundary == {"kind": "circle", "center_mm": [0.0, 0.0], "radius_mm": 300.0}
+    assert face["holes"] == [] and face["role"] == "concrete" and face["material"] == "concrete"
+    k = 240.0 * math.sqrt(0.5)
+    bars = [(cast(float, b["x_mm"]), cast(float, b["y_mm"])) for b in _items(section, "bars")]
+    on_axes = [(240.0, 0.0), (0.0, 240.0), (-240.0, 0.0), (0.0, -240.0)]
+    assert [bars[n] for n in (0, 2, 4, 6)] == on_axes
+    for n, expected in zip((1, 3, 5, 7), ((k, k), (-k, k), (-k, -k), (k, -k)), strict=True):
+        assert bars[n] == pytest.approx(expected, rel=1e-12)
+    (tie,) = _items(section, "circular_ties")
+    assert tie["kind"] == "spiral" and tie["center_mm"] == [0.0, 0.0]
+    assert tie["centerline_radius_mm"] == 255.0
+    assert tie["designation"] == "Ø10" and tie["pitch_mm"] == 75.0
+    (guide,) = _items(section, "cover_guides")
+    assert guide["cover_mm"] == 40.0
+    assert guide["tie_diameter_mm"] == 10.0 and guide["bar_diameter_mm"] == 20.0
+    assert _items(section, "hoops") == [] and _items(section, "crossties") == []
+
+
+def test_circular_column_log_oracle() -> None:
+    _circular_column_section(_section(_draft(_replay("circular_column@v1"))))
+
+
+def test_circular_column_row_2_in_the_draft() -> None:
+    doc = Document()
+    doc.add_section_template("circular_column", CIRCULAR_ROW_2)
+    section = _section(_draft(doc))
+    assert _items(section, "hoops") == []
+    (tie,) = _items(section, "circular_ties")
+    assert tie["kind"] == "hoop" and tie["center_mm"] == [100.0, -50.0]
+    assert tie["centerline_radius_mm"] == 206.0 and tie["pitch_mm"] == 150.0
+    assert section["materials_used"] == ["A630", "C30"]
+    assert all(b["material"] == "A630" for b in _items(section, "bars"))
+
+
+def test_the_seed_at_fixture_params_is_the_freehand_builders_exactly() -> None:
+    """C4 record §4 invariant 1: a seed carries no ids, so the two must be equal."""
+    template = _replay("circular_column@v1")
+    assert section_seed(template, version=2) == section_seed(circular_column_spiral(), version=2)
+
+
+@pytest.mark.parametrize("kind", ["spiral", "hoop"])
+def test_the_seed_at_other_params_is_the_freehand_twins_exactly(kind: str) -> None:
+    doc = Document()
+    doc.add_section_template("circular_column", {
+        "material": "C30", "center_mm": [100, -50], "diameter": 500, "cover": 40, "n_bars": 6,
+        "bar": "Ø16", "tie_kind": kind, "tie": "Ø8", "pitch": 150,
+    })  # fmt: skip
+    twin = Document()  # r_b = 250 - 40 - 8 - 8 = 194, r_t = 250 - 40 - 4 = 206, by hand
+    face = twin.add_section_face("concrete", "C30", center_id=_at(100, -50), radius_mm=250.0)
+    twin.add_bars_on_circle((100.0, -50.0), 194.0, 6, "Ø16")
+    twin.add_circular_tie(kind, _at(100, -50), 206.0, "Ø8", 150.0)  # pyright: ignore[reportArgumentType]
+    twin.set_cover(face.entity_id, 40.0, 8.0, 16.0)
+    assert section_seed(doc, version=2) == section_seed(twin, version=2)
+
+
+def test_a_circular_column_lints_clean_also_after_explode_and_seed_replay() -> None:
+    """C4 record §4 invariant 2, on a seeded fuzz of fractional sizes and centres."""
+    rng = random.Random(4040)
+    for case in range(120):
+        grid = rng.choice((0.01, 0.1, 1.0, 5.0))
+        offset = rng.choice((0.0, 0.1, 1234.5, 40000.3))
+        n = rng.randint(3, 14)
+        bar, tie = rng.choice(("Ø12", "Ø16", "Ø20")), rng.choice(("Ø8", "Ø10"))
+        params: Json = {
+            "material": "C30",
+            "center_mm": [
+                offset + rng.randint(-99, 99) * grid,
+                -offset + rng.randint(-99, 99) * grid,
+            ],
+            "diameter": 400.0 + rng.randint(0, 80) * 5.0 + rng.randint(1, 9) * grid,
+            "cover": 30.0 + rng.randint(0, 4) * grid,
+            "n_bars": n,
+            "bar": bar,
+            "tie_kind": rng.choice(("spiral", "hoop")),
+            "tie": tie,
+            "pitch": 60.0 + rng.randint(0, 20) * grid,
+        }
+        doc = Document()
+        template = doc.add_section_template("circular_column", params)
+        assert lint_section_v2(_entities(doc)) == (), (case, params)
+        seed = section_seed(doc, version=2)
+        replayed = document_from_section_seed(seed)
+        assert lint_section_v2(_entities(replayed)) == (), (case, params)
+        assert section_seed(replayed, version=2) == seed, (case, params)
+        doc.explode_section_template(template.entity_id)
+        assert lint_section_v2(_entities(doc)) == (), (case, params)
+        assert section_seed(doc, version=2) == seed, (case, params)
+
+
+def test_template_id_is_on_the_circular_tie_and_the_draft_reopens_clean() -> None:
+    doc = Document()
+    template = doc.add_section_template("circular_column", CIRCULAR_ROW_2)
+    draft = _draft(doc)
+    (tie,) = _items(_section(draft), "circular_ties")
+    assert tie["template_id"] == template.entity_id
+    for name in CHILD_LISTS:
+        for item in _items(_section(draft), name):
+            assert item["template_id"] == template.entity_id, name
+    reopened, warnings = document_from_draft(copy.deepcopy(draft))
+    assert warnings == [] and len(reopened.section_templates()) == 1
+    del _items(_section(draft), "circular_ties")[0]["template_id"]
+    with pytest.raises(DocumentError, match=r"section\.circular_ties\[id=\d+\]\s+has no"):
+        document_from_draft(draft)
+
+
+def _circle_centre(doc: Document) -> tuple[EntityId, EntityId]:
+    """The ids of the template's two centres: the concrete circle's and the tie's."""
+    entities = _entities(doc)
+    (face,) = (e for e in entities.values() if isinstance(e, SectionFace))
+    (tie,) = (e for e in entities.values() if isinstance(e, CircularTie))
+    assert isinstance(face.boundary, CircleBoundary)
+    return face.boundary.center_id, tie.center_id
+
+
+def test_a_child_centre_is_locked_and_a_freehand_tie_takes_a_fresh_point() -> None:
+    """C4 record §4 invariant 7."""
+    doc = Document()
+    doc.add_section_template("circular_column", CIRCULAR_ROW_2)
+    face_centre, tie_centre = _circle_centre(doc)
+    assert face_centre != tie_centre  # the materialiser never shares a point
+    for centre in (face_centre, tie_centre):
+        with pytest.raises(TemplateLockedError):
+            doc.delete([centre])
+        with pytest.raises(TemplateLockedError):
+            doc.add_circular_tie("hoop", centre, 100.0, "Ø10", 150.0)
+    before = set(doc.entity_ids())
+    tie = doc.add_circular_tie("hoop", _at(100.0, -50.0), 100.0, "Ø10", 150.0)
+    assert tie.center_id not in before  # the same xy, but a point of its own
+
+
+def test_a_circular_column_edits_undoes_and_explodes() -> None:
+    doc = Document()
+    template = doc.add_section_template("circular_column", CIRCULAR_ROW_2)
+    before = _section(_draft(doc))
+    doc.edit_section_template(template.entity_id, {**CIRCULAR_ROW_2, "tie_kind": "spiral"})
+    (tie,) = _items(_section(_draft(doc)), "circular_ties")
+    assert tie["kind"] == "spiral" and tie["template_id"] == template.entity_id
+    doc.undo()
+    assert _section(_draft(doc)) == before
+    centre = _circle_centre(doc)[1]
+    doc.explode_section_template(template.entity_id)
+    (ctie,) = (e for e in _entities(doc).values() if isinstance(e, CircularTie))
+    doc.delete([ctie.entity_id])  # freehand again: nothing is locked, and its centre goes with it
+    assert centre not in doc.entity_ids()
+
+
+def test_list_ops_says_tie_kind_is_required_with_no_default() -> None:
+    row = next(r for r in list_templates() if r["name"] == "circular_column")
+    schema = cast(Json, row["params"])
+    assert {"material", "diameter", "cover", "n_bars", "bar", "tie_kind", "tie", "pitch"} == set(
+        cast(list[str], schema["required"])
+    )
+    assert "default" not in cast(dict[str, Json], schema["properties"])["tie_kind"]
+
+
 @pytest.mark.parametrize("stem", sorted(p.stem for p in LOG_DIR.glob("*.json")))
 def test_each_oracle_section_has_no_lint(stem: str) -> None:
     doc = _replay(stem)
@@ -347,6 +515,97 @@ def test_the_recorded_section_ignores_a_version_bump_and_sees_a_section_value(
     bar = _items(_section(draft), "bars")[0]
     bar["x_mm"] = cast(float, bar["x_mm"]) + 1.0
     assert _section_sha256(draft) != SECTION_SHA256[stem]
+
+
+def _recorded_circular_section() -> Json:
+    """What `circular_column@v1` replays to, by hand: every key, in order, with its ids.
+
+    Template 1, then its children in allocation order: the circle's centre 2 and face 3, a
+    point and a bar per bar (4 and 5 to 18 and 19), the tie's centre 20 and tie 21, guide 22.
+    """
+    k = 240.0 * math.sqrt(0.5)
+    spots = [
+        (240.0, 0.0), (k, k), (0.0, 240.0), (-k, k),
+        (-240.0, 0.0), (-k, -k), (0.0, -240.0), (k, -k),
+    ]  # fmt: skip
+    return {
+        "faces": [
+            {
+                "id": 3, "label": None, "role": "concrete", "material": "concrete",
+                "boundary": {"kind": "circle", "center_mm": [0.0, 0.0], "radius_mm": 300.0},
+                "holes": [], "template_id": 1,
+            }
+        ],
+        "wall_legs": [],
+        "bars": [
+            {
+                "id": 5 + 2 * n, "label": None, "x_mm": x, "y_mm": y, "diameter_mm": 20.0,
+                "designation": "Ø20", "template_id": 1,
+            }
+            for n, (x, y) in enumerate(spots)
+        ],
+        "hoops": [],
+        "crossties": [],
+        "circular_ties": [
+            {
+                "id": 21, "label": None, "kind": "spiral", "center_mm": [0.0, 0.0],
+                "centerline_radius_mm": 255.0, "designation": "Ø10", "diameter_mm": 10.0,
+                "pitch_mm": 75.0, "template_id": 1,
+            }
+        ],
+        "cover_guides": [
+            {
+                "id": 22, "face_id": 3, "cover_mm": 40.0, "tie_diameter_mm": 10.0,
+                "bar_diameter_mm": 20.0, "template_id": 1,
+            }
+        ],
+        "templates": [
+            {
+                "id": 1, "template": "circular_column", "template_version": 1,
+                "params": {
+                    "material": "concrete", "diameter": 600, "cover": 40, "n_bars": 8, "bar": "Ø20",
+                    "tie_kind": "spiral", "tie": "Ø10", "pitch": 75,
+                },
+            }
+        ],
+        "materials_used": ["concrete"],
+    }  # fmt: skip
+
+
+def test_the_circular_column_log_replays_to_its_recorded_section() -> None:
+    """Numbers at rel 1e-12, whatever libm's last bit; everything else exact."""
+    _same(_section(_draft(_replay("circular_column@v1"))), _recorded_circular_section(), "section")
+
+
+def test_the_circular_section_ignores_a_version_bump_and_sees_a_section_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(import_module("apeCAD.section_draft"), "__version__", "9.9.9")
+    draft = _draft(_replay("circular_column@v1"))
+    assert cast(Json, draft["producer"])["apeCAD_version"] == "9.9.9"
+    recorded = _recorded_circular_section()
+    _same(_section(draft), recorded, "section")
+
+    def bar_one(section: Json) -> Json:
+        return _items(section, "bars")[1]
+
+    within = copy.deepcopy(_section(draft))
+    bar_one(within)["x_mm"] = cast(float, bar_one(within)["x_mm"]) * (1.0 + 2.0**-52)  # an ulp
+    _same(within, recorded, "section")
+    tampered: list[tuple[str, object]] = [
+        ("x_mm", cast(float, bar_one(_section(draft))["x_mm"]) * (1.0 + 1e-9)),
+        ("designation", "Ø16"),
+        ("template_id", 2),
+    ]
+    for key, value in tampered:
+        moved = copy.deepcopy(_section(draft))
+        bar_one(moved)[key] = value
+        with pytest.raises(AssertionError):
+            _same(moved, recorded, "section")
+    off_axis = copy.deepcopy(_section(draft))
+    _items(off_axis, "bars")[2]["x_mm"] = 1.5e-14  # an unsnapped cos 90°: 0 stays exactly 0
+    with pytest.raises(AssertionError):
+        _same(off_axis, recorded, "section")
 
 
 @pytest.mark.parametrize("stem", sorted(p.stem for p in LOG_DIR.glob("*.json")))

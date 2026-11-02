@@ -166,3 +166,23 @@ question open.
    `AddSectionTemplate` and `EditSectionTemplate` name the field `template_params`, and the
    flat request form stays usable. The `SectionTemplate` entity and the draft's
    `templates[]` keep `params`.
+10. **Readings of `circular_column` v1 (stage C4-S1, 2026-11-02; apeSection#2, comment 1170,
+    ratified in comment 1172, "Ratify as written").** Decision 5's row, with Errata 1 and 7,
+    leaves these open:
+    1. *`tie_kind` is required.* Decision 5's row marks it with no `?`, and a silent spiral
+       would overstate the confinement. `Params.choice` gains a form with no default, which
+       refuses a missing parameter as `required`; its form with a default is unchanged. The
+       parameter dataclass keeps `str`, because `catalog/schema.py` has no `Literal`.
+    2. *A hoop is a circular tie.* `tie_kind: "hoop"` writes a `circular_ties[]` entry (ADR
+       0039 decision 5) that differs from the spiral in `kind` alone; `hoops[]` stays empty.
+    3. *`n_bars >= 3`*, the fewest that span an area. *`pitch >= tie`*, because a tie's turns
+       cannot overlap. The 4 and 6 bars of ACI 318 §10.7.3.1 and spiral spacing are the
+       consumer's checks, not the template's.
+    4. *Placement.* Bars start at angle 0 and run counter-clockwise; a start angle would be a
+       new version. Overlapping bars are refused by `n_bars`. The template and
+       `AddBarsOnCircle` share one formula, `section/layout.py::on_circle`.
+
+    *Orchestrator reading, awaiting the owner (not part of the ratification above).* When even
+    the fewest bars, three, overlap, the refusal names `diameter` rather than `n_bars`, because
+    no `n_bars` could cure it. The record does not say this. It is consistent with the record's
+    row 2 and mirrors `rect_column` naming `b` when its two corner bars overlap.

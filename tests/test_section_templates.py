@@ -10,13 +10,16 @@ import json
 import math
 import time
 from collections.abc import Sequence
+from dataclasses import replace
 
 import pytest
 
 from _section_fixtures_v2 import FIXTURE_DIR, T_RING
+from apeCAD import Document
 from apeCAD.errors import INVALID_ARGUMENT, DocumentError
 from apeCAD.section.geometry import Point2, signed_area
-from apeCAD.section.templates import TEMPLATES, expand, latest_version
+from apeCAD.section.layout import on_circle
+from apeCAD.section.templates import TEMPLATES, circular_column, expand, latest_version
 from apeCAD.section.templates.plan import (
     Plan,
     PlanBar,
@@ -50,11 +53,16 @@ T_BEAM: dict[str, object] = {
     "cover": 30, "bottom": {"n": 3, "bar": "Ø20"}, "top": {"n": 2, "bar": "Ø16"},
     "slab_bars": {"n": 2, "bar": "Ø12"}, "stirrup": "Ø10", "stirrup_spacing": 150,
 }  # fmt: skip
+CIRCULAR_COLUMN: dict[str, object] = {
+    "material": "concrete", "diameter": 600, "cover": 40, "n_bars": 8, "bar": "Ø20",
+    "tie_kind": "spiral", "tie": "Ø10", "pitch": 75,
+}  # fmt: skip
 ORACLES = {
     "rect_column": RECT_COLUMN,
     "polygon_column": POLYGON_COLUMN,
     "rect_hollow": RECT_HOLLOW,
     "t_beam": T_BEAM,
+    "circular_column": CIRCULAR_COLUMN,
 }
 
 
@@ -197,6 +205,135 @@ def test_t_beam_oracle_ring_is_the_fixture_ring() -> None:
     assert {plan.bars[i].xy for i in stirrup.bars} == {(-100, 50), (100, 50), (102, 552),
                                                        (-102, 552)}  # fmt: skip
     assert (stirrup.designation, stirrup.spacing_mm) == ("Ø10", 150.0)
+
+
+# --- circular_column (C4 record §6, rows 1 and 2) ------------------------------------------
+
+
+def test_circular_column_oracle_row_1_the_fixture_column() -> None:
+    plan = expand("circular_column", CIRCULAR_COLUMN)
+    (face,) = plan.faces
+    assert (face.role, face.material, face.holes) == ("concrete", "concrete", ())
+    assert face.boundary == PlanCircle((0.0, 0.0), 300.0)
+    assert math.isclose(math.pi * 300.0**2, 282_743.339, abs_tol=5e-4)
+    # r_b = 300 - 40 - 10 - 10 = 240. A whole quarter turn is exact: an unsnapped cos 90° is
+    # 1.5e-14 away from the axis, and these are exact comparisons.
+    assert [plan.bars[k].xy for k in (0, 2, 4, 6)] == [(240, 0), (0, 240), (-240, 0), (0, -240)]
+    k = 240.0 * math.sqrt(0.5)  # 169.706
+    for bar, (sx, sy) in zip(
+        [plan.bars[n] for n in (1, 3, 5, 7)], ((1, 1), (-1, 1), (-1, -1), (1, -1)), strict=True
+    ):
+        assert math.isclose(bar.x_mm, sx * k, rel_tol=REL)
+        assert math.isclose(bar.y_mm, sy * k, rel_tol=REL)
+    assert math.isclose(k, 169.706, abs_tol=5e-4)
+    assert len(plan.bars) == 8
+    assert {(b.designation, b.diameter_mm, b.material) for b in plan.bars} == {("Ø20", 20.0, None)}
+    assert plan.circular_ties == (PlanCircularTie("spiral", (0.0, 0.0), 255.0, "Ø10", 10.0, 75.0),)
+    assert plan.cover_guides == (PlanCoverGuide(0, 40.0, 10.0, 20.0),)
+    assert plan.hoops == () and plan.crossties == ()
+
+
+def test_circular_column_oracle_row_2_off_centre_with_a_hoop() -> None:
+    plan = expand(
+        "circular_column",
+        {
+            "material": "C30", "bar_material": "A630", "center_mm": [100, -50], "diameter": 500,
+            "cover": 40, "n_bars": 6, "bar": "Ø16", "tie_kind": "hoop", "tie": "Ø8", "pitch": 150,
+        },
+    )  # fmt: skip
+    assert plan.faces[0].boundary == PlanCircle((100.0, -50.0), 250.0)
+    assert math.isclose(math.pi * 250.0**2, 196_349.541, abs_tol=5e-4)
+    # r_b = 250 - 40 - 8 - 8 = 194; 194 sin 60° = 168.009.
+    expected = [
+        (294.0, -50.0), (197.0, 118.009), (3.0, 118.009),
+        (-94.0, -50.0), (3.0, -218.009), (197.0, -218.009),
+    ]  # fmt: skip
+    for bar, (x, y) in zip(plan.bars, expected, strict=True):
+        assert math.isclose(bar.x_mm, x, abs_tol=5e-4) and math.isclose(bar.y_mm, y, abs_tol=5e-4)
+    assert plan.bars[0].xy == (294.0, -50.0) and plan.bars[3].xy == (-94.0, -50.0)  # exact
+    assert plan.hoops == ()  # a hoop is a circular tie (ADR 0039 decision 5, Errata 10.2)
+    assert plan.circular_ties == (PlanCircularTie("hoop", (100.0, -50.0), 206.0, "Ø8", 8.0, 150.0),)
+    assert {bar.material for bar in plan.bars} == {"A630"}
+
+
+def test_tie_kind_hoop_changes_only_the_kind() -> None:
+    spiral = expand("circular_column", CIRCULAR_COLUMN)
+    hoop = expand("circular_column", _with(CIRCULAR_COLUMN, tie_kind="hoop"))
+    assert hoop.circular_ties[0].kind == "hoop"
+    assert hoop == replace(
+        spiral, circular_ties=(replace(spiral.circular_ties[0], kind="hoop"),)
+    )
+
+
+AT_THE_LIMIT: dict[str, object] = {
+    "material": "C30", "diameter": 300, "cover": 40, "n_bars": 16, "bar": "Ø32",
+    "tie_kind": "spiral", "tie": "Ø10", "pitch": 75,
+}  # fmt: skip
+
+
+def test_circular_column_bar_spacing_limit_by_hand() -> None:
+    # r_b = 150 - 40 - 10 - 16 = 84. Chords 2 r_b sin(π / n): 32.78 mm at 16, 30.87 at 17; Ø32.
+    assert math.isclose(2.0 * 84.0 * math.sin(math.pi / 16), 32.78, abs_tol=5e-3)
+    assert math.isclose(2.0 * 84.0 * math.sin(math.pi / 17), 30.87, abs_tol=5e-3)
+    assert len(expand("circular_column", AT_THE_LIMIT).bars) == 16
+    with pytest.raises(TemplateParamError) as caught:
+        expand("circular_column", _with(AT_THE_LIMIT, n_bars=17))
+    assert caught.value.param == "n_bars"
+
+
+def test_circular_column_pitch_limit_is_the_tie() -> None:
+    plan = expand("circular_column", _with(CIRCULAR_COLUMN, pitch=10))
+    assert plan.circular_ties[0].pitch_mm == 10.0
+    with pytest.raises(TemplateParamError, match="^circular_column: pitch: 9.9 mm is under"):
+        expand("circular_column", _with(CIRCULAR_COLUMN, pitch=9.9))
+
+
+def test_tie_kind_is_required_and_the_choice_with_a_default_is_as_it_was() -> None:
+    with pytest.raises(TemplateParamError, match="^circular_column: tie_kind: required$"):
+        expand("circular_column", _with(CIRCULAR_COLUMN, tie_kind=_DROP))
+    # The form with a default: absent takes it, and null is still refused, not defaulted.
+    assert expand("rect_column", _with(RECT_COLUMN, crossties=_DROP)).crossties == ()
+    with pytest.raises(TemplateParamError, match="crossties: must be one of .* got None$"):
+        expand("rect_column", _with(RECT_COLUMN, crossties=None))
+
+
+@pytest.mark.parametrize("n", range(3, 60))
+@pytest.mark.parametrize("radius", [240.0, 123.456, 0.1 + 0.2 + 300.0])
+def test_a_template_and_add_bars_on_circle_place_the_same_floats(n: int, radius: float) -> None:
+    """One formula (`layout.on_circle`): the freehand op's bars, and the template's, exactly."""
+    diameter = 2.0 * (radius + 16.0)  # cover 1 + tie 10 + bar 10 / 2 = 16
+    r_bars = diameter / 2.0 - (1.0 + 10.0 + 5.0)
+    doc = Document()
+    freehand = []
+    for bar in doc.add_bars_on_circle((12.5, -7.1), r_bars, n, "Ø10"):
+        xyz = doc.entity(bar.point_id).xyz_mm  # pyright: ignore[reportAttributeAccessIssue]
+        freehand.append((xyz.x_mm, xyz.y_mm))
+    plan = expand(
+        "circular_column",
+        {
+            "material": "C30", "center_mm": [12.5, -7.1], "diameter": diameter, "cover": 1,
+            "n_bars": n, "bar": "Ø10", "tie_kind": "hoop", "tie": "Ø10", "pitch": 100,
+        },
+    )  # fmt: skip
+    assert [bar.xy for bar in plan.bars] == freehand
+    assert freehand == [on_circle((12.5, -7.1), r_bars, 360.0 * k / n) for k in range(n)]
+
+
+def test_over_1000_n_bars_refuses_before_placing_a_bar(monkeypatch: pytest.MonkeyPatch) -> None:
+    def placed(*_args: object) -> Point2:
+        raise AssertionError("a bar was placed")
+
+    monkeypatch.setattr(circular_column, "on_circle", placed)
+    with pytest.raises(TemplateParamError, match="^circular_column: n_bars: .*at most 1000"):
+        expand("circular_column", _with(CIRCULAR_COLUMN, n_bars=1001))
+
+
+def test_on_circle_is_exact_at_every_whole_quarter_turn() -> None:
+    for turn, xy in (
+        (0.0, (7.0, 0.0)), (90.0, (0.0, 7.0)), (180.0, (-7.0, 0.0)), (270.0, (0.0, -7.0)),
+        (360.0, (7.0, 0.0)), (-90.0, (0.0, -7.0)), (450.0, (0.0, 7.0)),
+    ):  # fmt: skip
+        assert on_circle((0.0, 0.0), 7.0, turn) == xy
 
 
 @pytest.mark.parametrize("template", sorted(ORACLES))
@@ -349,6 +486,37 @@ REFUSALS: list[tuple[str, dict[str, object], str]] = [
     ("t_beam", {"h": 99, "hf": 50, "slab_bars": _DROP}, "h"),  # rows 1 mm apart
     ("t_beam", {"hf": 45}, "hf"),  # finding 3: 3 mm under the slab bars
     ("t_beam", {"hf": 71.9}, "hf"),
+    ("rect_column", {"crossties": None}, "crossties"),  # `choice` with a default, as it was
+    ("circular_column", {"material": ""}, "material"),
+    ("circular_column", {"bar_material": 7}, "bar_material"),
+    ("circular_column", {"diameter": _DROP}, "diameter"),
+    ("circular_column", {"diameter": -600}, "diameter"),
+    ("circular_column", {"diameter": 120}, "diameter"),  # r_b = 60 - 40 - 10 - 10 = 0
+    ("circular_column", {"diameter": 60}, "diameter"),  # r_t = 30 - 40 - 5 < 0: no tie either
+    ("circular_column", {"diameter": 122}, "diameter"),  # r_b = 1: even three bars overlap
+    ("circular_column", {"diameter": 142}, "diameter"),  # r_b = 11: √3 r_b = 19.05, under Ø20
+    ("circular_column", {"diameter": 144}, "n_bars"),  # r_b = 12: 20.78 for 3, but 9.18 for 8
+    ("circular_column", {"cover": 0}, "cover"),
+    ("circular_column", {"n_bars": _DROP}, "n_bars"),
+    ("circular_column", {"n_bars": 2}, "n_bars"),
+    ("circular_column", {"n_bars": 8.0}, "n_bars"),
+    ("circular_column", {"n_bars": True}, "n_bars"),
+    ("circular_column", {"n_bars": 1001}, "n_bars"),
+    ("circular_column", {"n_bars": 10**9}, "n_bars"),
+    ("circular_column", {"n_bars": 200}, "n_bars"),  # 2 x 240 sin(π / 200) = 7.5 mm, under Ø20
+    ("circular_column", {"bar": "#5"}, "bar"),
+    ("circular_column", {"tie": "Ø99"}, "tie"),
+    ("circular_column", {"tie_kind": _DROP}, "tie_kind"),
+    ("circular_column", {"tie_kind": None}, "tie_kind"),
+    ("circular_column", {"tie_kind": "helix"}, "tie_kind"),
+    ("circular_column", {"tie_kind": 1}, "tie_kind"),
+    ("circular_column", {"pitch": _DROP}, "pitch"),
+    ("circular_column", {"pitch": 0}, "pitch"),
+    ("circular_column", {"pitch": 9.9}, "pitch"),  # under Ø10: the turns overlap
+    ("circular_column", {"center_mm": [2.0**21, 0]}, "center_mm"),
+    ("circular_column", {"center_mm": [1, 2, 3]}, "center_mm"),
+    ("circular_column", {"start_angle_deg": 45}, "start_angle_deg"),
+    ("circular_column", {"b": 300}, "b"),
 ]
 
 
@@ -394,6 +562,8 @@ def test_the_bar_cap_refuses_before_building() -> None:
         ("polygon_column", {"ring": _ngon(20_000)}),
         ("polygon_column", {"spacing_max": 1e-6}),
         ("rect_hollow", {"spacing_max": 1e-6}),
+        ("circular_column", {"n_bars": 1001}),
+        ("circular_column", {"n_bars": 10**9}),
     ]
     for template, changes in cases:
         with pytest.raises(TemplateParamError, match="a template places at most 1000"):

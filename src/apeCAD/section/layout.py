@@ -104,6 +104,16 @@ def edge_positions(
     return _place(a, b, params)
 
 
+def on_circle(center: Point2, radius_mm: float, angle_deg: float) -> Point2:
+    """A point on a circle; a whole quarter turn is exact, so 0, 90, 180, 270 sit on axes."""
+    quarter = angle_deg / 90.0
+    if quarter.is_integer():
+        cos, sin = ((1.0, 0.0), (0.0, 1.0), (-1.0, 0.0), (0.0, -1.0))[int(quarter) % 4]
+    else:
+        cos, sin = math.cos(math.radians(angle_deg)), math.sin(math.radians(angle_deg))
+    return (center[0] + radius_mm * cos, center[1] + radius_mm * sin)
+
+
 def _place(a: Point2, b: Point2, params: Sequence[float]) -> list[Point2]:
     """Points at parameters t in [0, 1] from a to b; the lattice when the line is inclined."""
     if is_inclined(a, b):
