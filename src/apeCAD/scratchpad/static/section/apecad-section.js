@@ -2,9 +2,10 @@
 // Zero CDN URLs, no innerHTML, no module-scope DOM access.
 
 import { createViewport, hitTestSection, renderSectionCanvas } from "./canvas2d.js";
+import { displayList, entityTitle } from "./display2d.js";
 import { parseInput, snapPoint2D } from "./input-parse.js";
 import { createOverlayController, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
-import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene } from "./transport.js";
+import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene, v1DraftOrNull } from "./transport.js";
 
 export const API_VERSION = 2;
 export { httpTransport, MAX_OVERLAY_PRIMITIVES, mockTransport, parseInput, parseOverlay, snapPoint2D };
@@ -156,29 +157,19 @@ export function create(container, opts = {}) {
   });
 
   function updateStatusAndProps() {
-    const nFaces = (scene.concrete_faces || []).length;
+    const nFaces = (scene.concrete_faces || []).length + (scene.section_faces || []).length;
     const nBars = (scene.bars || []).length;
     const nHoops = (scene.hoops || []).length;
     const nTies = (scene.crossties || []).length;
-    const warns = scene.warnings || currentDraft?.warnings || [];
+    const notDrawn = displayList(scene).notDrawn.map((n) => ({ code: "not-drawn", message: n.message }));
+    const warns = [...(scene.warnings || currentDraft?.warnings || []), ...notDrawn];
     statusLabel.textContent = `${nFaces} face · ${nBars} bar · ${nHoops} hoop · ${nTies} tie` + (warns.length ? ` · WARN ${warns.length}` : "");
     if (typeof warnBox.replaceChildren === "function") {
       warnBox.replaceChildren(...warns.map((w) => el(doc, "div", "apecad-section-warn-item", `[${w.code || "WARN"}] ${w.message || ""}`)));
     }
     const selId = selectedIds.values().next().value;
     let title = `Tool: ${activeTool} · Bar ${params.designation}`;
-    if (selId != null) {
-      const bar = (scene.bars || []).find((b) => b.id === selId);
-      const face = (scene.concrete_faces || []).find((f) => f.id === selId);
-      const hoop = (scene.hoops || []).find((h) => h.id === selId);
-      const tie = (scene.crossties || []).find((t) => t.id === selId);
-      const leg = (scene.wall_legs || []).find((l) => l.id === selId);
-      if (bar) title = `Bar #${bar.id} (${bar.designation})`;
-      else if (face) title = `Outline #${face.id} (${face.material})`;
-      else if (hoop) title = `Hoop #${hoop.id} (${hoop.designation} @ ${hoop.spacing_mm})`;
-      else if (tie) title = `Crosstie #${tie.id} (${tie.designation})`;
-      else if (leg) title = `WallLeg #${leg.id} (t=${leg.thickness_mm} mm)`;
-    }
+    if (selId != null) title = entityTitle(scene, selId) ?? title;
     if (typeof propsBox.replaceChildren === "function") {
       propsBox.replaceChildren(el(doc, "div", "apecad-section-prop-title", title));
     }
@@ -202,7 +193,8 @@ export function create(container, opts = {}) {
     if (Number.isInteger(res.revision)) docRevision = res.revision;
     else if (edits) docRevision += 1;
     if (res.scene) scene = normalizeScene(res.scene);
-    currentDraft = res.draft || buildDraftFromScene(scene, res.document);
+    // `draft: null` (v1 cannot say the document) stays null: never a v1 draft that drops a v2 entity.
+    currentDraft = res.draft !== undefined ? res.draft : v1DraftOrNull(scene, res.document);
     if (res.warnings && !scene.warnings?.length) scene.warnings = res.warnings;
     redraw();
     if (emitChange && onChange && currentDraft) onChange(currentDraft);

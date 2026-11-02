@@ -1,5 +1,8 @@
 // 2-D HTML5 Canvas renderer, viewport math, and hit-testing for the section client (ADR 0026).
-// Zero external dependencies; no module-scope DOM access.
+// Zero external dependencies; no module-scope DOM access. What is drawn, on which layer, and
+// what a click hits come from the display list (`display2d.js`); the colours stay here.
+
+import { displayList, hitTestDisplay, pointInPolygon, sceneBoundsMm } from "./display2d.js";
 
 export const PALETTE = {
   bg: "#f7f6f3",
@@ -8,12 +11,20 @@ export const PALETTE = {
   axis: "#b9b5ab",
   concreteFill: "rgba(180, 180, 180, 0.55)",
   concreteEdge: "#14181d",
+  // v2 faces (ADR 0039; render/style.py, C5-S1): steel cut on Grey128, a void in the paper
+  // colour so it takes away what it cuts, both edged like concrete.
+  steelFill: "#808080",
+  steelEdge: "#14181d",
+  voidFill: "#f7f6f3",
+  voidEdge: "#14181d",
   legAxis: "#6e757c",
   coverRing: "#808080",
   centreRing: "#97a1ad",
   rebar: "#000077",
   hoop: "#000077",
   crosstie: "#000077",
+  circularTie: "#000077",
+  barSelectedEdge: "#ffffff",
   selected: "#2f74ad",
   selectedFill: "rgba(47, 116, 173, 0.24)",
   ghost: "#2f74ad",
@@ -46,61 +57,8 @@ export const OVERLAY_EXAMPLE_SCALES = Object.freeze({
   bar_state: { kind: "categorical", domain: ["elastic", "yielded", "fractured"], colors: ["#2f74ad", "#c64a1a", "#14181d"], unit: "", title: "Bar state" },
 });
 
-function distToSegment(p, a, b) {
-  const dx = b[0] - a[0], dy = b[1] - a[1];
-  const len2 = dx * dx + dy * dy;
-  if (len2 <= 1e-12) return Math.hypot(p[0] - a[0], p[1] - a[1]);
-  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len2));
-  return Math.hypot(p[0] - (a[0] + t * dx), p[1] - (a[1] + t * dy));
-}
-
-export function pointInPolygon(pt, ring) {
-  if (!ring || ring.length < 3) return false;
-  let inside = false;
-  const x = pt[0], y = pt[1];
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const xi = ring[i][0], yi = ring[i][1];
-    const xj = ring[j][0], yj = ring[j][1];
-    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
-}
-
-export function sceneBoundsMm(scene) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const visit = (pt) => {
-    if (!Array.isArray(pt) || pt.length < 2) return;
-    const x = Number(pt[0]), y = Number(pt[1]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    if (x < minX) minX = x;
-    if (y < minY) minY = y;
-    if (x > maxX) maxX = x;
-    if (y > maxY) maxY = y;
-  };
-  if (scene) {
-    for (const f of scene.concrete_faces || []) {
-      for (const p of f.outer_mm || f.ring_mm || []) visit(p);
-    }
-    for (const l of scene.wall_legs || []) {
-      for (const p of l.outline_mm || [l.start_mm, l.end_mm]) visit(p);
-    }
-    for (const b of scene.bars || []) {
-      const c = b.centre_mm || [b.x_mm, b.y_mm];
-      const r = (b.diameter_mm || 16) / 2;
-      visit([c[0] - r, c[1] - r]);
-      visit([c[0] + r, c[1] + r]);
-    }
-    for (const h of scene.hoops || []) {
-      for (const p of h.display_ring_mm || h.ring_mm || []) visit(p);
-    }
-  }
-  if (!Number.isFinite(minX)) return [0, 0, 500, 500];
-  if (maxX - minX < 1e-3) { minX -= 100; maxX += 100; }
-  if (maxY - minY < 1e-3) { minY -= 100; maxY += 100; }
-  return [minX, minY, maxX, maxY];
-}
+// The scene is painted from its display list, layer by layer; a click hits by role.
+export { pointInPolygon, sceneBoundsMm };
 
 export function createViewport(canvas) {
   const view = {
@@ -152,75 +110,7 @@ export function createViewport(canvas) {
 }
 
 export function hitTestSection(screenPt, view, scene, aperturePx = 10) {
-  if (!scene) return null;
-  const worldPt = view.screenToWorld(screenPt);
-
-  let bestBar = null, bestBarD = Infinity;
-  for (const b of scene.bars || []) {
-    const c = b.centre_mm || [b.x_mm, b.y_mm];
-    const sp = view.worldToScreen(c);
-    const rPx = Math.max(aperturePx, ((b.diameter_mm || 16) / 2) * view.scale + 4);
-    const d = Math.hypot(sp[0] - screenPt[0], sp[1] - screenPt[1]);
-    if (d <= rPx && d < bestBarD) {
-      bestBar = { kind: "Bar", id: b.id ?? b.entity_id, item: b };
-      bestBarD = d;
-    }
-  }
-  if (bestBar) return bestBar;
-
-  for (const t of scene.crossties || []) {
-    if (!t.start_mm || !t.end_mm) continue;
-    const a = view.worldToScreen(t.start_mm), b = view.worldToScreen(t.end_mm);
-    if (distToSegment(screenPt, a, b) <= aperturePx) {
-      return { kind: "Crosstie", id: t.id ?? t.entity_id, item: t };
-    }
-  }
-
-  for (const h of scene.hoops || []) {
-    const ring = h.display_ring_mm || h.ring_mm || [];
-    for (let i = 0; i < ring.length; i++) {
-      const a = view.worldToScreen(ring[i]), b = view.worldToScreen(ring[(i + 1) % ring.length]);
-      if (distToSegment(screenPt, a, b) <= aperturePx) {
-        return { kind: "Hoop", id: h.id ?? h.entity_id, item: h };
-      }
-    }
-  }
-
-  for (const g of scene.cover_guides || []) {
-    const ring = g.cover_ring_mm || [];
-    for (let i = 0; i < ring.length; i++) {
-      const a = view.worldToScreen(ring[i]), b = view.worldToScreen(ring[(i + 1) % ring.length]);
-      if (distToSegment(screenPt, a, b) <= aperturePx) {
-        return { kind: "CoverGuide", id: g.id ?? g.entity_id, item: g };
-      }
-    }
-  }
-
-  for (const l of scene.wall_legs || []) {
-    const s = l.axis_start_mm || l.start_mm, e = l.axis_end_mm || l.end_mm;
-    if (s && e) {
-      const a = view.worldToScreen(s), b = view.worldToScreen(e);
-      if (distToSegment(screenPt, a, b) <= aperturePx) {
-        return { kind: "WallLeg", id: l.id ?? l.entity_id, item: l };
-      }
-    }
-  }
-
-  for (const f of scene.concrete_faces || []) {
-    const ring = f.outer_mm || f.ring_mm || [];
-    for (let i = 0; i < ring.length; i++) {
-      const a = view.worldToScreen(ring[i]), b = view.worldToScreen(ring[(i + 1) % ring.length]);
-      if (distToSegment(screenPt, a, b) <= aperturePx) {
-        return { kind: "ConcreteFace", id: f.id ?? f.entity_id, item: f, edge_index: i };
-      }
-    }
-    if (pointInPolygon(worldPt, ring)) {
-      const inHole = (f.openings_mm || []).some((hole) => pointInPolygon(worldPt, hole));
-      if (!inHole) return { kind: "ConcreteFace", id: f.id ?? f.entity_id, item: f };
-    }
-  }
-
-  return null;
+  return scene ? hitTestDisplay(screenPt, view, displayList(scene), aperturePx) : null;
 }
 
 function traceRing(ctx, view, ring) {
@@ -289,39 +179,136 @@ function drawGrid(ctx, view, stepMm = 50) {
   ctx.stroke();
 }
 
-function drawSelectionOutline(ctx, view, scene, selectedIds) {
-  const isSel = (item) => selectedIds.has(item.id ?? item.entity_id);
-  const strokeRing = (ring, width) => {
-    if (!ring || ring.length < 2) return;
-    ctx.lineWidth = width;
+function traceLoop(ctx, view, loop) {
+  if (loop.ring) { traceRing(ctx, view, loop.ring); return; }
+  const [sx, sy] = view.worldToScreen(loop.centre);
+  const r = loop.radius * view.scale;
+  ctx.moveTo(sx + r, sy);
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.closePath();
+}
+
+function strokeSegment(ctx, view, [s, e]) {
+  const [x0, y0] = view.worldToScreen(s), [x1, y1] = view.worldToScreen(e);
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
+  ctx.stroke();
+}
+
+function strokeRing(ctx, view, ring) {
+  ctx.beginPath();
+  traceRing(ctx, view, ring);
+  ctx.stroke();
+}
+
+function strokeCircle(ctx, view, circle) {
+  ctx.beginPath();
+  traceLoop(ctx, view, circle);
+  ctx.stroke();
+}
+
+const FACE_FILL = { concrete: "concreteFill", steel: "steelFill", void: "voidFill" };
+const FACE_EDGE = { concrete: "concreteEdge", steel: "steelEdge", void: "voidEdge" };
+
+// One face: its boundary and holes are one path filled even-odd, so a hole stays open
+// whatever its ring's orientation (ADR 0039; C5 record invariant 4). A void is painted in
+// the paper colour, so it takes away what it cuts.
+function paintFace(ctx, view, e, sel) {
+  ctx.beginPath();
+  for (const loop of e.loops) traceLoop(ctx, view, loop);
+  if (!sel || e.layer === "void") {
+    ctx.fillStyle = PALETTE[FACE_FILL[e.layer]];
+    ctx.fill("evenodd");
+  }
+  if (sel) {
+    ctx.fillStyle = PALETTE.selectedFill;
+    ctx.fill("evenodd");
+  }
+  ctx.strokeStyle = sel ? PALETTE.selected : PALETTE[FACE_EDGE[e.layer]];
+  ctx.lineWidth = sel ? 2.2 : 1.5;
+  ctx.stroke();
+}
+
+// One display-list entry on its layer (`display2d.js::SECTION_LAYERS`).
+function paintEntry(ctx, view, e, sel) {
+  const d = e.item.diameter_mm || 10;
+  if (e.loops) {
+    paintFace(ctx, view, e, sel);
+  } else if (e.layer === "cover") {
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.coverRing;
+    ctx.lineWidth = sel ? 1.8 : 1.1;
+    strokeRing(ctx, view, e.rings[0]);
+    ctx.restore();
+    if (e.centreRing) {
+      ctx.save();
+      ctx.setLineDash([2, 4]);
+      ctx.strokeStyle = PALETTE.centreRing;
+      ctx.lineWidth = 1;
+      strokeRing(ctx, view, e.centreRing);
+      ctx.restore();
+    }
+  } else if (e.layer === "leg") { // dash-dot centreline
+    ctx.save();
+    ctx.setLineDash([10, 4, 2, 4]);
+    ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.legAxis;
+    ctx.lineWidth = sel ? 2 : 1.2;
+    strokeSegment(ctx, view, e.segment);
+    ctx.restore();
+  } else if (e.layer === "hoop") {
+    ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.hoop;
+    ctx.lineWidth = Math.max(sel ? 2.4 : 1.6, d * view.scale * 0.6);
+    strokeRing(ctx, view, e.rings[0]);
+  } else if (e.layer === "crosstie") {
+    ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.crosstie;
+    ctx.lineWidth = Math.max(sel ? 2.4 : 1.5, d * view.scale * 0.55);
+    strokeSegment(ctx, view, e.segment);
+  } else if (e.layer === "circular-tie") { // the centreline, the hoop's pen
+    ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.circularTie;
+    ctx.lineWidth = Math.max(sel ? 2.4 : 1.6, d * view.scale * 0.6);
+    strokeCircle(ctx, view, e.circle);
+  } else if (e.layer === "bar") {
+    const [sx, sy] = view.worldToScreen(e.disc.centre);
     ctx.beginPath();
-    traceRing(ctx, view, ring);
-    ctx.stroke();
-  };
+    ctx.arc(sx, sy, Math.max(3.5, e.disc.radius * view.scale), 0, Math.PI * 2);
+    ctx.fillStyle = sel ? PALETTE.selected : PALETTE.rebar;
+    ctx.fill();
+    if (sel) {
+      ctx.strokeStyle = PALETTE.barSelectedEdge;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }
+}
+
+function drawSelectionOutline(ctx, view, display, selectedIds) {
   ctx.save();
   ctx.strokeStyle = PALETTE.selected;
-  for (const f of (scene.concrete_faces || []).filter(isSel)) strokeRing(f.outer_mm || f.ring_mm, 2.2);
-  for (const h of (scene.hoops || []).filter(isSel)) strokeRing(h.display_ring_mm || h.ring_mm, 2.4);
-  for (const g of (scene.cover_guides || []).filter(isSel)) strokeRing(g.cover_ring_mm, 1.8);
-  const segments = [
-    ...(scene.wall_legs || []).filter(isSel).map((l) => [l.axis_start_mm || l.start_mm, l.axis_end_mm || l.end_mm, 2]),
-    ...(scene.crossties || []).filter(isSel).map((t) => [t.start_mm, t.end_mm, 2.4]),
-  ];
-  for (const [s, e, width] of segments) {
-    if (!s || !e) continue;
-    const [x0, y0] = view.worldToScreen(s), [x1, y1] = view.worldToScreen(e);
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
-  }
-  for (const b of (scene.bars || []).filter(isSel)) {
-    const [sx, sy] = view.worldToScreen(b.centre_mm || [b.x_mm, b.y_mm]);
-    ctx.beginPath();
-    ctx.arc(sx, sy, Math.max(3.5, ((b.diameter_mm || 16) / 2) * view.scale), 0, Math.PI * 2);
-    ctx.fillStyle = PALETTE.selected;
-    ctx.fill();
+  for (const e of display.entries) {
+    if (!selectedIds.has(e.id)) continue;
+    if (e.loops) {
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for (const loop of e.loops) traceLoop(ctx, view, loop);
+      ctx.stroke();
+    } else if (e.rings) {
+      ctx.lineWidth = e.layer === "cover" ? 1.8 : 2.4;
+      strokeRing(ctx, view, e.rings[0]);
+    } else if (e.segment) {
+      ctx.lineWidth = e.layer === "leg" ? 2 : 2.4;
+      strokeSegment(ctx, view, e.segment);
+    } else if (e.circle) {
+      ctx.lineWidth = 2.4;
+      strokeCircle(ctx, view, e.circle);
+    } else if (e.disc) {
+      const [sx, sy] = view.worldToScreen(e.disc.centre);
+      ctx.beginPath();
+      ctx.arc(sx, sy, Math.max(3.5, e.disc.radius * view.scale), 0, Math.PI * 2);
+      ctx.fillStyle = PALETTE.selected;
+      ctx.fill();
+    }
   }
   ctx.restore();
 }
@@ -336,113 +323,16 @@ export function renderSectionCanvas(canvas, view, state) {
   ctx.fillRect(0, 0, view.width, view.height);
   if (gridOn) drawGrid(ctx, view, gridStepMm);
 
-  if (scene) {
-    // 1. Concrete faces + openings
-    for (const f of scene.concrete_faces || []) {
-      const ring = f.outer_mm || f.ring_mm || [];
-      if (ring.length < 3) continue;
-      const sel = selectedIds.has(f.id ?? f.entity_id);
-      ctx.beginPath();
-      traceRing(ctx, view, ring);
-      for (const hole of f.openings_mm || []) traceRing(ctx, view, hole);
-      ctx.fillStyle = sel ? PALETTE.selectedFill : PALETTE.concreteFill;
-      ctx.fill("evenodd");
-      ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.concreteEdge;
-      ctx.lineWidth = sel ? 2.2 : 1.5;
-      ctx.stroke();
-    }
-
-    // 2. Wall legs (dash-dot centreline)
-    for (const l of scene.wall_legs || []) {
-      const s = l.axis_start_mm || l.start_mm, e = l.axis_end_mm || l.end_mm;
-      if (!s || !e) continue;
-      const sel = selectedIds.has(l.id ?? l.entity_id);
-      const [x0, y0] = view.worldToScreen(s), [x1, y1] = view.worldToScreen(e);
-      ctx.save();
-      ctx.setLineDash([10, 4, 2, 4]);
-      ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.legAxis;
-      ctx.lineWidth = sel ? 2 : 1.2;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // 3. Cover guides
-    for (const g of scene.cover_guides || []) {
-      const sel = selectedIds.has(g.id ?? g.entity_id);
-      if (Array.isArray(g.cover_ring_mm) && g.cover_ring_mm.length >= 3) {
-        ctx.save();
-        ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.coverRing;
-        ctx.lineWidth = sel ? 1.8 : 1.1;
-        ctx.beginPath();
-        traceRing(ctx, view, g.cover_ring_mm);
-        ctx.stroke();
-        ctx.restore();
-      }
-      if (Array.isArray(g.bar_centre_ring_mm) && g.bar_centre_ring_mm.length >= 3) {
-        ctx.save();
-        ctx.setLineDash([2, 4]);
-        ctx.strokeStyle = PALETTE.centreRing;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        traceRing(ctx, view, g.bar_centre_ring_mm);
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-
-    // 4. Hoops
-    for (const h of scene.hoops || []) {
-      const ring = h.display_ring_mm || h.ring_mm || [];
-      if (ring.length < 2) continue;
-      const sel = selectedIds.has(h.id ?? h.entity_id);
-      ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.hoop;
-      ctx.lineWidth = Math.max(sel ? 2.4 : 1.6, (h.diameter_mm || 10) * view.scale * 0.6);
-      ctx.beginPath();
-      traceRing(ctx, view, ring);
-      ctx.stroke();
-    }
-
-    // 5. Crossties
-    for (const t of scene.crossties || []) {
-      if (!t.start_mm || !t.end_mm) continue;
-      const sel = selectedIds.has(t.id ?? t.entity_id);
-      const [x0, y0] = view.worldToScreen(t.start_mm);
-      const [x1, y1] = view.worldToScreen(t.end_mm);
-      ctx.strokeStyle = sel ? PALETTE.selected : PALETTE.crosstie;
-      ctx.lineWidth = Math.max(sel ? 2.4 : 1.5, (t.diameter_mm || 10) * view.scale * 0.55);
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.stroke();
-    }
-
-    // 6. Bars
-    for (const b of scene.bars || []) {
-      const c = b.centre_mm || [b.x_mm, b.y_mm];
-      const [sx, sy] = view.worldToScreen(c);
-      const rPx = Math.max(3.5, ((b.diameter_mm || 16) / 2) * view.scale);
-      const sel = selectedIds.has(b.id ?? b.entity_id);
-      ctx.beginPath();
-      ctx.arc(sx, sy, rPx, 0, Math.PI * 2);
-      ctx.fillStyle = sel ? PALETTE.selected : PALETTE.rebar;
-      ctx.fill();
-      if (sel) {
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-    }
-  }
+  // 1-6. The section, layer by layer, back to front: concrete, steel, void, cover, leg, hoop,
+  // crosstie, circular tie, bar (C5 record §3). Role decides overlap, never the id.
+  const display = displayList(scene);
+  for (const e of display.entries) paintEntry(ctx, view, e, selectedIds.has(e.id));
 
   // 6b. The results overlay sits above the section and below the selection (ADR 0041 D2),
   // so the selection is stroked again on top of it.
   if (scene && typeof state?.drawOverlay === "function") {
     state.drawOverlay(ctx, view);
-    if (selectedIds.size) drawSelectionOutline(ctx, view, scene, selectedIds);
+    if (selectedIds.size) drawSelectionOutline(ctx, view, display, selectedIds);
   }
 
   // 7. Ghost preview

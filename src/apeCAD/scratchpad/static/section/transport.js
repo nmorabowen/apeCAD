@@ -43,7 +43,28 @@ export function emptyScene() {
   return {
     unit: "mm", revision: 0, points: [], lines: [], solids: [], faces: [],
     concrete_faces: [], wall_legs: [], cover_guides: [], bars: [], hoops: [], crossties: [], warnings: [],
+    section_faces: [], circular_ties: [], templates: [],
   };
+}
+
+// Why v1 cannot say this scene's document, or null when it can: the client's twin of
+// `apeCAD.section.draft_v2.require_v1_expressible` (a v2 face, a circular tie, a template,
+// a bar naming its steel). Nothing is dropped to fit (ADR 0039 D1, Errata 8.2).
+export function v1Unsayable(scene) {
+  const first = (key, test = () => true) => (scene?.[key] || []).find(test);
+  const face = first("section_faces"), tie = first("circular_ties"), template = first("templates");
+  const bar = first("bars", (b) => b.material != null);
+  if (template) return `entity ${template.entity_id ?? template.id} is a ${template.template} template`;
+  if (face) return `face ${face.entity_id ?? face.id} is a v2 ${face.role} face`;
+  if (tie) return `entity ${tie.entity_id ?? tie.id} is a circular tie (${tie.kind})`;
+  if (bar) return `bar ${bar.entity_id ?? bar.id} names its steel ${JSON.stringify(bar.material)}`;
+  return null;
+}
+
+// The client-built v1 draft of a scene, or null when v1 cannot say its document (C5 record
+// invariant 8): a v1 draft that dropped a v2 entity would be a lie a host could save.
+export function v1DraftOrNull(rawScene, docDict = null) {
+  return v1Unsayable(rawScene) === null ? buildDraftFromScene(rawScene, docDict) : null;
 }
 
 export function resolveXY(v, ptById) {
@@ -102,6 +123,10 @@ export function normalizeScene(rawScene) {
     const id = g.entity_id ?? g.id, faceId = g.face_id ?? g.target_id;
     return { ...g, id, entity_id: id, face_id: faceId, target_id: faceId };
   });
+  // The v2 lists (C5-S3) keep the server's items as they are, plus `id`; `display2d.js` reads them.
+  for (const key of ["section_faces", "circular_ties", "templates"]) {
+    scene[key] = (scene[key] || []).map((item) => ({ ...item, id: item.entity_id ?? item.id, entity_id: item.entity_id ?? item.id }));
+  }
   scene.warnings = scene.warnings || [];
   return scene;
 }
@@ -176,6 +201,10 @@ export function seedToOps(doc, applyOpToScene) {
     throw new Error("Unsupported load payload");
   }
   const sec = doc.section || doc;
+  if ((doc.version != null && doc.version !== 1) || sec.faces !== undefined) {
+    // Read as v1, a v2 block would lose its faces: refuse it by name instead (invariant 8).
+    throw new Error(`${doc.schema} version ${JSON.stringify(doc.version ?? null)} is not read here: this reader knows version 1 only`);
+  }
   const ops = [], tmp = emptyScene(), ptById = new Map(), faceIds = [], barIds = [];
   const faceMap = new Map(), barMap = new Map();
   let seq = 0;
@@ -226,17 +255,22 @@ export function httpTransport(url = "/api/section/transport") {
       body.redo = request.redo !== undefined ? request.redo : redoState;
       if (action === "apply") body.op = request.op || (Array.isArray(request.ops) ? request.ops[0] : null);
     }
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    let text;
+    try {
+      text = JSON.stringify(body);
+    } catch (err) { // too deep (RangeError) or cyclic: refuse by name, as the server would
+      const why = err instanceof RangeError ? "is nested too deeply to send as JSON" : `cannot be sent as JSON: ${err.message}`;
+      return { ok: false, status: 422, transport_version: TRANSPORT_VERSION, error: { code: "INVALID_ARGUMENT", message: `the request ${why}` } };
+    }
+    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
     const data = await res.json();
     if (data && data.ok) {
       docState = data.document || docState;
       redoState = Array.isArray(data.redo) ? data.redo : [];
       if (data.scene) data.scene = normalizeScene(data.scene);
-      if (!data.draft && data.scene) data.draft = buildDraftFromScene(data.scene, docState);
+      // A v1 draft only when v1 can say the document; else `draft: null`, never a v1 draft
+      // that drops a v2 entity (ADR 0039 D1; v2 drafts are asked for in C5-S4).
+      if (!data.draft && data.scene) data.draft = v1DraftOrNull(data.scene, docState);
     }
     return data;
   };

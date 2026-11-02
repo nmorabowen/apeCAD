@@ -1,6 +1,6 @@
 # Spec — Section embedding kit (stage C9)
 
-**Status:** Implemented (2026-10-23); results overlay, client API 2 (2026-11-01, stage C2-S2)  
+**Status:** Implemented (2026-10-23); results overlay, client API 2 (2026-11-01, stage C2-S2); draws v2 (2026-11-02, C5-S3, client API still 2)  
 **ADRs:** 0023, 0024, 0025, 0026, 0038, 0041
 
 ## Goal
@@ -16,7 +16,7 @@ FastAPI / ASGI process without spawning a separate `ScratchpadServer`.
 |---|---|---|
 | `CLIENT_API_VERSION = 2` | `apeCAD.scratchpad.section_assets` | Matches `API_VERSION = 2` exported by `apecad-section.js`. 2 adds the results overlay (ADR 0041 decision 2) and removes nothing of 1; a host that checks for 1 must accept 2. |
 | `SECTION_DIR` | `apeCAD.scratchpad.section_assets` | `Path` to `src/apeCAD/scratchpad/static/section/`. |
-| `client_files()` | `apeCAD.scratchpad.section_assets` | Returns `dict[str, Path]` mapping relative asset names (`apecad-section.js`, `transport.js`, `mock-transport.js`, `input-parse.js`, `canvas2d.js`, `overlay.js`, `section.css`, `index.html`) to absolute `Path`s. |
+| `client_files()` | `apeCAD.scratchpad.section_assets` | Returns `dict[str, Path]` mapping relative asset names (`apecad-section.js`, `transport.js`, `mock-transport.js`, `input-parse.js`, `canvas2d.js`, `display2d.js`, `overlay.js`, `section.css`, `index.html`) to absolute `Path`s. |
 | `TRANSPORT_VERSION = 1`, `MAX_OPS`, `handle(request)` | `apeCAD.scratchpad.transport` | Stateless single-endpoint transport (`scene`, `apply`, `undo`, `redo`, `draft`, `load`, `seed`). Importing `section_assets` or `transport` never loads `scratchpad.server`. |
 
 ## Client surface (`apecad-section.js`)
@@ -38,7 +38,7 @@ const editor = create(container, {
 
 - `await editor.loadDraft(payload)` / `await editor.load(payload)`: Load a `Document` dict, `apeCAD.section-draft` v1 dict, or `apeCAD.section-seed` v1 dict without firing `onChange`.
 - `await editor.loadSeed(seedPayload)`: Load an `apeCAD.section-seed` v1 dict via `action: "seed"` without firing `onChange`.
-- `editor.getDraft()`: Return the latest `apeCAD.section-draft` v1 dict.
+- `editor.getDraft()`: Return the latest `apeCAD.section-draft` v1 dict, or `null` when v1 cannot say the document (a v2 face, a circular tie, a template, or a bar naming its steel: `transport.js::v1Unsayable`, the twin of `require_v1_expressible`). The client never writes a v1 draft that drops a v2 entity (C5 record invariant 8); while the draft is `null`, `onChange` is not fired. v2 drafts are asked for with `create(..., {version: 2})` (C5-S4).
 - `editor.getScene()`: Return the normalized 2-D section scene payload.
 - `await editor.applyOp(opOrOps)`: Apply one op or a list of ops and fire `onChange(draft)`.
 - `await editor.undo()` / `await editor.redo()`: Undo or redo and fire `onChange(draft)`.
@@ -50,6 +50,38 @@ const editor = create(container, {
 - `editor.getOverlayState()`: The overlay as the client holds it (see below).
 
 The module also exports `parseOverlay` (the client's reader) and `MAX_OVERLAY_PRIMITIVES`.
+
+## Drawing v2 (C5-S3; ADR 0039, 0040)
+
+The scene carries three v2 lists beside the v1 ones (`scratchpad/payload.py`): `section_faces`
+(every `SectionFace`), `circular_ties` and `templates`. Each item is the v2 draft's item from
+`section/draft_v2.py`'s projectors with `entity_id` in place of `id`, so a `section_faces` or
+`circular_ties` item equals the draft's, less `id` and `template_id`; a template adds
+`child_ids` and `label`. `concrete_faces` keeps the v1 faces only, and `bars[]` items carry
+`material` (null for the default steel). `warnings` is the v1 lint while v1 can say the document,
+else the v2 lint. The 3-D client ignores the new keys.
+
+- **Display list.** `display2d.js::displayList(scene)` lists every section kind
+  (`SECTION_KINDS`) on its layer, back to front in `render`'s order (`SECTION_LAYERS`):
+  concrete, steel, void, cover, leg, hoop, crosstie, circular-tie, bar; by id within a layer.
+  A face takes the layer of its role, so overlaps paint concrete, steel, void whatever the
+  ids. A template draws nothing of its own: its children are drawn from their own lists, never
+  re-expanded. An item the reader does not know (a role, a boundary kind, a bad circle) draws
+  nothing and is named in the warnings box as `[not-drawn] <message>`.
+- **Painting.** `canvas2d.js` paints the list with the C5-S1 styles from `PALETTE`: steel
+  on Grey128 (`steelFill`), a void in the paper colour (`voidFill`, so it takes away what it
+  cuts), a circular tie's centreline at `centerline_radius_mm` in the hoop's ink. A face's
+  boundary and holes are one path filled `evenodd`, so a hole stays open whatever its ring's
+  winding; circles are drawn exactly with `arc`.
+- **Hit-testing.** The nearest bar, else the first line (circular tie, crosstie, hoop, cover,
+  leg, as in v1), else the face on top by role: void, steel, concrete. A point inside a hole
+  misses that face (and may hit the face beneath it, such as a filled tube's core). A v2 face
+  hit is `{kind: "SectionFace", id, item, role}`; nothing is editable on v2 entities until
+  C5-S4.
+- **Huge input.** A scene of 10^5 bars is listed, painted and hit-tested in bounded time. A
+  request too deep to write as JSON is refused by `httpTransport` as `{ok: false, status:
+  422, error: {code: "INVALID_ARGUMENT"}}`, never thrown; one too deep for the server to parse
+  is the server's named 422, and the next request is served.
 
 ## Results overlay (API 2, ADR 0041 decision 2)
 
@@ -98,4 +130,4 @@ the same `code` and `path` as `apeCAD.render.overlay.parse_overlay`.
 1. **Zero external URLs:** No file in `static/section/` may contain `https://` or load external scripts, stylesheets, or fonts.
 2. **No `innerHTML`:** DOM construction in `static/section/` uses `document.createElement` and `textContent` exclusively.
 3. **Scoped events:** Keyboard listeners attach to `container` (`container.tabIndex = 0`), never `window`.
-4. **No module-scope DOM access:** Importing `apecad-section.js`, `canvas2d.js`, `input-parse.js`, `transport.js`, or `mock-transport.js` in Node (`node --test`) succeeds without a global `window` or `document`.
+4. **No module-scope DOM access:** Importing `apecad-section.js`, `canvas2d.js`, `display2d.js`, `input-parse.js`, `transport.js`, or `mock-transport.js` in Node (`node --test`) succeeds without a global `window` or `document`.

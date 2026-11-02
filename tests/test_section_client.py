@@ -34,6 +34,7 @@ EXPECTED_ASSETS = {
     "mock-transport.js",
     "input-parse.js",
     "canvas2d.js",
+    "display2d.js",  # C5-S3: `client_files()` lists it, so a host's copy takes it too
     "overlay.js",
     "section.css",
     "index.html",
