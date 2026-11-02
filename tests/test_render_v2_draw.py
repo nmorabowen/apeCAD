@@ -18,6 +18,7 @@ import pytest
 
 from _section_fixtures_v2 import BUILDERS_V2, fixture_path_v2
 from apeCAD import Document
+from apeCAD.entities import SectionFace
 from apeCAD.geometry import XYZ
 from apeCAD.ops import PointAt
 from apeCAD.render import render_svg
@@ -146,13 +147,19 @@ def test_role_styles_and_paint_order_follow_the_record() -> None:
     assert (tie.stroke, tie.line_style, tie.dash) == (BLUE, "0.30mm S-Blue", None)
 
 
-def test_a_void_made_before_what_it_cuts_still_paints_on_top() -> None:
-    """Painting by id would put the void (id first) under the concrete (record §6)."""
+def _reversed_ids() -> tuple[Document, list[SectionFace]]:
+    """A void, then the steel it cuts, then the concrete under both: ids against roles."""
     doc = Document()
     void = doc.add_section_face("void", None, point_ids=_square(0, 0, 50))
     steel = doc.add_section_face("steel", "S355", point_ids=_square(0, 0, 120))
     concrete = doc.add_section_face("concrete", "C30", point_ids=_square(0, 0, 200))
     assert void.entity_id < steel.entity_id < concrete.entity_id
+    return doc, [void, steel, concrete]
+
+
+def test_a_void_made_before_what_it_cuts_still_paints_on_top() -> None:
+    """Painting by id would put the void (id first) under the concrete (record §6)."""
+    doc, (void, steel, concrete) = _reversed_ids()
     root = _root(render_svg(doc, view="top", annotate=False))
     order = [name for name in _layer_order(root) if name in MATERIAL]
     assert order == ["concrete", "steel", "void"]
@@ -342,6 +349,16 @@ def test_dxf_cft_round_hatches_the_tube_with_its_hole_as_an_island() -> None:
     assert [round(p.edges[0].radius, 9) for p in paths] == [200.0, 190.0]
     layers = {layer.dxf.name for layer in doc.layers}
     assert {"STEEL-CUT", "STEEL-FILL", "VOID", "CIRCULAR-TIE"} <= layers
+
+
+def test_dxf_writes_by_role_not_id() -> None:
+    """The file's order is its draw order: concrete, then steel, then the void's WIPEOUT."""
+    doc, _faces = _reversed_ids()
+    msp = list(_dxf(doc).modelspace())
+    (core,) = _index(msp, "CONCRETE-FILL", "HATCH")
+    (plate,) = _index(msp, "STEEL-FILL", "HATCH")
+    (wipe,) = _index(msp, "VOID", "WIPEOUT")
+    assert core < plate < wipe
 
 
 def test_dxf_draws_the_spiral_as_a_native_circle() -> None:
