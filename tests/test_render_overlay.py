@@ -1,8 +1,10 @@
-"""The `apeCAD.section-overlay` v1 contract and its render layer (ADR 0041 D1, D3, D4).
+"""The `apeCAD.section-overlay` v1 and v2 contracts and their render layer (ADR 0041 D1, D3,
+D4, Errata E1).
 
 Oracles: the spec's SHA-256 (ADR 0025 rule), the shared fixtures in
 `tests/fixtures/section_overlay/` (also the Python/JS parity oracle for stage C2-S2), colour
-lookups worked by hand from the spec formula, and a golden SVG.
+lookups worked by hand from the spec formula, a golden SVG, and the `section_sha256` vectors
+that apeSection's and apeConcrete's hash definitions both gave (apeSection#84).
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ from apeCAD.render import (
     MAX_OVERLAY_PRIMITIVES,
     OVERLAY_SCHEMA,
     OVERLAY_SCHEMA_VERSION,
+    OVERLAY_SCHEMA_VERSIONS,
     OverlayError,
     OverlayTooLargeError,
     RenderArgumentError,
@@ -37,6 +40,7 @@ from apeCAD.render import (
 from apeCAD.render.drawable import SECTION_LAYERS
 from apeCAD.render.labels import CHAR_PX
 from apeCAD.render.overlay import COLOR_TOKENS, as_overlay
+from apeCAD.section_draft import document_from_draft, section_draft
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = ROOT / "AProjects" / "specs" / "section-overlay.md"
@@ -84,7 +88,8 @@ def test_spec_contract_block_hash_is_unchanged() -> None:
 
 def test_constants_match_the_contract_block() -> None:
     text = SPEC.read_text(encoding="utf-8")
-    assert (OVERLAY_SCHEMA, OVERLAY_SCHEMA_VERSION) == ("apeCAD.section-overlay", 1)
+    assert (OVERLAY_SCHEMA, OVERLAY_SCHEMA_VERSION) == ("apeCAD.section-overlay", 2)
+    assert OVERLAY_SCHEMA_VERSIONS == (1, 2)  # spec v2 "Versions": readers accept v1 and v2
     assert f"MAX_OVERLAY_PRIMITIVES = {MAX_OVERLAY_PRIMITIVES}" in text
     assert MAX_OVERLAY_PRIMITIVES == 200_000  # ADR 0041 decision 2
     for token in COLOR_TOKENS:
@@ -144,7 +149,7 @@ def test_invalid_cases_are_distinct_and_carry_no_message_text() -> None:
     assert {tuple(sorted(c)) for c in INVALID} == {("case", "overlay", "refusal")}
     assert {tuple(sorted(c["refusal"])) for c in INVALID} == {("code", "path")}
     for case in INVALID:
-        assert re.fullmatch(r"overlay(\.[a-z_]+|\[\d+\])*", case["refusal"]["path"]), case
+        assert re.fullmatch(r"overlay(\.[a-z_0-9]+|\[\d+\])*", case["refusal"]["path"]), case
 
 
 COLORS = cast(list[Json], _json(FIXTURES / "colors.json"))
@@ -513,3 +518,151 @@ def test_cli_render_overlay(
     status, envelope = _cli(capsys, "render", str(drawing), "--overlay", str(missing))
     assert (status, envelope["error"]["code"]) == (1, "IO_ERROR")
     assert drawing.read_text(encoding="utf-8") == rect_boundary_hoops().to_json()
+
+
+# --- v2 (ADR 0041 Errata E1, spec section-overlay-v2.md; apeSection#84) -------------------
+
+VECTORS = cast(Json, _json(FIXTURES / "section_sha256.json"))
+SPIRAL = "tests/fixtures/section_draft_v2/circular_column_spiral.json"
+SPIRAL_SHA256 = "fd20de574ef8e5c73a027ac3972beecc0b1f42538510bd004ea954aedde548df"
+SPIRAL_JS_SHA256 = "d53418e20d6594f05f1b7b30a8ec45783c3c496fb4e1da37076202f3a4ab9d55"
+
+
+def _reference_hash(draft: Json) -> str:
+    """A reference copy of apeSection's `canonical_section_hash`, local to the tests: apeCAD's
+    src never computes it (spec v2 "The hash")."""
+    text = json.dumps(draft["section"], sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False, allow_nan=False)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _v2(**over: object) -> Json:
+    base: Json = {"schema": OVERLAY_SCHEMA, "version": 2, "units": "mm", "revision": 0,
+                  "section_sha256": SPIRAL_SHA256, "layers": []}
+    return {**base, **over}
+
+
+def test_v2_valid_fixtures_keep_the_hash_and_a_null_revision() -> None:
+    results = parse_overlay(_json(FIXTURES / "valid" / "v2_rect_wall_results.json"))
+    rect = next(v for v in VECTORS["vectors"]
+                if v["draft"] == "tests/fixtures/section_draft/rect_boundary_hoops.json")
+    assert (results.version, results.revision) == (2, 7)
+    assert results.section_sha256 == rect["section_sha256"]  # the draft behind the results
+    plain = parse_overlay(_results())  # its v1 twin draws the same layers
+    assert results.layers == plain.layers
+    assert (plain.version, plain.section_sha256) == (1, None)
+    unstamped = parse_overlay(_json(FIXTURES / "valid" / "v2_not_stamped.json"))
+    assert unstamped.revision is None  # kept as null, never coerced to 0
+    assert unstamped.section_sha256 == SPIRAL_SHA256
+    floats = parse_overlay(_json(FIXTURES / "valid" / "v2_integral_floats.json"))
+    assert (floats.version, floats.revision) == (2, 3)
+    assert type(floats.version) is int and type(floats.revision) is int
+
+
+def test_every_spec_fault_has_a_case_in_invalid_json() -> None:
+    """Spec v2 "Fixtures": a refusal for every `section_sha256` fault the spec names, for v1
+    with the key, v2 without it, and `revision: null` in v1; `version_2` is `version_3` now."""
+    cases = {c["case"]: c for c in INVALID}
+    assert "version_2" not in cases
+    assert cases["version_3"]["overlay"]["version"] == 3
+    wanted = {
+        "v1_with_section_sha256", "v2_without_section_sha256", "v1_revision_null",
+        "sha256_63_chars", "sha256_65_chars", "sha256_upper_case", "sha256_trailing_newline",
+        "sha256_prefix_sha256", "sha256_prefix_0x", "sha256_null", "sha256_number",
+    }
+    assert wanted <= set(cases), wanted - set(cases)
+    for name in wanted - {"v1_revision_null"}:
+        assert cases[name]["refusal"]["path"] == "overlay.section_sha256", name
+    assert cases["v1_revision_null"]["refusal"]["path"] == "overlay.revision"
+
+
+def test_a_trailing_newline_is_refused_where_dollar_would_accept_it() -> None:
+    """The trap the spec names: Python's `$` matches before a final "\\n"."""
+    padded = SPIRAL_SHA256 + "\n"
+    assert re.match(r"^[0-9a-f]{64}$", padded) is not None  # the trap is real
+    with pytest.raises(OverlayError) as caught:
+        parse_overlay(_v2(section_sha256=padded))
+    assert caught.value.path == "overlay.section_sha256"
+
+
+def test_v2_group_carries_the_hash_and_a_revision_only_when_stamped() -> None:
+    doc = rect_boundary_hoops()
+
+    def group(overlay: Json) -> ET.Element:
+        root = ET.fromstring(render_svg(doc, view="top", overlay=overlay).svg)
+        return next(g for g in root if _class(g) == "overlay")
+
+    stamped = group(_json(FIXTURES / "valid" / "v2_rect_wall_results.json"))
+    rect = stamped.get("data-section-sha256")
+    assert stamped.get("data-revision") == "7" and rect is not None and len(rect) == 64
+    unstamped = group(_v2(revision=None))
+    assert unstamped.get("data-section-sha256") == SPIRAL_SHA256
+    assert "data-revision" not in unstamped.attrib  # absent, never data-revision="null"
+    assert render_svg(doc, view="top", overlay=_v2(revision=None)).overlay_revision is None
+    v1 = group(_results())
+    assert set(v1.attrib) == {"class", "data-revision"}  # v1's group as in v1 (the golden)
+
+
+def test_hash_vectors_cover_every_draft_fixture_and_recompute() -> None:
+    """The card's oracle: the literals came from apeSection 8620629 and apeConcrete 9fac3bd,
+    agreeing; recomputing them here makes every CI platform check the same values."""
+    drafts = sorted(
+        f"tests/fixtures/{d}/{p.name}"
+        for d in ("section_draft", "section_draft_v2")
+        for p in (ROOT / "tests" / "fixtures" / d).glob("*.json")
+    )
+    vectors = cast(list[Json], VECTORS["vectors"])
+    assert sorted(v["draft"] for v in vectors) == drafts and len(drafts) == 15
+    for vector in vectors:
+        draft = cast(Json, _json(ROOT / vector["draft"]))
+        assert _reference_hash(draft) == vector["section_sha256"], vector["draft"]
+        assert re.fullmatch(r"[0-9a-f]{64}", vector["section_sha256"])
+    by_name = {v["draft"]: v["section_sha256"] for v in vectors}
+    assert by_name[SPIRAL] == SPIRAL_SHA256  # the spec's worked value
+    assert len(set(by_name.values())) == 15
+    (js,) = cast(list[Json], VECTORS["js_round_trip"])  # checked by the node test
+    assert (js["draft"], js["section_sha256"]) == (SPIRAL, SPIRAL_JS_SHA256)
+
+
+def test_the_lone_surrogate_label_reopens_but_cannot_be_hashed() -> None:
+    (case,) = cast(list[Json], VECTORS["unhashable"])
+    draft = cast(Json, _json(ROOT / case["draft"]))
+    for path in case["set"]:
+        node: Any = draft
+        for key in path[:-1]:
+            node = node[key]
+        node[path[-1]] = case["to"]
+    assert case["to"] == "bad\ud800" and case["raises"] == "UnicodeEncodeError"
+    _document, warnings = document_from_draft(draft)
+    assert warnings == []  # apeCAD loads it with no warning ...
+    with pytest.raises(UnicodeEncodeError):
+        _reference_hash(draft)  # ... but the formula has no hash for it
+
+
+def test_skewed_stored_drafts_reopen_cleanly_yet_re_expand_to_another_hash() -> None:
+    """Spec v2 "never hashed": a re-expansion is not the stored draft. Each stored draft is
+    one number skewed by rel 1e-12 from its source; reopening tolerates it (0 warnings), and
+    `section_draft` of the reopened document hashes differently."""
+    stored = cast(list[Json], VECTORS["stored_drafts"])
+    on_disk = sorted((FIXTURES / "stored_drafts").glob("*.json"))
+    assert sorted(ROOT / s["draft"] for s in stored) == on_disk and len(on_disk) == 2
+    versions: set[int] = set()
+    for item in stored:
+        draft = cast(Json, _json(ROOT / item["draft"]))
+        source = cast(Json, _json(ROOT / item["source"]))
+        assert _reference_hash(draft) == item["section_sha256"]
+        assert item["section_sha256"] != _reference_hash(source)
+        document, warnings = document_from_draft(draft)
+        assert warnings == [], item["draft"]
+        again = section_draft(document, version=draft["version"], commit=None)
+        assert _reference_hash(again) != item["section_sha256"], item["draft"]
+        versions.add(draft["version"])
+    assert versions == {1, 2}
+
+
+def test_apecad_src_never_computes_the_section_hash() -> None:
+    """apeCAD validates the format and hands the hex back; it has no hash of its own."""
+    reader = (ROOT / "src" / "apeCAD" / "render" / "overlay.py").read_text(encoding="utf-8")
+    client = (ROOT / "src" / "apeCAD" / "scratchpad" / "static" / "section" / "overlay.js")
+    assert not re.search(r"hashlib|hexdigest|json\.dumps", reader)
+    assert not re.search(r"crypto|digest\(", client.read_text(encoding="utf-8"))

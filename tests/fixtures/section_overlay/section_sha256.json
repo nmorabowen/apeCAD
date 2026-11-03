@@ -1,5 +1,5 @@
 {
-  "about": "section_sha256 vectors (spec section-overlay-v2.md, \"The hash\"): each committed draft fixture with canonical_section_hash of its stored text. Both definitions gave every value: apeSection 8620629 src/apeSection/project/draft_header.py::canonical_section_hash and apeConcrete 9fac3bd src/apeConcrete/io/apecad.py::_canonical_section_sha256. apeCAD src never computes it; tests/test_render_overlay.py recomputes the literals with a reference copy of the formula.",
+  "about": "section_sha256 vectors (spec section-overlay-v2.md, \"The hash\"): each committed draft fixture (and each stored draft of stored_drafts/) with canonical_section_hash of its stored text. Both definitions gave every value, on Windows: apeSection 8620629 src/apeSection/project/draft_header.py::canonical_section_hash and apeConcrete 9fac3bd src/apeConcrete/io/apecad.py::_canonical_section_sha256. apeCAD src never computes it; tests/test_render_overlay.py recomputes the literals with a reference copy of the formula.",
   "formula": "hashlib.sha256(json.dumps(draft[\"section\"], sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False, allow_nan=False).encode(\"utf-8\")).hexdigest()",
   "vectors": [
     {
@@ -63,6 +63,20 @@
       "section_sha256": "82b9c5f4231ad915c95f07920bafbfd7348b974abb34d2fb44d9f6535ac9bd68"
     }
   ],
+  "stored_drafts": [
+    {
+      "draft": "tests/fixtures/section_overlay/stored_drafts/circular_column_spiral_skewed.json",
+      "source": "tests/fixtures/section_draft_v2/circular_column_spiral.json",
+      "skewed": "section.bars[1].x_mm 169.7056274847714 -> 169.70562748494115 (rel 1.0e-12)",
+      "section_sha256": "0f0d10552c022e37d52faefdb65ba1c3ba0607742c3bcd9504b1a86d7c46e5e7"
+    },
+    {
+      "draft": "tests/fixtures/section_overlay/stored_drafts/rect_boundary_hoops_v1_skewed.json",
+      "source": "tests/fixtures/section_draft/rect_boundary_hoops.json",
+      "skewed": "section.bars[0].x_mm 43.0 -> 43.000000000043 (rel 1.0e-12)",
+      "section_sha256": "e68ba359374ddb2eb56855affcf639fc354c6d0f706559b11d07af4b5256bdfc"
+    }
+  ],
   "js_round_trip": [
     {
       "draft": "tests/fixtures/section_draft_v2/circular_column_spiral.json",
@@ -75,14 +89,12 @@
       "case": "lone_surrogate_label",
       "draft": "tests/fixtures/section_draft_v2/circular_column_spiral.json",
       "set": [
-        "section",
-        "bars",
-        0,
-        "label"
+        ["document", "ops", 0, "label"],
+        ["section", "faces", 0, "label"]
       ],
       "to": "bad\ud800",
       "raises": "UnicodeEncodeError",
-      "about": "no UTF-8 encoding: both definitions raise at .encode(\"utf-8\"); the host refuses it by name and never hashes it another way"
+      "about": "the face label, in the log and the block alike, so apeCAD reopens it with no warning; it has no UTF-8 encoding: both definitions raise at .encode(\"utf-8\"); the host refuses it by name and never hashes it another way"
     }
   ]
 }

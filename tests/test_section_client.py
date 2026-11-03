@@ -190,7 +190,10 @@ def test_js_client_against_live_python_http_transport(server: ScratchpadServer) 
 # --- stage C2-S2: the overlay reader of the client agrees with the Python one -------------
 
 OVERLAY_FIXTURES = Path(__file__).resolve().parent / "fixtures" / "section_overlay"
-_PROBES: list[object] = [None, True, "x", "", 1.5, -1, 0, [], {}, [0, 0], "#abc", "--accent"]
+_HEX = "fd20de574ef8e5c73a027ac3972beecc0b1f42538510bd004ea954aedde548df"
+# v2 (apeSection#84): 1 and 2 swap a version's block; the hex probes hit `section_sha256`.
+_PROBES: list[object] = [None, True, "x", "", 1.5, -1, 0, 1, 2, [], {}, [0, 0], "#abc",
+                         "--accent", _HEX, _HEX.upper(), _HEX + "\n", _HEX[:63]]
 
 
 def _node() -> str:
@@ -233,7 +236,8 @@ def _python_verdict(value: object) -> list[object]:
         for p in layer.primitives
         if p.value is not None
     ]
-    return ["ok", overlay.revision, overlay.primitive_count, colours]
+    return ["ok", overlay.version, overlay.revision, overlay.section_sha256,
+            overlay.primitive_count, colours]
 
 
 def test_js_overlay_reader_matches_python_on_every_one_edit_mutation(tmp_path: Path) -> None:
@@ -258,7 +262,7 @@ def test_js_overlay_reader_matches_python_on_every_one_edit_mutation(tmp_path: P
         const o = parseOverlay(value);
         const colours = o.layers.flatMap((l) =>
           l.primitives.filter((p) => p.value !== null).map((p) => scaleColor(l.scale, p.value)));
-        return ["ok", o.revision, o.primitiveCount, colours];
+        return ["ok", o.version, o.revision, o.sectionSha256, o.primitiveCount, colours];
       }} catch (err) {{
         if (!(err instanceof OverlayError)) throw err;
         return [err.code, err.path];
@@ -279,6 +283,10 @@ def test_js_overlay_reader_matches_python_on_every_one_edit_mutation(tmp_path: P
     mismatches = [(c, p, j) for c, p, j in zip(cases, py, js, strict=True) if p != j]
     assert not mismatches, mismatches[:3]
     assert sum(1 for verdict in py if verdict[0] == "ok") > 100  # both accept, not only refuse
+    # v2 reaches both sides: null revisions accepted, hash faults and v1/v2 key swaps refused.
+    assert any(v[0] == "ok" and v[1] == 2 and v[2] is None for v in py)
+    assert any(v[0] == "ok" and v[1] == 2 and v[3] == _HEX for v in py)
+    assert py.count(["INVALID_ARGUMENT", "overlay.section_sha256"]) > 10
 
 
 def test_client_overlay_constants_match_the_python_reader() -> None:

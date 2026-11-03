@@ -1,0 +1,32 @@
+{
+  "schema": "apeCAD.section-overlay",
+  "version": 2,
+  "units": "mm",
+  "revision": null,
+  "section_sha256": "fd20de574ef8e5c73a027ac3972beecc0b1f42538510bd004ea954aedde548df",
+  "layers": [
+    {
+      "id": "bars",
+      "label": "Bar state",
+      "visible": true,
+      "scale": {
+        "kind": "categorical",
+        "domain": ["elastic", "yielded"],
+        "colors": ["#2166ac", "#b2182b"],
+        "unit": "",
+        "title": "Bars"
+      },
+      "primitives": [
+        {"kind": "circle", "center": [240, 0], "radius": 10, "value": "yielded", "ids": [4]},
+        {"kind": "circle", "center": [0, 240], "radius": 10, "value": "elastic", "ids": [8]}
+      ]
+    },
+    {
+      "id": "outline",
+      "label": "Outline",
+      "visible": true,
+      "scale": null,
+      "primitives": [{"kind": "circle", "center": [0, 0], "radius": 300, "style": {"stroke": "--ink-edge"}}]
+    }
+  ]
+}

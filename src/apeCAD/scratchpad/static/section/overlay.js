@@ -1,14 +1,18 @@
-// The results overlay of the section client: read `apeCAD.section-overlay` v1, paint it, and
-// show its layers, legends and staleness (ADR 0041 decision 2; spec `section-overlay.md`).
-// `parseOverlay` mirrors `apeCAD.render.overlay.parse_overlay` and must refuse every case of
-// `tests/fixtures/section_overlay/` with the same code and path. Overlay text is never HTML:
+// The results overlay of the section client: read `apeCAD.section-overlay` v1 or v2, paint it,
+// and show its layers, legends and staleness (ADR 0041 decision 2 and Errata E1; specs
+// `section-overlay.md`, `section-overlay-v2.md`). `parseOverlay` mirrors
+// `apeCAD.render.overlay.parse_overlay` and must refuse every case of
+// `tests/fixtures/section_overlay/` with the same code and path. v2's `section_sha256` is
+// checked for its format and handed back as given: the client never computes or compares it
+// (a hash of anything that passed through JSON.parse is not that hash). Overlay text is never HTML:
 // it reaches the page through `textContent` and the canvas through `fillText` only.
 // Zero external dependencies; no module-scope DOM access.
 
 import { OVERLAY_TOKENS } from "./canvas2d.js";
 
 export const OVERLAY_SCHEMA = "apeCAD.section-overlay";
-export const OVERLAY_SCHEMA_VERSION = 1;
+export const OVERLAY_SCHEMA_VERSIONS = Object.freeze([1, 2]); // each read by its own block
+export const OVERLAY_SCHEMA_VERSION = 2; // the newest
 export const MAX_OVERLAY_PRIMITIVES = 200000;
 export const SCALE_KINDS = ["sequential", "diverging", "categorical"];
 export const PRIMITIVE_KINDS = ["polygon", "circle", "polyline", "point", "label"];
@@ -18,6 +22,9 @@ const POINT_RADIUS_PX = 2.5;
 const INVALID_ARGUMENT = "INVALID_ARGUMENT";
 const TOO_LARGE = "TOO_LARGE";
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+const SHA256 = /^[0-9a-f]{64}$/; // no `m` flag: `$` is the end of the string, "\n" refused
+const V1_KEYS = ["schema", "version", "units", "revision", "layers"];
+const TOP_KEYS = new Map([[1, V1_KEYS], [2, [...V1_KEYS, "section_sha256"]]]);
 const TOKEN_NAMES = new Set(Object.keys(OVERLAY_TOKENS));
 
 const PAINTS = { polygon: ["fill", "stroke"], circle: ["fill", "stroke"], polyline: ["stroke"], point: ["fill"], label: ["fill"] };
@@ -91,6 +98,14 @@ function readInt(path, value) {
   return whole;
 }
 
+// Exactly 64 of `0-9a-f` (spec v2 "section_sha256"): the format only, never the hash.
+function readSha256(path, value) {
+  if (typeof value !== "string" || !SHA256.test(value)) {
+    throw new OverlayError(path, `must be 64 lower-case hex digits and nothing else, got ${show(value)}`);
+  }
+  return value;
+}
+
 function readNumber(path, value) {
   if (typeof value !== "number") throw new OverlayError(path, `must be a number, got ${show(value)}`);
   if (!Number.isFinite(value)) throw new OverlayError(path, `must be finite, got ${value}`);
@@ -129,15 +144,21 @@ function readColor(path, value) {
 
 // --- reading ------------------------------------------------------------------------------
 
-/** The overlay, validated and copied, or an `OverlayError` naming what it refuses. */
+/**
+ * The overlay, validated and copied, or an `OverlayError` naming what it refuses. The version
+ * picks the block the top keys are read by; any other version is read by the keys some
+ * version allows, so it is refused at `overlay.version`, never as a key.
+ */
 export function parseOverlay(value) {
-  const top = readObject("overlay", value, ["schema", "version", "units", "revision", "layers"]);
+  const version = isObject(value) && has(value, "version") ? integral(value.version) : null;
+  const keys = TOP_KEYS.get(version);
+  const top = readObject("overlay", value, keys || TOP_KEYS.get(2), keys || V1_KEYS);
   if (top.schema !== OVERLAY_SCHEMA) throw new OverlayError("overlay.schema", `must be "${OVERLAY_SCHEMA}", got ${show(top.schema)}`);
-  if (integral(top.version) !== OVERLAY_SCHEMA_VERSION) {
-    throw new OverlayError("overlay.version", `must be ${OVERLAY_SCHEMA_VERSION}, got ${show(top.version)}`);
-  }
+  if (!keys) throw new OverlayError("overlay.version", `must be 1 or 2, got ${show(top.version)}`);
   if (top.units !== "mm") throw new OverlayError("overlay.units", `must be "mm", got ${show(top.units)}`);
-  const revision = readInt("overlay.revision", top.revision);
+  // v2 keeps null as null, never a number: `Number(null)` is 0, which would read as current.
+  const revision = version === 2 && top.revision === null ? null : readInt("overlay.revision", top.revision);
+  const sectionSha256 = version === 2 ? readSha256("overlay.section_sha256", top.section_sha256) : null;
   const shells = readList("overlay.layers", top.layers).map((item, i) =>
     readObject(`overlay.layers[${i}]`, item, ["id", "label", "visible", "scale", "primitives"]));
   const rawPrimitives = shells.map((shell, i) => readList(`overlay.layers[${i}].primitives`, shell.primitives));
@@ -147,7 +168,7 @@ export function parseOverlay(value) {
   }
   const seen = new Set();
   const layers = shells.map((shell, i) => readLayer(`overlay.layers[${i}]`, shell, rawPrimitives[i], seen));
-  return { revision, layers, primitiveCount: total };
+  return { version, revision, sectionSha256, layers, primitiveCount: total };
 }
 
 function readLayer(path, shell, items, seen) {
@@ -404,8 +425,9 @@ export function createOverlayController({ doc, el, box, getRevision, onChange })
   let generation = 0; // bumped by every set; the panel is rebuilt only when it or staleness moves
   let shown = "";
   // Any other revision is stale: behind it the document moved on; ahead of it the overlay was
-  // stamped for a document this client has not seen.
-  const isStale = () => overlay !== null && getRevision() !== overlay.revision;
+  // stamped for a document this client has not seen. A null revision (v2, not stamped in this
+  // session) is stale at every live revision, 0 included, and no edit or undo makes it current.
+  const isStale = () => overlay !== null && (overlay.revision === null || getRevision() !== overlay.revision);
   const tokens = () => OVERLAY_TOKENS;
 
   function state() {
@@ -413,6 +435,8 @@ export function createOverlayController({ doc, el, box, getRevision, onChange })
       active: overlay !== null,
       revision: getRevision(),
       overlay_revision: overlay ? overlay.revision : null,
+      // Always present: the v2 hex as given; null for a v1 overlay or for none (`active`).
+      overlay_section_sha256: overlay ? overlay.sectionSha256 : null,
       stale: isStale(),
       primitive_count: overlay ? overlay.primitiveCount : 0,
       layers: overlay ? overlay.layers.map((l) => ({ id: l.id, label: l.label, visible: l.visible, primitives: l.primitives.length, scale: l.scale ? l.scale.kind : null })) : [],
@@ -430,7 +454,8 @@ export function createOverlayController({ doc, el, box, getRevision, onChange })
     const nodes = [];
     if (refusal) nodes.push(el(doc, "div", "apecad-section-overlay-refused", `Overlay refused: ${refusal.message}`));
     if (overlay) {
-      const head = el(doc, "div", "apecad-section-overlay-head", `Overlay · revision ${overlay.revision}`);
+      const stamp = overlay.revision === null ? "not stamped in this session" : `revision ${overlay.revision}`;
+      const head = el(doc, "div", "apecad-section-overlay-head", `Overlay · ${stamp}`);
       if (isStale()) head.appendChild(el(doc, "span", "apecad-section-overlay-stale", "stale"));
       nodes.push(head);
       const table = tokens();
