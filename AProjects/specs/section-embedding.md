@@ -112,7 +112,12 @@ The code is `tools-v2.js`.
 - **The v2 draft.** Each change (apply, undo, redo) and each load, seed or opening scene is
   followed by a transport request `{action: "draft", version: 2}`. `getDraft()` and `onChange`
   carry that draft, which equals `section_draft(document, version=2)`. A refused `draft`
-  leaves `getDraft()` null (never a stale draft) and fires no `onChange`. v1 mode sends no
+  leaves `getDraft()` null (never a stale draft) and fires no `onChange`; a thrown `draft`
+  counts as a refused one (no `onChange`; `Refused: <message>`), and so does a reply that is
+  not an `apeCAD.section-draft` version 2. The change itself still shows. A draft reply that
+  arrives late is dropped iff a newer change has landed since its own change landed (an ok
+  apply, undo, redo, load or seed; a refused or thrown attempt is no landing), and kept
+  otherwise. `onChange` fires at most once per landed change. v1 mode sends no
   `draft`.
 - **Huge input.** A v2 scene of 10^4 faces and 10^5 bars edits, selects and deletes in
   bounded time (`tests/js/section-v2-edit.test.mjs`).

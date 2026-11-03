@@ -91,6 +91,7 @@ export function create(container, opts = {}) {
   let panDrag = null;
   let disposed = false;
   let opEpoch = 0;
+  let landedSeq = 0; // v2: +1 each time a change is known to have landed (an ok apply/undo/redo/load/seed)
   let docRevision = 0; // the transport's `revision` when it sends one, else a count of edits
 
   const params = {
@@ -223,9 +224,11 @@ export function create(container, opts = {}) {
   }
 
   // v2 mode: a change is followed by `draft` at version 2, the draft getDraft and onChange carry
-  // (`tools-v2.js::followWithDraft`); a reply that lands after a newer change began is dropped.
+  // (`tools-v2.js::followWithDraft`). The draft of the change that landed as `landed` is kept iff
+  // no newer change has landed since; a newer attempt that is refused or throws changes nothing.
   // Each call site awaits it only when `version === 2`, so v1 mode keeps its timing too.
-  const withDraft = (res, epoch) => followWithDraft(transport, res, () => opEpoch === epoch && !disposed);
+  const landing = (res) => (res && res.ok ? (landedSeq += 1) : landedSeq);
+  const withDraft = (res, landed) => followWithDraft(transport, res, () => landedSeq === landed && !disposed);
 
   function syncChange(res, emitChange, edits = emitChange) {
     if (res?.stale) return res; // a newer change owns the screen and the draft
@@ -236,25 +239,26 @@ export function create(container, opts = {}) {
 
   async function applyOp(opOrOps) {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
-    const epoch = (opEpoch += 1);
+    opEpoch += 1;
     const list = Array.isArray(opOrOps) ? opOrOps : [opOrOps];
-    let lastOk = null;
+    let lastOk = null, landed = landedSeq;
     for (const op of list) {
       let res;
       try {
         res = await transport({ action: "apply", op });
       } catch (err) {
-        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk, epoch) : lastOk, true); // the ops that landed still show, then it throws
+        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk, landed) : lastOk, true); // the ops that landed still show, then it throws
         throw err;
       }
       if (!res || !res.ok) {
         // The ops before the refused one are applied: show them (and move the revision) first.
-        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk, epoch) : lastOk, true);
+        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk, landed) : lastOk, true);
         return syncResponse(res, false);
       }
       lastOk = res;
+      landed = landing(res);
     }
-    return syncChange(version === 2 ? await withDraft(lastOk, epoch) : lastOk, true);
+    return syncChange(version === 2 ? await withDraft(lastOk, landed) : lastOk, true);
   }
 
   async function undo() {
@@ -265,33 +269,33 @@ export function create(container, opts = {}) {
       redraw();
       return { ok: true, status: 200, gesture_undo: true };
     }
-    const epoch = (opEpoch += 1);
+    opEpoch += 1;
     const raw = await transport({ action: "undo" });
-    const res = version === 2 ? await withDraft(raw, epoch) : raw;
+    const res = version === 2 ? await withDraft(raw, landing(raw)) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
   async function redo() {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
-    const epoch = (opEpoch += 1);
+    opEpoch += 1;
     const raw = await transport({ action: "redo" });
-    const res = version === 2 ? await withDraft(raw, epoch) : raw;
+    const res = version === 2 ? await withDraft(raw, landing(raw)) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
   async function loadDraft(payload) {
-    const epoch = (opEpoch += 1);
+    opEpoch += 1;
     const raw = await transport({ action: "load", payload });
-    const out = syncChange(version === 2 ? await withDraft(raw, epoch) : raw, false, true);
+    const out = syncChange(version === 2 ? await withDraft(raw, landing(raw)) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
   }
 
   async function loadSeed(seedPayload) {
-    const epoch = (opEpoch += 1);
+    opEpoch += 1;
     const raw = await transport({ action: "seed", payload: seedPayload });
-    const out = syncChange(version === 2 ? await withDraft(raw, epoch) : raw, false, true);
+    const out = syncChange(version === 2 ? await withDraft(raw, landing(raw)) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -526,7 +530,7 @@ export function create(container, opts = {}) {
   } else {
     const initEpoch = opEpoch;
     const first = transport({ action: "scene" });
-    void (version === 2 ? first.then((res) => withDraft(res, initEpoch)) : first).then((res) => {
+    void (version === 2 ? first.then((res) => withDraft(res, landedSeq)) : first).then((res) => {
       if (opEpoch === initEpoch && !disposed && res && res.ok) syncResponse(res, false);
     });
   }

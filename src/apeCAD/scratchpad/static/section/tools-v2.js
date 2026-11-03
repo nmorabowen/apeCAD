@@ -47,7 +47,8 @@ export function v2DraftProblem(draft) {
 // `res` (a change that landed) followed by `{action: "draft", version: 2}`: `res` plus `draft`,
 // or `draft: null` and a named `draft_refusal` (a refused, failed or non-v2 draft). The landed
 // change still shows. When `isCurrent()` turns false while the draft is in flight (a newer
-// change began), the result is `stale` and the caller drops it: an old draft never wins.
+// change LANDED; one refused or thrown does not count), the result is `stale` and the caller
+// drops it: an old draft never wins over a newer landed change, and is never lost to a failed one.
 export async function followWithDraft(transport, res, isCurrent) {
   if (!res || !res.ok) return res;
   const refused = (code, message) => ({ ...res, draft: null, draft_refusal: { code, message } });

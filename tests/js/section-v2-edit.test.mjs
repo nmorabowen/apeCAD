@@ -178,6 +178,85 @@ test("v2 mode refuses a draft that is not a v2 section-draft by name, and never 
   }
 });
 
+// --- the late draft: kept or dropped (review of #66, rounds 1 and 2) ---------------------
+//
+// The predicate: change k's draft reply is KEPT iff no newer change has LANDED since k landed.
+// A change lands when its apply, undo, redo, load or seed reply is ok; a refusal or a throw is
+// no landing (nor is a scene or a draft). The table: k = an apply whose draft reply is held,
+// then a newer attempt that {lands, is refused, throws} via {apply, undo, redo, load, seed},
+// then k's reply is released. Drop iff the newer attempt landed; keep otherwise. onChange
+// fires at most once per landed change, in order, and never with a stale or a null draft.
+
+// A document of `bars` bars behind a transport. `draft` answers from the state at request time
+// (so a held reply goes stale); `outcome[action]` makes one action refuse or throw.
+function heldDraftTransport() {
+  const t = { bars: 0, hold: null, outcome: {} };
+  const barsOf = (n) => Array.from({ length: n }, (_, i) => ({ entity_id: i + 1, x_mm: i, y_mm: 0, designation: "Ø16", diameter_mm: 16 }));
+  const LANDS = { apply: (n) => n + 1, undo: (n) => n - 1, redo: (n) => n + 1, load: () => 5, seed: () => 7 };
+  t.send = async (req) => {
+    if (req.action === "draft") {
+      const n = t.bars;
+      if (t.hold) { const h = t.hold; t.hold = null; await h; }
+      return { ok: true, status: 200, scene: normalizeScene({ bars: barsOf(n) }), draft: { schema: "apeCAD.section-draft", version: 2, section: { bars: barsOf(n) } } };
+    }
+    const outcome = t.outcome[req.action] ?? "lands";
+    if (outcome === "throws") throw new Error(`${req.action} boom`);
+    if (outcome === "refused") return { ok: false, status: 422, error: { code: "REFUSED", message: `${req.action} refused` } };
+    if (LANDS[req.action]) t.bars = LANDS[req.action](t.bars);
+    return { ok: true, status: 200, scene: normalizeScene({ bars: barsOf(t.bars) }), draft: null };
+  };
+  return t;
+}
+
+const NEWER = {
+  apply: (ed) => ed.applyOp({ op: "AddBar", x_mm: 2, y_mm: 0, designation: "Ø16" }),
+  undo: (ed) => ed.undo(),
+  redo: (ed) => ed.redo(),
+  load: (ed) => ed.loadDraft({ schema: "apeCAD.document.v1", units: "mm", ops: [] }),
+  seed: (ed) => ed.loadSeed({ schema: "apeCAD.section-seed", version: 1, units: "mm", section: {} }),
+};
+// bars after the newer change lands, and the onChange bar counts expected (load and seed fire
+// none of their own); after them one more apply, whose draft must reflect it (round 1: 2, 3).
+const LANDED = { apply: [2, [2, 3]], undo: [0, [0, 1]], redo: [2, [2, 3]], load: [5, [6]], seed: [7, [8]] };
+
+const ROWS = Object.keys(NEWER).flatMap((action) => ["lands", "refused", "throws"].map((outcome) => [action, outcome]));
+
+for (const [action, outcome] of ROWS) {
+  const expect = outcome === "lands" ? "drop" : "keep";
+  test(`late draft table: ${action} ${outcome} -> ${expect}`, async () => {
+    const t = heldDraftTransport();
+    const changes = [];
+    const ed = create({}, { transport: t.send, version: 2, onChange: (d) => changes.push(d) });
+    await tick();
+    let release;
+    t.hold = new Promise((r) => (release = r));
+    const k = ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø16" });
+    while (t.hold) await tick(); // k landed; its draft reply is held
+    t.outcome = { [action]: outcome };
+    let thrown = null;
+    try { await NEWER[action](ed); } catch (err) { thrown = err.message; }
+    t.outcome = {};
+    release();
+    await k;
+    const n = (d) => d.section.bars.length;
+    assert.equal(thrown, outcome === "throws" ? `${action} boom` : null);
+    assert.ok(changes.every((d) => d && d.version === 2), "never a null or non-v2 draft");
+    if (expect === "keep") {
+      assert.equal(n(ed.getDraft()), 1, "k's draft is kept");
+      assert.equal(ed.getScene().bars.length, 1, "k's landed op is shown");
+      assert.deepEqual(changes.map(n), [1], "one onChange, k's");
+    } else {
+      const [bars, fired] = LANDED[action];
+      assert.equal(n(ed.getDraft()), bars, "k's late draft is dropped");
+      assert.equal(ed.getScene().bars.length, bars);
+      await NEWER.apply(ed);
+      assert.equal(n(ed.getDraft()), bars + 1);
+      assert.deepEqual(changes.map(n), fired, "onChange once per landed change, k's stale one never");
+    }
+    ed.dispose();
+  });
+}
+
 // --- tools: the ops they post -------------------------------------------------------------
 
 test("rect, circle and polygon post AddSectionFace with the role; a void has no material", async () => {
