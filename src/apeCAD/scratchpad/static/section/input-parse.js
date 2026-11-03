@@ -122,6 +122,13 @@ function closestOnSegment(p, a, b) {
   return [a[0] + t * dx, a[1] + t * dy];
 }
 
+const isXY = (p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]);
+
+function closestOnCircle(p, { c, r }) {
+  const dx = p[0] - c[0], dy = p[1] - c[1], d = Math.hypot(dx, dy);
+  return d <= 1e-12 ? [c[0] + r, c[1]] : [c[0] + (dx / d) * r, c[1] + (dy / d) * r];
+}
+
 export function snapPoint2D(screenPt, worldPt, view, scene, opts = {}) {
   const aperturePx = opts.aperturePx ?? SNAP_PX;
   const pointCandidates = [];
@@ -224,6 +231,31 @@ export function snapPoint2D(screenPt, worldPt, view, scene, opts = {}) {
         });
       }
     }
+    // v2 faces (C5-S4): ring vertices, midpoints and edges as v1's (edge_index on the
+    // boundary only); a circle's centre and quadrants, and the nearest point on it.
+    for (const f of scene.section_faces || []) {
+      const faceId = f.entity_id ?? f.id;
+      const loops = [f.boundary, ...(Array.isArray(f.holes) ? f.holes : [])];
+      loops.forEach((loop, k) => {
+        if (loop?.kind === "ring" && Array.isArray(loop.ring_mm)) {
+          const ring = loop.ring_mm.filter(isXY);
+          for (let i = 0; i < ring.length; i++) {
+            const a = ring[i], b = ring[(i + 1) % ring.length];
+            const edgeIndex = k === 0 ? i : null;
+            pointCandidates.push({ point: [a[0], a[1]], kind: "vertex", target_id: faceId, priority: 3 });
+            pointCandidates.push({ point: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], kind: "midpoint", target_id: faceId, edge_index: edgeIndex, priority: 3 });
+            edgeCandidates.push({ a, b, kind: "edge", target_id: faceId, edge_index: edgeIndex, priority: 5 });
+          }
+        } else if (loop?.kind === "circle" && isXY(loop.center_mm) && Number(loop.radius_mm) > 0) {
+          const [cx, cy] = loop.center_mm, r = Number(loop.radius_mm);
+          pointCandidates.push({ point: [cx, cy], kind: "center", target_id: faceId, priority: 3 });
+          for (const [dx, dy] of [[r, 0], [0, r], [-r, 0], [0, -r]]) {
+            pointCandidates.push({ point: [cx + dx, cy + dy], kind: "quadrant", target_id: faceId, priority: 3 });
+          }
+          edgeCandidates.push({ circle: { c: [cx, cy], r }, kind: "edge", target_id: faceId, edge_index: null, priority: 5 });
+        }
+      });
+    }
   }
 
   let best = null;
@@ -254,7 +286,7 @@ export function snapPoint2D(screenPt, worldPt, view, scene, opts = {}) {
 
   let bestEdge = null;
   for (const seg of edgeCandidates) {
-    const proj = closestOnSegment(worldPt, seg.a, seg.b);
+    const proj = seg.circle ? closestOnCircle(worldPt, seg.circle) : closestOnSegment(worldPt, seg.a, seg.b);
     const sp = toScreen(proj, view);
     const d = Math.hypot(sp[0] - screenPt[0], sp[1] - screenPt[1]);
     if (d <= aperturePx) {

@@ -89,3 +89,20 @@ client code in native ES modules with `node --test` tests.
   instance.
 - Implementation is plan stages C5 (transport), C6–C8 (client) and C9 (embedding kit,
   `specs/section-embedding.md`).
+
+## Errata (2026-11-03)
+
+Recorded with the 2-D client's v2 editing (apeCAD C5-S4, apeSection#77; C5 decision record,
+apeSection#2 comment 1219). The Decision above is unchanged. This records the client API's
+moves, which decision 5 ties together but no rule numbers.
+
+1. **Client API 3 (owner's ruling Q1, apeSection#2 comment 1220, "Move at S4 only").**
+   `APECADSection.API_VERSION` and `section_assets.CLIENT_API_VERSION` are 3. Decision 4's
+   `create(container, {transport, readOnly, units, onChange})` gains `version`: 1, the
+   default (also when absent or null), or 2, which edits v2 sections (ADR 0039, 0040) and
+   asks the transport for `draft` at `version: 2` after each change. Any other `version` is
+   refused at `create` by name. 3 removes nothing of 2, and 2 (ADR 0041 decision 2, the
+   results overlay) removed nothing of 1. Each move is additive, so a host asserts
+   `CLIENT_API_VERSION >= 1`, as ape-web-tools HA-04 does since apeSection#45. Decision 1's
+   `TRANSPORT_VERSION = 1` is unchanged: `draft` already takes `version` (ADR 0039 Errata 1).
+   The surface is [`specs/section-embedding.md`](../specs/section-embedding.md), "Editing v2".

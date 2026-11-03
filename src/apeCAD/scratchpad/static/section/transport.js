@@ -254,6 +254,9 @@ export function httpTransport(url = "/api/section/transport") {
       body.document = request.document !== undefined ? request.document : docState;
       body.redo = request.redo !== undefined ? request.redo : redoState;
       if (action === "apply") body.op = request.op || (Array.isArray(request.ops) ? request.ops[0] : null);
+      // The section-draft version, sent only when asked for (v2 mode, C5-S4): the server reads
+      // 1, 2 or null and refuses anything else by name (ADR 0039 Errata 1).
+      if (action === "draft" && request.version != null) body.version = request.version;
     }
     let text;
     try {
@@ -264,12 +267,14 @@ export function httpTransport(url = "/api/section/transport") {
     }
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
     const data = await res.json();
-    if (data && data.ok) {
+    if (data && data.ok && action !== "draft") { // a draft is a read: it never moves the state
       docState = data.document || docState;
       redoState = Array.isArray(data.redo) ? data.redo : [];
+    }
+    if (data && data.ok) {
       if (data.scene) data.scene = normalizeScene(data.scene);
       // A v1 draft only when v1 can say the document; else `draft: null`, never a v1 draft
-      // that drops a v2 entity (ADR 0039 D1; v2 drafts are asked for in C5-S4).
+      // that drops a v2 entity (ADR 0039 D1; v2 mode asks for v2 drafts with `draft`, C5-S4).
       if (!data.draft && data.scene) data.draft = v1DraftOrNull(data.scene, docState);
     }
     return data;

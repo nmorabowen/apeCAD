@@ -1,0 +1,405 @@
+// The 2-D client edits v2 (C5 record §3 "Editing" and "API", §4 invariants 9-11; C5-S4).
+// Pure checks against a scripted transport: the create option and its refusals, the tool ids,
+// the `draft` that follows each v2 change, refusals by name, select-as-unit, Delete and
+// Explode of a template, snapping to v2 faces, and huge input. The live-transport oracles
+// (each tool's op replayed to `section_draft(doc, version=2)`, TEMPLATE_LOCKED, the v1
+// request log) are `tests/test_section_client_v2.py`'s.
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { API_VERSION, APECADSection, create, mockTransport, snapPoint2D } from "../../src/apeCAD/scratchpad/static/section/apecad-section.js";
+import { displayList } from "../../src/apeCAD/scratchpad/static/section/display2d.js";
+import { normalizeScene } from "../../src/apeCAD/scratchpad/static/section/transport.js";
+import { MAX_GESTURE_POINTS, TOOLS_V2, faceAt, templateLines, templateOf } from "../../src/apeCAD/scratchpad/static/section/tools-v2.js";
+
+const ring = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+const face = (id, role, outer, holes = []) => ({
+  entity_id: id, label: null, role, material: role === "void" ? null : "C30",
+  boundary: { kind: "ring", ring_mm: outer }, holes: holes.map((h) => ({ kind: "ring", ring_mm: h })),
+});
+const tick = () => new Promise((r) => setTimeout(r, 2));
+
+// A transport that answers every request with `scene`, logs it, and refuses what `refuse` names.
+function scripted(scene, refuse = () => null) {
+  const log = [];
+  const send = async (req) => {
+    log.push(req);
+    const why = refuse(req);
+    if (why) return { ok: false, status: 422, error: { code: why.code, message: why.message } };
+    if (req.action === "draft") return { ok: true, status: 200, scene, draft: { schema: "apeCAD.section-draft", version: req.version, n: log.length } };
+    return { ok: true, status: 200, scene, draft: null };
+  };
+  send.log = log;
+  return send;
+}
+
+function mount(opts) {
+  const listeners = {};
+  const container = { children: [], appendChild(c) { this.children.push(c); return c; }, addEventListener(t, f) { listeners[t] = f; }, removeEventListener() {} };
+  const ed = create(container, opts);
+  const [toolbar, stage, bottom] = container.children[0].children;
+  const [prompt, cmd] = bottom.children;
+  return {
+    ed, toolbar, prompt, cmd,
+    props: () => stage.children[1].children[0].children.map((c) => c.textContent),
+    tools: () => toolbar.children.map((b) => b.dataset.tool).filter(Boolean),
+    type: async (...inputs) => { for (const t of inputs) { cmd.value = t; cmd.dispatchEvent({ type: "keydown", key: "Enter" }); await tick(); } },
+    key: async (evt) => { listeners.keydown({ target: null, preventDefault() {}, ...evt }); await tick(); },
+    click: async (action) => { toolbar.children.find((b) => b.dataset.action === action).dispatchEvent({ type: "click" }); await tick(); },
+  };
+}
+
+// --- API 3: the option, and what it refuses -----------------------------------------------
+
+test("API_VERSION is 3, and create reads version 1 (the default) and 2 only", () => {
+  assert.equal(API_VERSION, 3);
+  assert.equal(APECADSection.API_VERSION, 3);
+  for (const version of [undefined, null, 1]) create({}, { version }).dispose();
+  create({}, { version: 2, transport: scripted({}) }).dispose();
+  for (const [bad, named] of [[3, "3"], [0, "0"], [1.5, "1.5"], ["2", '"2"'], [true, "true"], [{}, "{}"], [[2], "[2]"], [Number.NaN, "NaN"]]) {
+    assert.throws(() => create({}, { version: bad, transport: scripted({}) }), new RegExp(`version ${named.replace(/[[\]{}.]/g, "\\$&")} is not supported, expected 1 or 2`));
+  }
+  assert.throws(() => create({}, { version: 2 }), /version 2 needs a transport; mockTransport is v1 only/);
+});
+
+test("the mock transport refuses a v2 draft by name instead of handing out v1", async () => {
+  const res = await mockTransport()({ action: "draft", version: 2 });
+  assert.equal(res.ok, false);
+  assert.match(res.error.message, /mockTransport writes section-draft version 1 only, not 2/);
+  assert.equal((await mockTransport()({ action: "draft" })).draft.version, 1);
+});
+
+test("v1 keeps its 13 tool ids; v2 swaps Opening for Hole, adds Circle, hides Edge bars", () => {
+  const v1 = mount({ transport: mockTransport() });
+  assert.deepEqual(v1.tools(), ["select", "rect", "polygon", "opening", "wall-chain", "wall-leg", "cover", "bar", "bar-row", "bars-edge", "hoop", "crosstie", "delete"]);
+  assert.equal(v1.toolbar.children.some((b) => b.dataset.action === "explode"), false);
+  const v2 = mount({ transport: scripted({}), version: 2 });
+  assert.deepEqual(v2.tools(), TOOLS_V2.map(([id]) => id));
+  assert.deepEqual(v2.tools(), ["select", "rect", "polygon", "circle", "hole", "wall-chain", "wall-leg", "cover", "bar", "bar-row", "hoop", "crosstie", "delete"]);
+  assert.equal(v2.toolbar.children.filter((b) => b.dataset.action === "explode").length, 1);
+});
+
+// --- invariant 9: v2 mode follows each change with `draft` at version 2 ----------------------
+
+test("v2 mode asks for the v2 draft after each change; getDraft and onChange carry it", async () => {
+  const changes = [];
+  const transport = scripted(normalizeScene({ section_faces: [face(1, "concrete", ring(0, 0, 400, 400))] }));
+  const m = mount({ transport, version: 2, onChange: (d) => changes.push(d) });
+  await tick();
+  assert.deepEqual(transport.log.map((r) => r.action), ["scene", "draft"]);
+  assert.equal(m.ed.getDraft().version, 2);
+  await m.ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 1, designation: "Ø16" });
+  await m.ed.undo();
+  await m.ed.redo();
+  await m.ed.loadDraft({ schema: "apeCAD.document.v1", units: "mm", ops: [] });
+  assert.deepEqual(transport.log.map((r) => r.action), ["scene", "draft", "apply", "draft", "undo", "draft", "redo", "draft", "load", "draft"]);
+  assert.ok(transport.log.filter((r) => r.action === "draft").every((r) => r.version === 2));
+  assert.deepEqual(changes.map((d) => d.n), [4, 6, 8], "onChange: apply, undo, redo, not load");
+  assert.equal(m.ed.getDraft().n, 10);
+});
+
+test("v1 mode sends no draft request", async () => {
+  const log = [];
+  const inner = mockTransport();
+  const ed = create({}, { transport: (req) => { log.push(req.action); return inner(req); } });
+  await tick();
+  await ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 1, designation: "Ø16" });
+  await ed.undo();
+  assert.deepEqual(log, ["scene", "apply", "undo"]);
+  assert.equal(ed.getDraft().version, 1);
+});
+
+test("a refusal shows Refused: <message>; a refused draft leaves no draft rather than a stale one", async () => {
+  let refuseDraft = false;
+  const transport = scripted({}, (req) => (req.action === "apply" ? { code: "TEMPLATE_LOCKED", message: "bar 5 belongs to section template 1" }
+    : refuseDraft && req.action === "draft" ? { code: "INVALID_ARGUMENT", message: "the draft is broken" } : null));
+  const changes = [];
+  const m = mount({ transport, version: 2, onChange: (d) => changes.push(d) });
+  await tick();
+  const res = await m.ed.applyOp({ op: "Delete", entity_ids: [5] });
+  assert.equal(res.ok, false);
+  assert.equal(m.prompt.textContent, "Refused: bar 5 belongs to section template 1");
+  assert.equal(transport.log.at(-1).action, "apply", "no draft after a refusal");
+  refuseDraft = true;
+  await m.ed.undo();
+  assert.equal(m.ed.getDraft(), null);
+  assert.equal(m.prompt.textContent, "Refused: the draft is broken");
+  assert.deepEqual(changes, []);
+});
+
+// A transport whose `apply` lands one bar per call (so the scene shows what landed), whose
+// `apply` throws on the ops `throwApply` names, and whose `draft` answers `draftAnswer()`.
+function landing({ throwApply = () => false, draftAnswer }) {
+  let bars = 0;
+  const scene = () => normalizeScene({ bars: Array.from({ length: bars }, (_, i) => ({ entity_id: i + 1, x_mm: i, y_mm: 0, designation: "Ø16", diameter_mm: 16 })) });
+  return async (req) => {
+    if (req.action === "draft") return draftAnswer();
+    if (req.action === "apply") {
+      if (throwApply(req.op)) throw new Error("apply boom");
+      bars += 1;
+    }
+    return { ok: true, status: 200, scene: scene(), draft: null };
+  };
+}
+
+test("a draft that throws after an op landed: the op shows, the refusal is named, the first error is kept", async () => {
+  const changes = [];
+  const draftAnswer = () => { throw new Error("net down"); };
+  const m = mount({ transport: landing({ draftAnswer, throwApply: (op) => op.x_mm === 99 }), version: 2, onChange: (d) => changes.push(d) });
+  await tick();
+  const res = await m.ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø16" });
+  assert.equal(res.ok, true);
+  assert.equal(m.ed.getScene().bars.length, 1, "the landed op is painted");
+  assert.equal(m.ed.getDraft(), null, "no stale draft");
+  assert.equal(m.prompt.textContent, "Refused: the draft request failed: net down");
+  assert.deepEqual(res.draft_refusal, { code: "TRANSPORT_ERROR", message: "the draft request failed: net down" });
+  // An op list whose second apply throws: the first op shows, and the apply's error is the one thrown.
+  await assert.rejects(m.ed.applyOp([{ op: "AddBar", x_mm: 2, y_mm: 0, designation: "Ø16" }, { op: "AddBar", x_mm: 99, y_mm: 0, designation: "Ø16" }]), /apply boom/);
+  assert.equal(m.ed.getScene().bars.length, 2);
+  assert.equal(m.prompt.textContent, "Refused: the draft request failed: net down");
+  assert.deepEqual(changes, [], "onChange carries a v2 draft only, and there is none");
+});
+
+test("v2 mode refuses a draft that is not a v2 section-draft by name, and never hands it on", async () => {
+  for (const [answer, why] of [
+    [{ schema: "apeCAD.section-draft", version: 1, section: {} }, 'answered a v2 draft request with "apeCAD.section-draft" version 1; a v2 editor takes apeCAD.section-draft version 2 only'],
+    [{ schema: "apeCAD.section-seed", version: 2 }, 'with "apeCAD.section-seed" version 2'],
+    ["a string", 'the transport\'s draft is "a string", not an apeCAD.section-draft object'],
+    [null, "the transport's draft is null, not an apeCAD.section-draft object"],
+  ]) {
+    const changes = [];
+    const m = mount({ transport: landing({ draftAnswer: () => ({ ok: true, status: 200, draft: answer }) }), version: 2, onChange: (d) => changes.push(d) });
+    await tick();
+    const res = await m.ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø16" });
+    assert.equal(m.ed.getDraft(), null, why);
+    assert.equal(res.draft_refusal.code, "INVALID_ARGUMENT");
+    assert.ok(m.prompt.textContent.startsWith("Refused: ") && m.prompt.textContent.includes(why), m.prompt.textContent);
+    assert.deepEqual(changes, [], why);
+  }
+});
+
+// --- the late draft: kept or dropped (review of #66, rounds 1 and 2) ---------------------
+//
+// The predicate: change k's draft reply is KEPT iff no newer change has LANDED since k landed.
+// A change lands when its apply, undo, redo, load or seed reply is ok; a refusal or a throw is
+// no landing (nor is a scene or a draft). The table: k = an apply whose draft reply is held,
+// then a newer attempt that {lands, is refused, throws} via {apply, undo, redo, load, seed},
+// then k's reply is released. Drop iff the newer attempt landed; keep otherwise. onChange
+// fires at most once per landed change, in order, and never with a stale or a null draft.
+
+// A document of `bars` bars behind a transport. `draft` answers from the state at request time
+// (so a held reply goes stale); `outcome[action]` makes one action refuse or throw.
+function heldDraftTransport() {
+  const t = { bars: 0, hold: null, outcome: {} };
+  const barsOf = (n) => Array.from({ length: n }, (_, i) => ({ entity_id: i + 1, x_mm: i, y_mm: 0, designation: "Ø16", diameter_mm: 16 }));
+  const LANDS = { apply: (n) => n + 1, undo: (n) => n - 1, redo: (n) => n + 1, load: () => 5, seed: () => 7 };
+  t.send = async (req) => {
+    if (req.action === "draft") {
+      const n = t.bars;
+      if (t.hold) { const h = t.hold; t.hold = null; await h; }
+      return { ok: true, status: 200, scene: normalizeScene({ bars: barsOf(n) }), draft: { schema: "apeCAD.section-draft", version: 2, section: { bars: barsOf(n) } } };
+    }
+    const outcome = t.outcome[req.action] ?? "lands";
+    if (outcome === "throws") throw new Error(`${req.action} boom`);
+    if (outcome === "refused") return { ok: false, status: 422, error: { code: "REFUSED", message: `${req.action} refused` } };
+    if (LANDS[req.action]) t.bars = LANDS[req.action](t.bars);
+    return { ok: true, status: 200, scene: normalizeScene({ bars: barsOf(t.bars) }), draft: null };
+  };
+  return t;
+}
+
+const NEWER = {
+  apply: (ed) => ed.applyOp({ op: "AddBar", x_mm: 2, y_mm: 0, designation: "Ø16" }),
+  undo: (ed) => ed.undo(),
+  redo: (ed) => ed.redo(),
+  load: (ed) => ed.loadDraft({ schema: "apeCAD.document.v1", units: "mm", ops: [] }),
+  seed: (ed) => ed.loadSeed({ schema: "apeCAD.section-seed", version: 1, units: "mm", section: {} }),
+};
+// bars after the newer change lands, and the onChange bar counts expected (load and seed fire
+// none of their own); after them one more apply, whose draft must reflect it (round 1: 2, 3).
+const LANDED = { apply: [2, [2, 3]], undo: [0, [0, 1]], redo: [2, [2, 3]], load: [5, [6]], seed: [7, [8]] };
+
+const ROWS = Object.keys(NEWER).flatMap((action) => ["lands", "refused", "throws"].map((outcome) => [action, outcome]));
+
+for (const [action, outcome] of ROWS) {
+  const expect = outcome === "lands" ? "drop" : "keep";
+  test(`late draft table: ${action} ${outcome} -> ${expect}`, async () => {
+    const t = heldDraftTransport();
+    const changes = [];
+    const ed = create({}, { transport: t.send, version: 2, onChange: (d) => changes.push(d) });
+    await tick();
+    let release;
+    t.hold = new Promise((r) => (release = r));
+    const k = ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø16" });
+    while (t.hold) await tick(); // k landed; its draft reply is held
+    t.outcome = { [action]: outcome };
+    let thrown = null;
+    try { await NEWER[action](ed); } catch (err) { thrown = err.message; }
+    t.outcome = {};
+    release();
+    await k;
+    const n = (d) => d.section.bars.length;
+    assert.equal(thrown, outcome === "throws" ? `${action} boom` : null);
+    assert.ok(changes.every((d) => d && d.version === 2), "never a null or non-v2 draft");
+    if (expect === "keep") {
+      assert.equal(n(ed.getDraft()), 1, "k's draft is kept");
+      assert.equal(ed.getScene().bars.length, 1, "k's landed op is shown");
+      assert.deepEqual(changes.map(n), [1], "one onChange, k's");
+    } else {
+      const [bars, fired] = LANDED[action];
+      assert.equal(n(ed.getDraft()), bars, "k's late draft is dropped");
+      assert.equal(ed.getScene().bars.length, bars);
+      await NEWER.apply(ed);
+      assert.equal(n(ed.getDraft()), bars + 1);
+      assert.deepEqual(changes.map(n), fired, "onChange once per landed change, k's stale one never");
+    }
+    ed.dispose();
+  });
+}
+
+// --- tools: the ops they post -------------------------------------------------------------
+
+test("rect, circle and polygon post AddSectionFace with the role; a void has no material", async () => {
+  const transport = scripted({});
+  const m = mount({ transport, version: 2 });
+  await tick();
+  m.ed.setParam("material", "C30");
+  m.ed.setTool("rect"); await m.type("0,0", "400,600");
+  m.ed.setParam("role", "steel"); m.ed.setParam("material", "S355");
+  m.ed.setTool("circle"); await m.type("100,100", "@0,30");
+  m.ed.setParam("role", "void");
+  m.ed.setTool("polygon"); await m.type("0,0", "10,0", "0,10", "c");
+  const ops = transport.log.filter((r) => r.action === "apply").map((r) => r.op);
+  const xyz = (x, y) => ({ xyz: [x, y, 0] });
+  assert.deepEqual(ops, [
+    { op: "AddSectionFace", role: "concrete", material: "C30", point_ids: [xyz(0, 0), xyz(400, 0), xyz(400, 600), xyz(0, 600)] },
+    { op: "AddSectionFace", role: "steel", material: "S355", center_id: xyz(100, 100), radius_mm: 30 },
+    { op: "AddSectionFace", role: "void", material: null, point_ids: [xyz(0, 0), xyz(10, 0), xyz(0, 10)] },
+  ]);
+});
+
+test("the hole tool posts AddFaceHole on the face on top at its first point, holes excluded", async () => {
+  const scene = normalizeScene({ section_faces: [face(1, "concrete", ring(0, 0, 400, 400), [ring(50, 50, 150, 150)]), face(2, "steel", ring(200, 200, 300, 300))] });
+  assert.equal(faceAt(scene, [250, 250]).id, 2, "steel over concrete");
+  assert.equal(faceAt(scene, [100, 100]), null, "inside the hole");
+  assert.equal(faceAt(scene, [20, 20]).id, 1);
+  const transport = scripted(scene);
+  const m = mount({ transport, version: 2 });
+  await tick();
+  m.ed.setTool("hole");
+  await m.type("100,100");
+  assert.equal(m.prompt.textContent, "Hole: start inside a face");
+  await m.type("210,210", "@50,0", "@0,50", "c");
+  const ops = transport.log.filter((r) => r.action === "apply").map((r) => r.op);
+  assert.deepEqual(ops, [{ op: "AddFaceHole", face_id: 2, point_ids: [[210, 210], [260, 210], [260, 260]].map(([x, y]) => ({ xyz: [x, y, 0] })) }]);
+});
+
+// --- templates: one unit, deleted or exploded by the server -------------------------------
+
+function templateScene() {
+  return normalizeScene({
+    section_faces: [face(2, "concrete", ring(0, 0, 400, 600))],
+    bars: [{ entity_id: 3, x_mm: 60, y_mm: 60, designation: "Ø20", diameter_mm: 20 }, { entity_id: 9, x_mm: 900, y_mm: 60, designation: "Ø20", diameter_mm: 20 }],
+    templates: [{ entity_id: 1, template: "rect_column", template_version: 1, params: { material: "C30", b: 400, h: 600 }, child_ids: [2, 3], label: null }],
+  });
+}
+
+test("a click on a template child selects the template: name, version, params, locked", async () => {
+  const scene = templateScene();
+  assert.equal(templateOf(scene, 3).id, 1);
+  assert.equal(templateOf(scene, 9), null);
+  assert.deepEqual(templateLines(scene.templates[0]), [
+    "Template #1 (rect_column v1) · locked", 'material = "C30"', "b = 400", "h = 600", "2 children: edit its params, Delete it or Explode it",
+  ]);
+  const transport = scripted(scene);
+  const m = mount({ transport, version: 2 });
+  await tick();
+  m.ed.setTool("select");
+  await m.type("60,60");
+  assert.equal(m.props()[0], "Template #1 (rect_column v1) · locked");
+  await m.type("900,60");
+  assert.deepEqual(m.props(), ["Bar #9 (Ø20)"], "a freehand bar is itself");
+});
+
+test("Delete on a child posts Delete{template_id}; Explode posts ExplodeSectionTemplate", async () => {
+  const transport = scripted(templateScene());
+  const m = mount({ transport, version: 2 });
+  await tick();
+  m.ed.setTool("select"); await m.type("60,60");
+  await m.key({ key: "Delete" });
+  m.ed.setTool("delete"); await m.type("200,300");
+  m.ed.setTool("select"); await m.type("60,60");
+  await m.click("explode");
+  await m.click("explode");
+  const ops = transport.log.filter((r) => r.action === "apply").map((r) => r.op);
+  assert.deepEqual(ops, [
+    { op: "Delete", entity_ids: [1] }, { op: "Delete", entity_ids: [1] }, { op: "ExplodeSectionTemplate", template_id: 1 },
+  ]);
+  assert.equal(m.prompt.textContent, "Explode: select a template first", "nothing selected after the explode");
+});
+
+// --- snapping to v2 faces -----------------------------------------------------------------
+
+test("points snap to a v2 face's vertices and edges, and a circle's centre, quadrants and rim", () => {
+  const view = { scale: 1, worldToScreen: ([x, y]) => [x, 600 - y] };
+  const scene = {
+    section_faces: [
+      face(1, "concrete", ring(0, 0, 400, 400), [ring(100, 100, 200, 200)]),
+      { ...face(2, "steel", []), boundary: { kind: "circle", center_mm: [700, 200], radius_mm: 100 }, holes: [] },
+    ],
+  };
+  const snap = (x, y) => snapPoint2D(view.worldToScreen([x, y]), [x, y], view, scene);
+  assert.deepEqual([snap(3, 2).kind, snap(3, 2).point, snap(3, 2).target_id], ["vertex", [0, 0], 1]);
+  assert.deepEqual([snap(150, 98).kind, snap(150, 98).point, snap(150, 98).edge_index], ["midpoint", [150, 100], null]);
+  assert.deepEqual([snap(200, 3).kind, snap(200, 3).edge_index], ["midpoint", 0]);
+  assert.deepEqual([snap(300, 404).kind, snap(300, 404).point, snap(300, 404).edge_index], ["edge", [300, 400], 2]);
+  assert.deepEqual([snap(702, 198).kind, snap(702, 198).point], ["center", [700, 200]]);
+  assert.deepEqual([snap(703, 297).kind, snap(703, 297).point], ["quadrant", [700, 300]]);
+  const rim = snap(700 + 100 * Math.SQRT1_2 + 3, 200 + 100 * Math.SQRT1_2 + 3);
+  assert.equal(rim.kind, "edge");
+  assert.ok(Math.abs(Math.hypot(rim.point[0] - 700, rim.point[1] - 200) - 100) < 1e-9, JSON.stringify(rim.point));
+});
+
+// --- huge input: bounded time ---------------------------------------------------------------
+
+test("a v2 document of 10^4 faces and 10^5 bars edits, selects and deletes in bounded time", async () => {
+  const faces = Array.from({ length: 10000 }, (_, i) => face(i + 1, i % 3 === 0 ? "steel" : "concrete", ring((i % 100) * 50, Math.floor(i / 100) * 50, (i % 100) * 50 + 40, Math.floor(i / 100) * 50 + 40)));
+  const bars = Array.from({ length: 100000 }, (_, i) => ({ entity_id: 20001 + i, x_mm: (i % 400) * 12.5, y_mm: Math.floor(i / 400) * 20, designation: "Ø8", diameter_mm: 8 }));
+  const childIds = [...faces.map((f) => f.entity_id), ...bars.map((b) => b.entity_id)];
+  const scene = normalizeScene({ section_faces: faces, bars, templates: [{ entity_id: 20000, template: "big", template_version: 1, params: {}, child_ids: childIds }] });
+  const transport = scripted(scene);
+  const m = mount({ transport, version: 2 });
+  await tick();
+  // The yardstick is one linear pass over this scene on this machine: the display list (a
+  // sort, n log n). Each step makes a few such passes; a quadratic path over the 1.1·10^5
+  // children would cost thousands of them.
+  const timed = async (fn) => { const t = performance.now(); await fn(); return performance.now() - t; };
+  const pass = Math.max(5, Math.min(...[0, 1, 2].map(() => { const t = performance.now(); displayList(scene); return performance.now() - t; })));
+  const steps = {
+    edit: await timed(() => m.ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø8" })),
+    select: await timed(async () => { m.ed.setTool("select"); await m.type("0,0"); }),
+  };
+  assert.equal(m.props()[0], "Template #20000 (big v1) · locked");
+  steps.delete = await timed(() => m.key({ key: "Delete" }));
+  assert.deepEqual(transport.log.filter((r) => r.action === "apply").at(-1).op, { op: "Delete", entity_ids: [20000] });
+  for (const [name, ms] of Object.entries(steps)) assert.ok(ms < 40 * pass, `${name}: ${ms.toFixed(0)} ms, ${(ms / pass).toFixed(1)} passes of ${pass.toFixed(0)} ms`);
+});
+
+test("a polygon of 10^5 typed vertices refuses past the cap by name and closes without hanging", async () => {
+  const transport = scripted({});
+  const m = mount({ transport, version: 2 });
+  await tick();
+  m.ed.setTool("polygon");
+  const t0 = Date.now();
+  for (let i = 0; i < 100000; i++) { // typed as fast as Enter can go: one point and redraw each
+    m.cmd.value = `${i},${(i * 7919) % 1000}`;
+    m.cmd.dispatchEvent({ type: "keydown", key: "Enter" });
+  }
+  await tick();
+  assert.match(m.prompt.textContent, new RegExp(`Refused: a polygon takes at most ${MAX_GESTURE_POINTS} points`));
+  await m.type("c");
+  const op = transport.log.filter((r) => r.action === "apply").at(-1).op;
+  assert.equal(op.op, "AddSectionFace");
+  assert.equal(op.point_ids.length, MAX_GESTURE_POINTS);
+  assert.ok(Date.now() - t0 < 60000, `${Date.now() - t0} ms`);
+});

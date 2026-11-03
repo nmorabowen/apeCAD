@@ -9,10 +9,11 @@ transport. The pure painting oracles (3, 4, 12, 10^5 bars) are `tests/js/section
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from threading import Thread
 from typing import Any, cast
@@ -21,6 +22,7 @@ import pytest
 
 from _section_fixtures import BUILDERS
 from _section_fixtures_v2 import BUILDERS_V2, fixture_path_v2
+from apeCAD import catalog
 from apeCAD.document import Document
 from apeCAD.errors import DocumentError
 from apeCAD.geometry import XYZ
@@ -304,6 +306,306 @@ def test_a_too_deep_body_is_refused_and_the_client_keeps_working(
     const after = await ed.applyOp({{ op: "AddBar", x_mm: 1, y_mm: 1, designation: "Ø16" }});
     assert.equal(after.ok, true, "the next request is served");
     assert.equal(ed.getScene().bars.length, 1);
+    ed.dispose();
+    """
+    _run(script)
+
+
+# ---- C5-S4: the client edits v2, over the live Python transport --------------------------
+#
+# A scripted session drives the shipped client as a user would: tools from `setTool`, points
+# typed in the command line, keys on the container, the toolbar's buttons. The transport is
+# wrapped to log each request (and the HTTP body it became) and each response's `ok`.
+
+_HARNESS = """
+import {{ create, httpTransport }} from {entry!r};
+const requests = [], bodies = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = (u, init) => {{ bodies.push(init.body); return realFetch(u, init); }};
+const inner = httpTransport({url!r});
+let inflight = 0, lastError = null;
+const transport = async (req) => {{
+  inflight += 1;
+  try {{
+    const res = await inner(req);
+    requests.push({{ req: JSON.stringify(req), ok: Boolean(res && res.ok) }});
+    if (res && !res.ok) lastError = res.error;
+    return res;
+  }} finally {{ inflight -= 1; }}
+}};
+const listeners = {{}};
+const container = {{ children: [], appendChild(c) {{ this.children.push(c); return c; }},
+  addEventListener(t, f) {{ listeners[t] = f; }}, removeEventListener() {{}} }};
+const settle = async () => {{
+  do {{ await new Promise((r) => setTimeout(r, 2)); }} while (inflight > 0);
+}};
+const changes = [];
+const ed = create(container, {{ transport, onChange: (d) => changes.push(d), {options} }});
+await settle();
+const [toolbar, stage, bottom] = container.children[0].children;
+const [prompt, cmd] = bottom.children;
+const props = () => stage.children[1].children[0].children.map((c) => c.textContent);
+const tools = toolbar.children.map((b) => b.dataset.tool).filter(Boolean);
+const type = async (...inputs) => {{
+  for (const text of inputs) {{
+    cmd.value = text;
+    cmd.dispatchEvent({{ type: "keydown", key: "Enter" }});
+    await settle();
+  }}
+}};
+const key = async (evt) => {{
+  listeners.keydown({{ target: null, preventDefault() {{}}, ...evt }});
+  await settle();
+}};
+const button = async (action) => {{
+  toolbar.children.find((b) => b.dataset.action === action).dispatchEvent({{ type: "click" }});
+  await settle();
+}};
+"""
+
+V1_TOOLS = [
+    "select", "rect", "polygon", "opening", "wall-chain", "wall-leg", "cover", "bar", "bar-row",
+    "bars-edge", "hoop", "crosstie", "delete",
+]  # fmt: skip
+V2_TOOLS = [
+    "select", "rect", "polygon", "circle", "hole", "wall-chain", "wall-leg", "cover", "bar",
+    "bar-row", "hoop", "crosstie", "delete",
+]  # fmt: skip
+
+# sha-256 of the v1 session's log below, run against the client at apeCAD b4b6e63 (before
+# C5-S4) in a scratch tree: the requests byte for byte, and each HTTP body less the echoed
+# `document` and `redo` (state the server wrote, which the client only passes back).
+V1_LOG_SHA256 = "203c04ef36764ad169ebcc1a1169bbe7ec0b5011785738528f6341b72f07069a"
+
+
+def _session(server: ScratchpadServer, body: str, options: str = "") -> Json:
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/api/section/transport"
+    head = _HARNESS.format(entry=_module("apecad-section.js"), url=url, options=options)
+    return cast(Json, json.loads(_run(head + body, timeout=120)))
+
+
+def test_v1_mode_sends_the_requests_it_sent_before_c5_s4(server: ScratchpadServer) -> None:
+    """Record §4 invariant 9 (v1 half) and the 13 v1 tool ids: a scripted v1 session posts
+    exactly what the b4b6e63 client posted, and never a `draft`."""
+    out = _session(
+        server,
+        """
+    ed.setTool("rect"); await type("0,0", "400,600");
+    ed.setTool("opening"); await type("100,100", "200,100", "200,200", "c");
+    ed.setTool("polygon"); await type("500,0", "@300,0", "@0,300", "c");
+    ed.setTool("cover"); await type("10,10");
+    ed.setTool("bar"); await type("60,60", "340,60");
+    ed.setTool("bar-row"); await type("60,540", "340,540");
+    ed.setTool("bars-edge"); await type("0,0");
+    ed.setTool("wall-chain"); await type("1000,0", "2000,0", "c");
+    ed.setTool("wall-leg"); await type("1000,500", "2000,500");
+    ed.setTool("select"); await type("60,60");
+    await key({ key: "Delete" }); await key({ key: "z", ctrlKey: true });
+    await key({ key: "y", ctrlKey: true });
+    await ed.undo(); await ed.redo(); await settle();
+    await ed.applyOp({ op: "Delete", entity_ids: [ed.getScene().bars[0].id] });
+    await ed.loadDraft({ schema: "apeCAD.section-seed", version: 1, units: "mm", section: {
+      concrete_faces: [{ ring_mm: [[0, 0], [300, 0], [300, 300], [0, 300]], material: "C30" }],
+      bars: [] } });
+    await ed.applyOp({ op: "AddBar", x_mm: 50, y_mm: 50, designation: "Ø16" });
+    const strip = (b) => {
+      const o = JSON.parse(b); delete o.document; delete o.redo; return JSON.stringify(o);
+    };
+    process.stdout.write(JSON.stringify({ tools, requests: requests.map((r) => r.req),
+      bodies: bodies.map(strip), version: ed.getDraft()?.version ?? null }));
+    """,
+    )
+    assert out["tools"] == V1_TOOLS
+    actions = [json.loads(r)["action"] for r in out["requests"]]
+    assert "draft" not in actions and len(actions) >= 18, actions
+    log = json.dumps({"requests": out["requests"], "bodies": out["bodies"]}, ensure_ascii=False)
+    digest = hashlib.sha256(log.encode("utf-8")).hexdigest()
+    assert digest == V1_LOG_SHA256, (digest, actions)
+    assert out["version"] == 1
+
+
+_COLUMN = {  # catalog/template_entries.py's example, moved clear of the freehand faces
+    "material": "C30", "b": 400, "h": 600, "center_mm": [1500, 300], "cover": 40, "nx": 3,
+    "ny": 3, "bar": "Ø20", "tie": "Ø10", "tie_spacing": 150, "crossties": "all",
+}  # fmt: skip
+
+
+def _xyz(x: float, y: float) -> Json:
+    return {"xyz": [x, y, 0]}
+
+
+def _ids(draft: Json) -> set[int]:
+    section = cast(Json, draft["section"])
+    return {
+        cast(int, item["id"])
+        for key, items in section.items()
+        if key not in ("templates", "materials_used")
+        for item in cast(list[Json], items)
+    }
+
+
+def test_v2_mode_edits_through_the_live_transport(server: ScratchpadServer) -> None:
+    """Record §4 invariants 9-11 and the S4 oracle. Each v2 tool posts the op the test names
+    here, and `getDraft()` (and `onChange`) deep-equals `section_draft(doc, version=2)` of a
+    document the test builds itself from those ops, after every apply, undo and redo. A locked
+    child refuses with the server's `TEMPLATE_LOCKED`, shown as `Refused: <message>`; Delete
+    on a child takes its whole template; Explode keeps the child ids."""
+    out = _session(
+        server,
+        f"""
+    const steps = [];
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const snap = (label) => {{
+      steps.push({{ label, draft: ed.getDraft(), prompt: prompt.textContent, props: props(),
+        changes: changes.length, error: lastError?.code ?? null,
+        changeIsDraft: changes.length ? same(changes.at(-1), ed.getDraft()) : null }});
+      lastError = null;
+    }};
+    snap("open");
+    ed.setParam("material", "C30"); ed.setTool("rect"); await type("0,0", "400,600"); snap("rect");
+    ed.setParam("role", "steel"); ed.setParam("material", "S355");
+    ed.setTool("circle"); await type("600,300", "@50,0"); snap("circle");
+    ed.setParam("role", "void"); ed.setTool("polygon");
+    await type("100,400", "300,400", "200,500", "c"); snap("polygon");
+    ed.setParam("role", "concrete"); ed.setParam("material", "C30");
+    ed.setTool("hole"); await type("100,100", "@100,0", "@0,100", "c"); snap("hole");
+    ed.setTool("cover"); await type("350,50"); snap("cover");
+    ed.setTool("bar"); await type("60,60"); snap("bar");
+    await ed.undo(); snap("undo");
+    await ed.redo(); snap("redo");
+    ed.setTool("delete"); await type("60,60"); snap("delete");
+    const column = {json.dumps(_COLUMN)};
+    const add = {{ op: "AddSectionTemplate", template: "rect_column", template_params: column }};
+    await ed.applyOp(add);
+    snap("template");
+    const tpl = ed.getScene().templates[0];
+    const child = ed.getScene().bars.find((b) => tpl.child_ids.includes(b.id));
+    const at = `${{child.x_mm}},${{child.y_mm}}`;
+    ed.setTool("hole"); await type("1450,250", "@100,0", "@0,100", "c"); snap("hole-on-child");
+    await ed.applyOp({{ op: "Delete", entity_ids: [child.id] }}); snap("delete-child");
+    ed.setTool("select"); await type(at); snap("select");
+    await key({{ key: "Delete" }}); snap("delete-template");
+    await ed.undo(); snap("undo-delete");
+    ed.setTool("select"); await type(at); await button("explode"); snap("explode");
+    process.stdout.write(JSON.stringify({{ tools, steps, requests, template: tpl.id }}));
+    """,
+        options="version: 2",
+    )
+    assert out["tools"] == V2_TOOLS
+    template_id = cast(int, out["template"])
+    document = Document()
+    created: dict[str, int] = {}
+
+    def apply(label: str, op: Json) -> None:
+        name, params = catalog.split_request(op)
+        created_id = catalog.apply(document, name, params).created_id
+        if isinstance(created_id, int):
+            created[label] = created_id
+
+    expected: dict[str, Callable[[], object]] = {
+        "rect": lambda: apply("rect", {
+            "op": "AddSectionFace", "role": "concrete", "material": "C30",
+            "point_ids": [_xyz(0, 0), _xyz(400, 0), _xyz(400, 600), _xyz(0, 600)]}),
+        "circle": lambda: apply("circle", {
+            "op": "AddSectionFace", "role": "steel", "material": "S355",
+            "center_id": _xyz(600, 300), "radius_mm": 50}),
+        "polygon": lambda: apply("polygon", {
+            "op": "AddSectionFace", "role": "void", "material": None,
+            "point_ids": [_xyz(100, 400), _xyz(300, 400), _xyz(200, 500)]}),
+        "hole": lambda: apply("hole", {
+            "op": "AddFaceHole", "face_id": created["rect"],
+            "point_ids": [_xyz(100, 100), _xyz(200, 100), _xyz(200, 200)]}),
+        "cover": lambda: apply("cover", {
+            "op": "SetCover", "face_id": created["rect"], "cover_mm": 25,
+            "tie_diameter_mm": 10, "bar_diameter_mm": 16}),
+        "bar": lambda: apply("bar", {"op": "AddBar", "x_mm": 60, "y_mm": 60, "designation": "Ø16"}),
+        "undo": document.undo,
+        "redo": document.redo,
+        "delete": lambda: apply("delete", {"op": "Delete", "entity_ids": [created["bar"]]}),
+        "template": lambda: apply("template", {
+            "op": "AddSectionTemplate", "template": "rect_column", "template_params": _COLUMN}),
+        "delete-template": lambda: apply("x", {"op": "Delete", "entity_ids": [template_id]}),
+        "undo-delete": document.undo,
+        "explode": lambda: apply("x", {"op": "ExplodeSectionTemplate", "template_id": template_id}),
+    }  # fmt: skip
+    steps = {cast(str, s["label"]): s for s in cast(list[Json], out["steps"])}
+    n_changes = 0
+    for label, step in steps.items():
+        if label in expected:
+            expected[label]()
+            n_changes += 1
+            assert step["changeIsDraft"] is True, label  # onChange carried the v2 draft
+        assert step["draft"] == section_draft(document, version=2), label
+        assert step["changes"] == n_changes, label
+    assert created["template"] == template_id
+
+    # Invariant 10: the server's lock, shown by name; the client checked nothing itself.
+    for label in ("hole-on-child", "delete-child"):
+        assert steps[label]["error"] == "TEMPLATE_LOCKED", label
+        assert cast(str, steps[label]["prompt"]).startswith("Refused: "), steps[label]["prompt"]
+        assert "section template" in cast(str, steps[label]["prompt"]), steps[label]["prompt"]
+    props = cast(list[str], steps["select"]["props"])
+    assert props[0] == f"Template #{template_id} (rect_column v1) · locked", props
+    assert "b = 400" in props and 'bar = "Ø20"' in props, props
+    # Delete on a child took the subtree; Explode kept every child id and freed it.
+    template_draft = cast(Json, steps["template"]["draft"])
+    children = _ids(template_draft) - _ids(cast(Json, steps["delete"]["draft"]))
+    assert children and not children & _ids(cast(Json, steps["delete-template"]["draft"]))
+    exploded = cast(Json, steps["explode"]["draft"])
+    assert _ids(exploded) == _ids(template_draft)
+    assert cast(Json, exploded["section"])["templates"] == []
+    # Invariant 9: each change, and the opening scene, is followed by `draft` at version 2.
+    log = [(json.loads(r["req"]), r["ok"]) for r in cast(list[Json], out["requests"])]
+    for i, (request, ok) in enumerate(log):
+        if request["action"] != "draft" and ok:
+            assert log[i + 1][0] == {"action": "draft", "version": 2}, (i, request)
+    sent = {json.dumps(r["op"]["op"]) for r, _ in log if r["action"] == "apply"}
+    assert '"EditSectionTemplate"' not in sent  # the client never re-expands a template
+
+
+def test_a_late_v2_draft_never_wins_and_never_rewinds_the_state(
+    server: ScratchpadServer,
+) -> None:
+    """Review of #66, finding 1: bar A's `draft` reply is held while bar B is applied and
+    drafted; then it lands. It is dropped (B's draft stays), and as a read it moved no state,
+    so a third bar makes three. Before the fix the old draft won (1 bar) and C made 2."""
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/api/section/transport"
+    script = f"""
+    import assert from "node:assert/strict";
+    import {{ create, httpTransport }} from {_module("apecad-section.js")!r};
+    const realFetch = globalThis.fetch;
+    let hold = null;
+    globalThis.fetch = async (u, init) => {{
+      const reply = await realFetch(u, init);
+      if (hold && JSON.parse(init.body).action === "draft") {{
+        const h = hold;
+        hold = null;
+        await h;
+      }}
+      return reply;
+    }};
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const changes = [];
+    const ed = create({{}}, {{ transport: httpTransport({url!r}), version: 2,
+      onChange: (d) => changes.push(d) }});
+    await sleep(100);
+    const bar = (x) => ({{ op: "AddBar", x_mm: x, y_mm: x, designation: "Ø16" }});
+    let release;
+    hold = new Promise((r) => (release = r));
+    const a = ed.applyOp(bar(10));
+    while (hold) await sleep(5); // A is applied; its draft reply is held
+    await ed.applyOp(bar(20));
+    assert.equal(ed.getDraft().section.bars.length, 2);
+    release();
+    assert.equal((await a).stale, true);
+    assert.equal(ed.getDraft().section.bars.length, 2, "the late draft does not win");
+    assert.equal(changes.at(-1).section.bars.length, 2);
+    assert.equal(changes.length, 1, "no onChange for the dropped draft");
+    await ed.applyOp(bar(30));
+    assert.equal(ed.getDraft().section.bars.length, 3, "the read moved no state");
+    assert.equal(ed.getScene().bars.length, 3);
     ed.dispose();
     """
     _run(script)
