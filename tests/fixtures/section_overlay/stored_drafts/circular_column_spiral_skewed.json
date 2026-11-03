@@ -1,0 +1,202 @@
+{
+  "schema": "apeCAD.section-draft",
+  "version": 2,
+  "units": "mm",
+  "frame": {
+    "x": "right",
+    "y": "up",
+    "origin": "world"
+  },
+  "producer": {
+    "apeCAD_version": "0.1.0",
+    "apeCAD_commit": null
+  },
+  "document": {
+    "schema": "apeCAD.document.v1",
+    "units": "mm",
+    "ops": [
+      {
+        "op": "AddSectionFace",
+        "role": "concrete",
+        "material": "concrete",
+        "point_ids": [],
+        "center_id": {
+          "xyz": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "id": 1
+        },
+        "radius_mm": 300.0,
+        "label": null,
+        "entity_id": 2
+      },
+      {
+        "op": "AddBarsOnCircle",
+        "center_x_mm": 0.0,
+        "center_y_mm": 0.0,
+        "radius_mm": 240.0,
+        "count": 8,
+        "designation": "Ø20",
+        "start_angle_deg": 0.0,
+        "material": null,
+        "bar_ids": [
+          4,
+          6,
+          8,
+          10,
+          12,
+          14,
+          16,
+          18
+        ],
+        "bar_point_ids": [
+          3,
+          5,
+          7,
+          9,
+          11,
+          13,
+          15,
+          17
+        ]
+      },
+      {
+        "op": "AddCircularTie",
+        "kind": "spiral",
+        "center_id": 1,
+        "centerline_radius_mm": 255.0,
+        "designation": "Ø10",
+        "pitch_mm": 75.0,
+        "label": null,
+        "entity_id": 19
+      },
+      {
+        "op": "SetCover",
+        "face_id": 2,
+        "cover_mm": 40.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 20.0,
+        "entity_id": 20
+      }
+    ]
+  },
+  "section": {
+    "faces": [
+      {
+        "id": 2,
+        "label": null,
+        "role": "concrete",
+        "material": "concrete",
+        "boundary": {
+          "kind": "circle",
+          "center_mm": [
+            0.0,
+            0.0
+          ],
+          "radius_mm": 300.0
+        },
+        "holes": []
+      }
+    ],
+    "wall_legs": [],
+    "bars": [
+      {
+        "id": 4,
+        "label": null,
+        "x_mm": 240.0,
+        "y_mm": 0.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 6,
+        "label": null,
+        "x_mm": 169.70562748494115,
+        "y_mm": 169.7056274847714,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 8,
+        "label": null,
+        "x_mm": 0.0,
+        "y_mm": 240.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 10,
+        "label": null,
+        "x_mm": -169.70562748477138,
+        "y_mm": 169.7056274847714,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 12,
+        "label": null,
+        "x_mm": -240.0,
+        "y_mm": 0.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 14,
+        "label": null,
+        "x_mm": -169.70562748477144,
+        "y_mm": -169.70562748477138,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 16,
+        "label": null,
+        "x_mm": 0.0,
+        "y_mm": -240.0,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      },
+      {
+        "id": 18,
+        "label": null,
+        "x_mm": 169.70562748477136,
+        "y_mm": -169.70562748477144,
+        "diameter_mm": 20.0,
+        "designation": "Ø20"
+      }
+    ],
+    "hoops": [],
+    "crossties": [],
+    "circular_ties": [
+      {
+        "id": 19,
+        "label": null,
+        "kind": "spiral",
+        "center_mm": [
+          0.0,
+          0.0
+        ],
+        "centerline_radius_mm": 255.0,
+        "designation": "Ø10",
+        "diameter_mm": 10.0,
+        "pitch_mm": 75.0
+      }
+    ],
+    "cover_guides": [
+      {
+        "id": 20,
+        "face_id": 2,
+        "cover_mm": 40.0,
+        "tie_diameter_mm": 10.0,
+        "bar_diameter_mm": 20.0
+      }
+    ],
+    "templates": [],
+    "materials_used": [
+      "concrete"
+    ]
+  },
+  "warnings": []
+}

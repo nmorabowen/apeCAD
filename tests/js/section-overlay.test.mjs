@@ -1,8 +1,11 @@
 // The section client's results overlay (ADR 0041 D2, stage C2-S2). Oracles: the shared
 // fixtures of `tests/fixtures/section_overlay/` (the same code and path as the Python reader,
 // `apeCAD.render.overlay.parse_overlay`), the hand-worked colour lookups, the code-built cases
-// JSON cannot carry, and the ADR 0038 contrast and CVD gates for the example scales.
+// JSON cannot carry, and the ADR 0038 contrast and CVD gates for the example scales. v2 (ADR 0041
+// Errata E1, apeSection#84): the same fixtures with their v2 cases, the null-revision staleness,
+// and the `section_sha256` vectors, which no hash of a JSON.parse'd section reproduces.
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -13,7 +16,8 @@ import {
   OVERLAY_EXAMPLE_SCALES, OVERLAY_TOKENS, PALETTE, createViewport, renderSectionCanvas,
 } from "../../src/apeCAD/scratchpad/static/section/canvas2d.js";
 import {
-  MAX_OVERLAY_PRIMITIVES, OverlayError, STALE_ALPHA, paintOverlay, parseOverlay, scaleColor,
+  MAX_OVERLAY_PRIMITIVES, OVERLAY_SCHEMA_VERSION, OVERLAY_SCHEMA_VERSIONS, OverlayError, STALE_ALPHA,
+  createOverlayController, paintOverlay, parseOverlay, scaleColor,
 } from "../../src/apeCAD/scratchpad/static/section/overlay.js";
 import { contrastRatio, oklabDistance, simulateCvdHex } from "../../src/apeCAD/scratchpad/static/js/theme.js";
 
@@ -429,4 +433,117 @@ test("each example scale passes the ADR 0038 contrast and CVD gates", () => {
 test("the gate has teeth: red against green fails it for a deuteranope", () => {
   const redGreen = readJson(path.join("valid", "rect_wall_results.json")).layers.find((l) => l.id === "bars").scale;
   assert.deepEqual(gateFailures(redGreen), ["#1a9850 vs #d73027 (deutan): 0.051 < 0.055"]);
+});
+
+// --- v2 (ADR 0041 Errata E1, spec section-overlay-v2.md; apeSection#84) --------------------
+
+const ROOT = path.resolve(HERE, "../..");
+const VECTORS = readJson("section_sha256.json");
+const SPIRAL_SHA256 = "fd20de574ef8e5c73a027ac3972beecc0b1f42538510bd004ea954aedde548df";
+
+function v2(primitive, revision = 0, sha = SPIRAL_SHA256) {
+  return { ...one(primitive, null, revision), version: 2, section_sha256: sha };
+}
+
+test("v1 and v2 are read, each by its own block; the newest is 2", () => {
+  assert.deepEqual([...OVERLAY_SCHEMA_VERSIONS], [1, 2]);
+  assert.equal(OVERLAY_SCHEMA_VERSION, 2);
+  const results = parseOverlay(readJson(path.join("valid", "v2_rect_wall_results.json")));
+  const rect = VECTORS.vectors.find((v) => v.draft === "tests/fixtures/section_draft/rect_boundary_hoops.json");
+  assert.deepEqual([results.version, results.revision, results.sectionSha256], [2, 7, rect.section_sha256]);
+  const plain = parseOverlay(readJson(path.join("valid", "rect_wall_results.json")));
+  assert.deepEqual([plain.version, plain.sectionSha256], [1, null]);
+  assert.deepEqual(results.layers, plain.layers);
+  const unstamped = parseOverlay(readJson(path.join("valid", "v2_not_stamped.json")));
+  assert.equal(unstamped.revision, null, "kept as null, never coerced to a number");
+  assert.equal(unstamped.sectionSha256, SPIRAL_SHA256);
+  const floats = parseOverlay(readJson(path.join("valid", "v2_integral_floats.json")));
+  assert.deepEqual([floats.version, floats.revision], [2, 3]);
+});
+
+test("a trailing newline is refused: JavaScript's `$` with the `m` flag would accept it", () => {
+  const padded = `${SPIRAL_SHA256}\n`;
+  assert.equal(/^[0-9a-f]{64}$/m.test(padded), true, "the trap is real");
+  assert.deepEqual(refusalOf(v2({ kind: "point", at: [0, 0], style: { fill: "#000" } }, 0, padded)),
+    { code: "INVALID_ARGUMENT", path: "overlay.section_sha256" });
+});
+
+test("a null revision is stale at live revision 0, the one `Number(null)` would match", () => {
+  let live = 0;
+  const ctl = createOverlayController({ doc: null, el: null, box: null, getRevision: () => live });
+  const none = ctl.state();
+  assert.deepEqual([none.active, none.overlay_revision, none.overlay_section_sha256], [false, null, null]);
+  assert.ok(Object.hasOwn(none, "overlay_section_sha256"), "always present");
+  const point = { kind: "point", at: [0, 0], style: { fill: "#000" } };
+  const res = ctl.set(v2(point, null));
+  assert.deepEqual([res.ok, res.active, res.overlay_revision, res.stale], [true, true, null, true]);
+  assert.equal(res.overlay_section_sha256, SPIRAL_SHA256);
+  for (live = 0; live < 5; live++) assert.equal(ctl.state().stale, true, `live ${live}`);
+  live = 0;
+  assert.equal(ctl.set(v2(point, 0)).stale, false, "a stamped v2 overlay at 0 is current");
+  const v1 = ctl.set(one(point, null, 0));
+  assert.deepEqual([v1.stale, v1.overlay_section_sha256], [false, null]);
+  assert.equal(ctl.set(one(point, null, null)).ok, false, "v1 refuses a null revision");
+});
+
+test("an unstamped overlay stays stale through edits and undo; the heading never reads null", async () => {
+  const { editor, panel, rec } = await editorWithRecorder();
+  const square = { kind: "polygon", ring: [[0, 0], [400, 0], [400, 400]], style: { fill: "#123456" } };
+  rec.log.length = 0;
+  const res = editor.setOverlay(v2(square, null));
+  assert.deepEqual([res.ok, res.stale, res.overlay_revision], [true, true, null]);
+  assert.ok(rec.log.some((e) => e[1] === "#123456" && e[2] === STALE_ALPHA), "dimmed, not hidden");
+  const shown = texts(panel);
+  assert.ok(shown.some((t) => t.startsWith("Overlay · not stamped")), shown.join(" | "));
+  assert.equal(shown.some((t) => /null/.test(t)), false);
+  assert.ok(shown.includes("stale"));
+  await editor.applyOp({ op: "AddBar", x_mm: 60, y_mm: 60, designation: "Ø16" });
+  assert.equal(editor.getOverlayState().stale, true);
+  await editor.undo();
+  const state = editor.getOverlayState();
+  assert.deepEqual([state.active, state.stale, state.overlay_revision, state.overlay_section_sha256],
+    [true, true, null, SPIRAL_SHA256]);
+  editor.dispose();
+});
+
+test("a v2 overlay stamped with the live revision is current, and stale after an edit", async () => {
+  const { editor, panel } = await editorWithRecorder();
+  const at = editor.getOverlayState().revision;
+  const res = editor.setOverlay(v2({ kind: "point", at: [0, 0], style: { fill: "#000" } }, at));
+  assert.deepEqual([res.stale, res.overlay_revision, res.overlay_section_sha256], [false, at, SPIRAL_SHA256]);
+  assert.ok(texts(panel).includes(`Overlay · revision ${at}`));
+  await editor.applyOp({ op: "AddBar", x_mm: 60, y_mm: 60, designation: "Ø16" });
+  await editor.undo();
+  assert.equal(editor.getOverlayState().stale, true, "no edit or undo makes it current again");
+  editor.dispose();
+});
+
+// The section after one JSON.parse, written back as JavaScript writes it: keys sorted by code
+// point, compact separators, JS number text (`240.0` -> `240`). What a browser could hash.
+function browserCanonical(v) {
+  if (Array.isArray(v)) return `[${v.map(browserCanonical).join(",")}]`;
+  if (v !== null && typeof v === "object") {
+    return `{${Object.keys(v).sort(byCodePoint).map((k) => `${JSON.stringify(k)}:${browserCanonical(v[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
+function byCodePoint(a, b) {
+  const x = Array.from(a, (c) => c.codePointAt(0)), y = Array.from(b, (c) => c.codePointAt(0));
+  for (let i = 0; i < Math.min(x.length, y.length); i++) if (x[i] !== y[i]) return x[i] - y[i];
+  return x.length - y.length;
+}
+
+test("a JSON.parse round trip changes every vector's hash: the client never computes it", () => {
+  assert.equal(VECTORS.vectors.length, 15);
+  const sha = (text) => crypto.createHash("sha256").update(text, "utf8").digest("hex");
+  for (const { draft, section_sha256: stored } of VECTORS.vectors) {
+    const parsed = JSON.parse(fs.readFileSync(path.join(ROOT, draft), "utf8"));
+    assert.notEqual(sha(browserCanonical(parsed.section)), stored, draft);
+  }
+  const [js] = VECTORS.js_round_trip;
+  const spiral = JSON.parse(fs.readFileSync(path.join(ROOT, js.draft), "utf8"));
+  assert.equal(sha(browserCanonical(spiral.section)), js.section_sha256);
+  assert.ok(js.section_sha256.startsWith("d53418e2"));
+  assert.equal(VECTORS.vectors.find((v) => v.draft === js.draft).section_sha256, SPIRAL_SHA256);
 });

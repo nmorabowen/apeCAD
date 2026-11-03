@@ -1,10 +1,12 @@
-"""The `apeCAD.section-overlay` v1 contract: validate it, colour it, draw it (ADR 0041).
+"""The `apeCAD.section-overlay` v1 and v2 contracts: validate, colour, draw (ADR 0041, E1).
 
-`parse_overlay` is the one reader (spec `AProjects/specs/section-overlay.md`). It refuses
-anything the contract does not allow, with the exact `path` of the refused field, and never
-truncates. `overlay_svg` draws a parsed overlay as one SVG group for `render_svg`. An overlay
-is display data a host computed: apeCAD stores none of it and computes nothing from it
-(ADR 0024 decision 2).
+`parse_overlay` is the one reader (specs `section-overlay.md`, `section-overlay-v2.md`). It
+reads each version by its own block, refuses anything the contract does not allow, with the
+exact `path` of the refused field, and never truncates. v2's `section_sha256` is checked for
+its format only: apeCAD never computes that hash and never compares it with anything.
+`overlay_svg` draws a parsed overlay as one SVG group for `render_svg`. An overlay is display
+data a host computed: apeCAD stores none of it and computes nothing from it (ADR 0024
+decision 2).
 """
 
 from __future__ import annotations
@@ -29,7 +31,10 @@ from apeCAD.render.svg import (
 from apeCAD.render.views import Vec2, View
 
 OVERLAY_SCHEMA = "apeCAD.section-overlay"
-OVERLAY_SCHEMA_VERSION = 1
+OVERLAY_SCHEMA_VERSIONS = (1, 2)
+"""The versions `parse_overlay` reads, each by its own block (spec v2 "Versions")."""
+OVERLAY_SCHEMA_VERSION = OVERLAY_SCHEMA_VERSIONS[-1]
+"""The newest: hosts write it whenever a stored draft is behind the results."""
 MAX_OVERLAY_PRIMITIVES = 200_000
 """Most primitives one overlay carries, over all layers (ADR 0041 decision 2)."""
 
@@ -70,6 +75,9 @@ _SHAPE_KEYS: dict[str, frozenset[str]] = {
 _REQUIRED_SHAPE_KEYS: dict[str, frozenset[str]] = {**_SHAPE_KEYS, "polygon": frozenset({"ring"})}
 _PRIMITIVE_KEYS = frozenset({"kind", "style", "value", "ids"})
 _HEX = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
+_SHA256 = re.compile(r"[0-9a-f]{64}")  # the whole string: `fullmatch`, never `$` ("\n")
+_V1_KEYS = frozenset({"schema", "version", "units", "revision", "layers"})
+_TOP_KEYS = {1: _V1_KEYS, 2: _V1_KEYS | {"section_sha256"}}
 
 _Px = Callable[[Vec2], Vec2]
 
@@ -132,8 +140,10 @@ class Layer:
 
 @dataclass(frozen=True, slots=True)
 class Overlay:
-    revision: int
+    revision: int | None  # None: v2, not stamped in this session, stale at every revision
     layers: tuple[Layer, ...]
+    version: int = 1
+    section_sha256: str | None = None  # v2's hex as given; None for v1
 
     @property
     def primitive_count(self) -> int:
@@ -144,16 +154,22 @@ class Overlay:
 
 
 def parse_overlay(value: object) -> Overlay:
-    """The overlay, validated, or `OverlayError` with the path of what it refuses."""
-    top = _object("overlay", value, {"schema", "version", "units", "revision", "layers"})
+    """The overlay, validated, or `OverlayError` with the path of what it refuses.
+
+    The version picks the block the top keys are read by. Any other version is read by the
+    keys some version allows, so it is refused at `overlay.version`, never as a key."""
+    version = _version_of(value)
+    keys = _TOP_KEYS.get(version) if version is not None else None
+    top = _object("overlay", value, set(keys or _TOP_KEYS[2]), set(keys or _V1_KEYS))
     if top["schema"] != OVERLAY_SCHEMA:
         raise _refuse("overlay.schema", f"must be {OVERLAY_SCHEMA!r}, got {top['schema']!r}")
-    version = top["version"]
-    if _integral(version) != OVERLAY_SCHEMA_VERSION:
-        raise _refuse("overlay.version", f"must be {OVERLAY_SCHEMA_VERSION}, got {version!r}")
+    if version is None or keys is None:
+        raise _refuse("overlay.version", f"must be 1 or 2, got {top['version']!r}")
     if top["units"] != "mm":
         raise _refuse("overlay.units", f"must be 'mm', got {top['units']!r}")
-    revision = _int("overlay.revision", top["revision"])
+    raw = top["revision"]  # v2 keeps null as null, never a number (`Number(null)` is 0)
+    revision = None if version == 2 and raw is None else _int("overlay.revision", raw)
+    sha256 = _sha256("overlay.section_sha256", top["section_sha256"]) if version == 2 else None
     raw_layers = _list("overlay.layers", top["layers"])
     shells = [
         _object(f"overlay.layers[{i}]", item, {"id", "label", "visible", "scale", "primitives"})
@@ -175,7 +191,7 @@ def parse_overlay(value: object) -> Overlay:
     seen: set[str] = set()
     for i, (shell, items) in enumerate(zip(shells, raw_primitives, strict=True)):
         layers.append(_layer(f"overlay.layers[{i}]", shell, items, seen))
-    return Overlay(revision=revision, layers=tuple(layers))
+    return Overlay(revision, tuple(layers), version, sha256)
 
 
 def _layer(path: str, shell: dict[str, object], items: list[object], seen: set[str]) -> Layer:
@@ -433,6 +449,20 @@ def _integral(value: object) -> int | None:
     return None
 
 
+def _version_of(value: object) -> int | None:
+    shell = cast(dict[object, object], value) if isinstance(value, dict) else {}
+    return _integral(shell.get("version"))
+
+
+def _sha256(path: str, value: object) -> str:
+    """Exactly 64 of `0-9a-f` (spec v2 "section_sha256"): the format only, never the hash."""
+    if not isinstance(value, str) or _SHA256.fullmatch(value) is None:
+        shown = repr(value)
+        shown = shown if len(shown) <= 80 else f"a value of {len(shown)} chars"
+        raise _refuse(path, f"must be 64 lower-case hex digits and nothing else, got {shown}")
+    return value
+
+
 def _int(path: str, value: object) -> int:
     whole = _integral(value)
     if whole is None or whole < 0:
@@ -489,7 +519,11 @@ def overlay_svg(overlay: Overlay, view: View, viewport: Viewport) -> list[str]:
     def px(p: Vec2) -> Vec2:
         return viewport.to_px(view.project((p[0], p[1], 0.0)))
 
-    out = [f'<g class="overlay" data-revision="{overlay.revision}">']
+    # v2: the hash as given, and `data-revision` only for an integer (absent, never "null").
+    tag = "" if overlay.revision is None else f' data-revision="{overlay.revision}"'
+    if overlay.section_sha256 is not None:
+        tag += f' data-section-sha256="{overlay.section_sha256}"'
+    out = [f'<g class="overlay"{tag}>']
     for layer in overlay.layers:
         if not layer.visible:
             continue
