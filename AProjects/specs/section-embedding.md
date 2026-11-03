@@ -135,17 +135,30 @@ the same `code` and `path` as `apeCAD.render.overlay.parse_overlay`.
   An overlay is never truncated.
 - **State.** `getOverlayState()` returns `{active, revision, overlay_revision, stale,
   primitive_count, layers: [{id, label, visible, primitives, scale}], refusal}`. `revision`
-  is the live document revision; `scale` is the scale's kind or `null`.
+  is the live document revision; `scale` is the scale's kind or `null`. Planned for slice 3
+  of apeSection#46 (`section-overlay-v2.md`, "Echo"): an additive key
+  `overlay_section_sha256`, the overlay's `section_sha256` (`null` for a v1 overlay or no
+  overlay), with `overlay_revision` `null` for a v2 overlay's null revision. Neither is a
+  client API change: `API_VERSION` stays 3 (ADR 0041 Errata E1).
 - **Revision.** When a transport response carries an integer `revision` (the mock transport
   does), the client takes it. The stateless Python transport sends none, so the client counts
   its own edits: each successful `apply`, `undo`, `redo`, `load` and `seed` adds 1. An op
   list refused partway first shows the ops applied before the refusal, and counts them. A
   host stamps an overlay with `getOverlayState().revision` read when it took the draft.
   The counter restarts at 0 with each editor, so it identifies a revision only within one
-  editor session; a document identity that survives sessions is an open owner question.
+  editor session. The identity that survives sessions is the overlay's `section_sha256`
+  (section-overlay v2, ADR 0041 Errata E1): the hash of the **stored** draft's `section`
+  block, computed by the host in Python, never by the client and never over a re-expansion.
+  A saved overlay carries `revision: null`. On reload the host hashes the stored draft it
+  loads and stamps the overlay with this revision, read right after the load, only when the
+  hashes match.
 - **Stale.** When `revision !== overlay_revision` (behind or ahead), the client paints the overlay at
   `STALE_ALPHA` (0.35) of its opacity, dims its legends and shows a `stale` badge. It never
   hides it and never recomputes it. An undo is an edit, so it does not make an overlay current.
+  Planned for slice 2 (`section-overlay-v2.md`): a v2 overlay whose `revision` is `null` is
+  stale at every live revision, 0 included, and the client never compares hashes. The host
+  sends an overlay only to the editor whose stored draft hashes to its `section_sha256`, so
+  two editors at equal revisions never show each other's results as current.
 - **Draw order.** Section, then the overlay, then the selection, stroked again on top. The
   ghost preview and the snap marker stay above all three. The overlay is display only: hit
   testing and snapping ignore it.
