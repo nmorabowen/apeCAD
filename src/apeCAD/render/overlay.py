@@ -3,9 +3,10 @@
 `parse_overlay` is the one reader (specs `section-overlay.md`, `section-overlay-v2.md`). It
 reads each version by its own block, refuses anything the contract does not allow, with the
 exact `path` of the refused field, and never truncates. v2's `section_sha256` is checked for
-its format only: apeCAD never computes that hash and never compares it with anything. `overlay_svg` draws a parsed overlay as one SVG group for `render_svg`. An overlay
-is display data a host computed: apeCAD stores none of it and computes nothing from it
-(ADR 0024 decision 2).
+its format only: apeCAD never computes that hash and never compares it with anything.
+`overlay_svg` draws a parsed overlay as one SVG group for `render_svg`. An overlay is display
+data a host computed: apeCAD stores none of it and computes nothing from it (ADR 0024
+decision 2).
 """
 
 from __future__ import annotations
@@ -157,8 +158,7 @@ def parse_overlay(value: object) -> Overlay:
 
     The version picks the block the top keys are read by. Any other version is read by the
     keys some version allows, so it is refused at `overlay.version`, never as a key."""
-    shell = cast(dict[object, object], value) if isinstance(value, dict) else {}
-    version = _integral(shell.get("version"))
+    version = _version_of(value)
     keys = _TOP_KEYS.get(version) if version is not None else None
     top = _object("overlay", value, set(keys or _TOP_KEYS[2]), set(keys or _V1_KEYS))
     if top["schema"] != OVERLAY_SCHEMA:
@@ -447,6 +447,11 @@ def _integral(value: object) -> int | None:
     if isinstance(value, float) and math.isfinite(value) and value.is_integer():
         return int(value)
     return None
+
+
+def _version_of(value: object) -> int | None:
+    shell = cast(dict[object, object], value) if isinstance(value, dict) else {}
+    return _integral(shell.get("version"))
 
 
 def _sha256(path: str, value: object) -> str:
