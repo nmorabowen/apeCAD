@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { API_VERSION, APECADSection, create, mockTransport, snapPoint2D } from "../../src/apeCAD/scratchpad/static/section/apecad-section.js";
+import { displayList } from "../../src/apeCAD/scratchpad/static/section/display2d.js";
 import { normalizeScene } from "../../src/apeCAD/scratchpad/static/section/transport.js";
 import { MAX_GESTURE_POINTS, TOOLS_V2, faceAt, templateLines, templateOf } from "../../src/apeCAD/scratchpad/static/section/tools-v2.js";
 
@@ -239,15 +240,19 @@ test("a v2 document of 10^4 faces and 10^5 bars edits, selects and deletes in bo
   const transport = scripted(scene);
   const m = mount({ transport, version: 2 });
   await tick();
-  const t0 = Date.now();
-  for (let i = 0; i < 3; i++) await m.ed.applyOp({ op: "AddBar", x_mm: i, y_mm: 0, designation: "Ø8" });
-  const perEdit = (Date.now() - t0) / 3;
-  m.ed.setTool("select"); await m.type("0,0");
+  // The yardstick is one linear pass over this scene on this machine: the display list (a
+  // sort, n log n). Each step makes a few such passes; a quadratic path over the 1.1·10^5
+  // children would cost thousands of them.
+  const timed = async (fn) => { const t = performance.now(); await fn(); return performance.now() - t; };
+  const pass = Math.max(5, Math.min(...[0, 1, 2].map(() => { const t = performance.now(); displayList(scene); return performance.now() - t; })));
+  const steps = {
+    edit: await timed(() => m.ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø8" })),
+    select: await timed(async () => { m.ed.setTool("select"); await m.type("0,0"); }),
+  };
   assert.equal(m.props()[0], "Template #20000 (big v1) · locked");
-  await m.key({ key: "Delete" });
+  steps.delete = await timed(() => m.key({ key: "Delete" }));
   assert.deepEqual(transport.log.filter((r) => r.action === "apply").at(-1).op, { op: "Delete", entity_ids: [20000] });
-  const total = Date.now() - t0;
-  assert.ok(perEdit < 4000 && total < 20000, `${perEdit} ms per edit, ${total} ms in all`);
+  for (const [name, ms] of Object.entries(steps)) assert.ok(ms < 40 * pass, `${name}: ${ms.toFixed(0)} ms, ${(ms / pass).toFixed(1)} passes of ${pass.toFixed(0)} ms`);
 });
 
 test("a polygon of 10^5 typed vertices refuses past the cap by name and closes without hanging", async () => {
