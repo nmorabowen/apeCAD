@@ -67,12 +67,17 @@ where this section says otherwise.
   stamped in this session": such an overlay is stale at every live revision, 0 included. A
   reader keeps `null` as null and never coerces it to a number (`Number(null)` is 0). v1's
   `revision` stays an integer: `null` there is refused.
-- **`section_sha256`** is a string of exactly 64 characters, each one of `0-9a-f`. Upper-case
-  hex, any other length, `null`, or a value that is not a string is refused at
-  `overlay.section_sha256`. A reader checks the format only. apeCAD never computes the hash
+- **`section_sha256`** is a string of exactly 64 characters, each one of `0-9a-f`, and
+  nothing else. Upper-case hex, 63 or 65 characters, a trailing `"\n"`, a prefix such as
+  `sha256:` or `0x`, `null`, or a value that is not a string is refused at
+  `overlay.section_sha256`. A pattern check matches the whole string (`re.fullmatch`, or
+  `\Z` in place of `$`, which also accepts a trailing `"\n"`; in JavaScript `^…$` without
+  the `m` flag). A reader checks the format only. apeCAD never computes the hash
   and never compares it with anything of its own: it has no hash of the live document.
 - **Writers.** A host writes v2 whenever the results came from a stored draft, and v1 only
-  when there is none. apeCAD writes no overlay.
+  when there is none. A stored draft whose section block cannot be hashed (below, "Unhashable
+  text") has no v2 overlay and no v1 one either: it is refused by name, never downgraded to
+  v1, because a v1 overlay would silently drop the identity. apeCAD writes no overlay.
 
 ### The hash
 
@@ -96,6 +101,13 @@ hashlib.sha256(json.dumps(draft["section"], sort_keys=True, separators=(",", ":"
 - Keys are sorted, list order is kept, the separators are `,` and `:` with no spaces, and
   text is UTF-8 with `ensure_ascii=False` (the `Ø20` in a designation stays one character).
   NaN and infinity are refused.
+- **Unhashable text.** A string with a lone surrogate (a label `"bad\ud800"`, which JSON's
+  `\ud800` escape can carry) has no UTF-8 encoding. apeCAD loads such a draft with no warning,
+  but `canonical_section_hash`, `_canonical_section_sha256` and the formula above all raise
+  `UnicodeEncodeError` at `.encode("utf-8")`. The host refuses the draft by name, with a code
+  and the path of the string, and does not run it or write any overlay for it (apeSection#66
+  tracks the named refusal in both Python copies). It is never downgraded to a v1 overlay
+  and never hashed some other way (`errors="surrogatepass"`, `ensure_ascii=True`).
 
 The hash is computed only in Python, and only over a stored draft. These are **never**
 hashed:
@@ -147,12 +159,25 @@ the formula local to the test, so apeCAD's Linux CI checks the same literal.
 
 apeCAD validates the hash and hands it back unchanged, so a host or an agent can compare it.
 
-- `getOverlayState()` adds `overlay_section_sha256`: the overlay's `section_sha256`, or `null`
-  for a v1 overlay or no overlay. `overlay_revision` is `null` for a null revision.
-- The render envelope adds `overlay_section_sha256` beside `overlay_revision`, with the same
-  values.
-- In the SVG, a v2 overlay's `<g class="overlay">` carries `data-section-sha256="<hex>"`. With
-  `revision: null` it carries no `data-revision`. A v1 overlay's group is as in v1.
+A null revision must stay distinguishable from "no overlay" on every surface:
+
+- **The render envelope** (render API, MCP `render`, CLI `render`). With no overlay,
+  `overlay_revision` and `overlay_section_sha256` are both absent, as `agent/tools.py` drops
+  `overlay_revision` today. With an overlay drawn, both keys are present:
+  `overlay_revision` is the integer, or `null` for a null revision (present and `null`, never
+  dropped), and `overlay_section_sha256` is the hex, or `null` for a v1 overlay.
+- **`getOverlayState()`** keeps every v1 key, always present, as today: with no overlay,
+  `active` is `false` and `overlay_revision` is `null`. It adds `overlay_section_sha256`,
+  always present: the overlay's hex, or `null` for a v1 overlay or no overlay. A drawn
+  null-revision overlay has `active: true`, `overlay_revision: null` and `stale: true`, so
+  `active` tells it from no overlay.
+- **The SVG.** No overlay, no `<g class="overlay">`, as in v1. A drawn v2 overlay's group
+  carries `data-section-sha256="<hex>"`, and `data-revision="N"` only when `revision` is an
+  integer: with `revision: null` the attribute is absent (never `data-revision="null"`), and
+  the group's presence says an overlay was drawn. A v1 overlay's group is as in v1.
+- **The panel heading** (`overlay.js`, today `Overlay · revision N`) never reads
+  `revision null`: a null revision is shown as not stamped in this session, for example
+  `Overlay · not stamped`. The wording is free; slices 2 and 3 build it.
 
 None of these is a client API change: `API_VERSION` and `CLIENT_API_VERSION` stay 3 (ADR 0041
 Errata E1).

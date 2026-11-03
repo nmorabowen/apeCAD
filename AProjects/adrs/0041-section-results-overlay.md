@@ -89,7 +89,10 @@ on another.
    `canonical_section_hash` of the **stored** draft's `section` block, for v1 and v2 drafts
    alike. Sorted keys, separators `,` and `:`, UTF-8 with `ensure_ascii=False`, floats by
    Python `repr`, NaN refused. apeConcrete's reader computes the same value as
-   `provenance.section_sha256`.
+   `provenance.section_sha256`. A draft whose section block has no UTF-8 encoding (a lone
+   surrogate in a label, which apeCAD loads with no warning) cannot be hashed: the host
+   refuses it by name and never downgrades its overlay to v1, which would drop the identity
+   silently (apeSection#66).
 3. **`revision` may be `null` (ruling 2, "Host decides").** A saved overlay carries
    `revision: null` and is always stale. On reload the host hashes the stored draft and
    stamps the live revision only when the hash matches. Within a session nothing changes: the
@@ -98,7 +101,9 @@ on another.
    equal revisions are not confused.
 4. **Python computes the hash; apeCAD only echoes it.** apeCAD validates the format and hands
    the value back: `getOverlayState().overlay_section_sha256`, the render envelope's
-   `overlay_section_sha256`, and the SVG's `data-section-sha256`. Nothing in apeCAD's `src`
+   `overlay_section_sha256`, and the SVG's `data-section-sha256`. A drawn null-revision
+   overlay echoes `overlay_revision: null`, present, while no overlay leaves the envelope's
+   key absent; the panel never reads "revision null". Nothing in apeCAD's `src`
    and nothing in JavaScript computes it: one `JSON.parse`/`JSON.stringify` round trip
    changes the hash of all 11 v2 fixtures (`240.0` becomes `240`). A re-expansion is never
    hashed: reopening tolerates rel 1e-9 silently, and trigonometry differs by one ulp between
@@ -134,4 +139,9 @@ on another.
 - a null revision is stale at live revision 0 (this kills `Number(null)`);
 - a mismatch stamped and then edited stays stale;
 - section A's overlay on section B's editor, at equal revisions, is stale;
-- lenient hex (upper case, 63 digits, a non-string) is refused at `overlay.section_sha256`.
+- lenient hex is refused at `overlay.section_sha256`: upper case, 63 or 65 characters, a
+  trailing `"\n"` (a `^…$` regex in Python accepts it: match with `fullmatch` or `\Z`), the
+  prefixes `sha256:` and `0x`, and a non-string;
+- a lone-surrogate label (`"bad\ud800"`) is refused by name, and never yields a v1 overlay;
+- a drawn null-revision overlay echoes `overlay_revision: null` (present), and no overlay
+  leaves the envelope key absent.
