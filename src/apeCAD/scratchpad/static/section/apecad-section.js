@@ -4,9 +4,9 @@
 
 import { createViewport, hitTestSection, renderSectionCanvas } from "./canvas2d.js";
 import { displayList, entityTitle } from "./display2d.js";
-import { createV2Tools, editVersion, refusalText, TOOLS_V2 } from "./tools-v2.js";
 import { parseInput, snapPoint2D } from "./input-parse.js";
 import { createOverlayController, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
+import { createV2Tools, editVersion, refusalText, TOOLS_V2 } from "./tools-v2.js";
 import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene, v1DraftOrNull } from "./transport.js";
 
 export const API_VERSION = 3; // 3 adds create(..., {version: 2}) editing (C5-S4)
@@ -223,8 +223,9 @@ export function create(container, opts = {}) {
   }
 
   // v2 mode: a change is followed by `draft` at version 2, the draft getDraft and onChange carry.
+  // Each call site awaits it only when `version === 2`, so v1 mode keeps its timing too.
   async function withDraft(res) {
-    if (version !== 2 || !res || !res.ok) return res;
+    if (!res || !res.ok) return res;
     const out = await transport({ action: "draft", version: 2 });
     if (out && out.ok) return { ...res, draft: out.draft ?? null };
     return { ...res, draft: null, draft_refusal: out?.error ?? null };
@@ -246,17 +247,17 @@ export function create(container, opts = {}) {
       try {
         res = await transport({ action: "apply", op });
       } catch (err) {
-        if (lastOk) syncChange(await withDraft(lastOk), true); // the ops that landed still show, then it throws
+        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk) : lastOk, true); // the ops that landed still show, then it throws
         throw err;
       }
       if (!res || !res.ok) {
         // The ops before the refused one are applied: show them (and move the revision) first.
-        if (lastOk) syncChange(await withDraft(lastOk), true);
+        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk) : lastOk, true);
         return syncResponse(res, false);
       }
       lastOk = res;
     }
-    return syncChange(await withDraft(lastOk), true);
+    return syncChange(version === 2 ? await withDraft(lastOk) : lastOk, true);
   }
 
   async function undo() {
@@ -268,20 +269,23 @@ export function create(container, opts = {}) {
       return { ok: true, status: 200, gesture_undo: true };
     }
     opEpoch += 1;
-    const res = await withDraft(await transport({ action: "undo" }));
+    const raw = await transport({ action: "undo" });
+    const res = version === 2 ? await withDraft(raw) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
   async function redo() {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
     opEpoch += 1;
-    const res = await withDraft(await transport({ action: "redo" }));
+    const raw = await transport({ action: "redo" });
+    const res = version === 2 ? await withDraft(raw) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
   async function loadDraft(payload) {
     opEpoch += 1;
-    const out = syncChange(await withDraft(await transport({ action: "load", payload })), false, true);
+    const raw = await transport({ action: "load", payload });
+    const out = syncChange(version === 2 ? await withDraft(raw) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -289,7 +293,8 @@ export function create(container, opts = {}) {
 
   async function loadSeed(seedPayload) {
     opEpoch += 1;
-    const out = syncChange(await withDraft(await transport({ action: "seed", payload: seedPayload })), false, true);
+    const raw = await transport({ action: "seed", payload: seedPayload });
+    const out = syncChange(version === 2 ? await withDraft(raw) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -523,7 +528,8 @@ export function create(container, opts = {}) {
     void loadDraft(opts.initialDraft);
   } else {
     const initEpoch = opEpoch;
-    void transport({ action: "scene" }).then(withDraft).then((res) => {
+    const first = transport({ action: "scene" });
+    void (version === 2 ? first.then(withDraft) : first).then((res) => {
       if (opEpoch === initEpoch && !disposed && res && res.ok) syncResponse(res, false);
     });
   }
