@@ -54,8 +54,13 @@ class RenderResult:
     extents_mm: dict[str, list[float]]
     entities: int
     path: str | None = None
-    # The drawn overlay's `revision` (ADR 0041 decision 3); the caller judges staleness.
+    # The overlay echo (spec section-overlay-v2 "Echo"). `overlay_drawn` tells a drawn overlay
+    # whose `revision` is null (v2, not stamped) from no overlay, where both are None.
+    # `overlay_revision` is the drawn overlay's `revision`; the caller judges staleness
+    # (ADR 0041 decision 3). `overlay_section_sha256` is v2's hex as given, None for v1.
+    overlay_drawn: bool = False
     overlay_revision: int | None = None
+    overlay_section_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +73,9 @@ class PngResult:
     extents_mm: dict[str, list[float]]
     entities: int
     path: str | None = None
+    overlay_drawn: bool = False  # the echo as in `RenderResult`
     overlay_revision: int | None = None
+    overlay_section_sha256: str | None = None
 
 
 def render_svg(
@@ -96,8 +103,9 @@ def render_svg(
     `annotate` draws a plan of a section at a standard scale with tags, overall dimensions
     and a scale note (spec ape-design §4 D4); they are drawn, never stored. Off, with a
     `window`, or when no standard scale leaves room, the bare drawing is fitted as before.
-    `overlay` (spec section-overlay, ADR 0041) is drawn above the section on the `top` view
-    only; it never moves the fit and is never stored.
+    `overlay` (an `apeCAD.section-overlay` v1 or v2, ADR 0041 and its Errata E1) is drawn
+    above the section on the `top` view only; it never moves the fit and is never stored.
+    The result echoes it: `overlay_drawn`, its `revision` and its `section_sha256` unchanged.
     """
     shown = None if overlay is None else _overlay(overlay)
     width_px = _clamp_size("width", width)
@@ -150,7 +158,9 @@ def render_svg(
         extents_mm={"min": [low[0], low[1]], "max": [high[0], high[1]]},
         entities=len(items),
         path=path,
+        overlay_drawn=shown is not None,
         overlay_revision=None if shown is None else shown.revision,
+        overlay_section_sha256=None if shown is None else shown.section_sha256,
     )
 
 
@@ -322,7 +332,9 @@ def render_png(
         extents_mm=rendered.extents_mm,
         entities=rendered.entities,
         path=path,
+        overlay_drawn=rendered.overlay_drawn,
         overlay_revision=rendered.overlay_revision,
+        overlay_section_sha256=rendered.overlay_section_sha256,
     )
 
 

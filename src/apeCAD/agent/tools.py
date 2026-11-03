@@ -32,7 +32,7 @@ from apeCAD.agent.session import Session
 from apeCAD.catalog import Applied
 from apeCAD.errors import INVALID_ARGUMENT, DocumentError
 from apeCAD.ops import SCHEMA_ID
-from apeCAD.render.api import render_png, render_svg
+from apeCAD.render.api import PngResult, RenderResult, render_png, render_svg
 from apeCAD.render.dxf import export_dxf as _export_dxf
 from apeCAD.render.scene import closure, entity_map
 from apeCAD.render.section import NOT_DRAWN, not_drawn, not_drawn_reason
@@ -177,8 +177,10 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
 
     `save_to` resolves under `root`. `format: "png"` uses `render_png` (`apeCAD[png]`);
     without the extra it fails `UNAVAILABLE` and never falls back to SVG. `overlay` is an
-    `apeCAD.section-overlay` v1 object (ADR 0041 decision 3), drawn and never stored; the
-    envelope then carries its `overlay_revision` beside `revision`. When an entity in the
+    `apeCAD.section-overlay` v1 or v2 object (ADR 0041 decision 3, Errata E1), drawn and never
+    stored; the envelope then carries its `overlay_revision` (`null` for an unstamped v2) and
+    `overlay_section_sha256` (`null` for v1) beside `revision`, and neither key without an
+    overlay. When an entity in the
     drawing draws nothing (a kind with no drawing yet, or one whose geometry does not
     resolve), the envelope carries `warnings: [{code: "not-drawn", ids, message}]` naming
     each one and its kind; otherwise it has no `warnings`. Templates (their children draw)
@@ -219,8 +221,7 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
             }
             if png_result.path is not None:
                 fields["path"] = png_result.path
-            if png_result.overlay_revision is not None:
-                fields["overlay_revision"] = png_result.overlay_revision
+            _echo_overlay(fields, png_result)
             return _ok(session, _with_not_drawn(session, kwargs["ids"], fields))
         result = render_svg(session.document, **kwargs)
         fields = {
@@ -234,11 +235,18 @@ def render(session: Session, *, root: Path | None = None, **params: object) -> E
         }
         if result.path is not None:
             fields["path"] = result.path
-        if result.overlay_revision is not None:
-            fields["overlay_revision"] = result.overlay_revision
+        _echo_overlay(fields, result)
         return _ok(session, _with_not_drawn(session, kwargs["ids"], fields))
 
     return guarded(lambda: session.revision, body)
+
+
+def _echo_overlay(fields: dict[str, object], result: RenderResult | PngResult) -> None:
+    """Spec section-overlay-v2 "Echo": both keys absent with no overlay, both present once one
+    is drawn. A null revision stays `None` (JSON `null`), never dropped; the hex is as given."""
+    if result.overlay_drawn:
+        fields["overlay_revision"] = result.overlay_revision
+        fields["overlay_section_sha256"] = result.overlay_section_sha256
 
 
 def _with_not_drawn(
