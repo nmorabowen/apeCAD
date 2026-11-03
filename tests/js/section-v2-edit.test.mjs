@@ -127,6 +127,57 @@ test("a refusal shows Refused: <message>; a refused draft leaves no draft rather
   assert.deepEqual(changes, []);
 });
 
+// A transport whose `apply` lands one bar per call (so the scene shows what landed), whose
+// `apply` throws on the ops `throwApply` names, and whose `draft` answers `draftAnswer()`.
+function landing({ throwApply = () => false, draftAnswer }) {
+  let bars = 0;
+  const scene = () => normalizeScene({ bars: Array.from({ length: bars }, (_, i) => ({ entity_id: i + 1, x_mm: i, y_mm: 0, designation: "Ø16", diameter_mm: 16 })) });
+  return async (req) => {
+    if (req.action === "draft") return draftAnswer();
+    if (req.action === "apply") {
+      if (throwApply(req.op)) throw new Error("apply boom");
+      bars += 1;
+    }
+    return { ok: true, status: 200, scene: scene(), draft: null };
+  };
+}
+
+test("a draft that throws after an op landed: the op shows, the refusal is named, the first error is kept", async () => {
+  const changes = [];
+  const draftAnswer = () => { throw new Error("net down"); };
+  const m = mount({ transport: landing({ draftAnswer, throwApply: (op) => op.x_mm === 99 }), version: 2, onChange: (d) => changes.push(d) });
+  await tick();
+  const res = await m.ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø16" });
+  assert.equal(res.ok, true);
+  assert.equal(m.ed.getScene().bars.length, 1, "the landed op is painted");
+  assert.equal(m.ed.getDraft(), null, "no stale draft");
+  assert.equal(m.prompt.textContent, "Refused: the draft request failed: net down");
+  assert.deepEqual(res.draft_refusal, { code: "TRANSPORT_ERROR", message: "the draft request failed: net down" });
+  // An op list whose second apply throws: the first op shows, and the apply's error is the one thrown.
+  await assert.rejects(m.ed.applyOp([{ op: "AddBar", x_mm: 2, y_mm: 0, designation: "Ø16" }, { op: "AddBar", x_mm: 99, y_mm: 0, designation: "Ø16" }]), /apply boom/);
+  assert.equal(m.ed.getScene().bars.length, 2);
+  assert.equal(m.prompt.textContent, "Refused: the draft request failed: net down");
+  assert.deepEqual(changes, [], "onChange carries a v2 draft only, and there is none");
+});
+
+test("v2 mode refuses a draft that is not a v2 section-draft by name, and never hands it on", async () => {
+  for (const [answer, why] of [
+    [{ schema: "apeCAD.section-draft", version: 1, section: {} }, 'answered a v2 draft request with "apeCAD.section-draft" version 1; a v2 editor takes apeCAD.section-draft version 2 only'],
+    [{ schema: "apeCAD.section-seed", version: 2 }, 'with "apeCAD.section-seed" version 2'],
+    ["a string", 'the transport\'s draft is "a string", not an apeCAD.section-draft object'],
+    [null, "the transport's draft is null, not an apeCAD.section-draft object"],
+  ]) {
+    const changes = [];
+    const m = mount({ transport: landing({ draftAnswer: () => ({ ok: true, status: 200, draft: answer }) }), version: 2, onChange: (d) => changes.push(d) });
+    await tick();
+    const res = await m.ed.applyOp({ op: "AddBar", x_mm: 1, y_mm: 0, designation: "Ø16" });
+    assert.equal(m.ed.getDraft(), null, why);
+    assert.equal(res.draft_refusal.code, "INVALID_ARGUMENT");
+    assert.ok(m.prompt.textContent.startsWith("Refused: ") && m.prompt.textContent.includes(why), m.prompt.textContent);
+    assert.deepEqual(changes, [], why);
+  }
+});
+
 // --- tools: the ops they post -------------------------------------------------------------
 
 test("rect, circle and polygon post AddSectionFace with the role; a void has no material", async () => {

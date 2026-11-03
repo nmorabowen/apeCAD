@@ -6,7 +6,7 @@ import { createViewport, hitTestSection, renderSectionCanvas } from "./canvas2d.
 import { displayList, entityTitle } from "./display2d.js";
 import { parseInput, snapPoint2D } from "./input-parse.js";
 import { createOverlayController, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
-import { createV2Tools, editVersion, refusalText, TOOLS_V2 } from "./tools-v2.js";
+import { createV2Tools, editVersion, followWithDraft, refusalText, TOOLS_V2 } from "./tools-v2.js";
 import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene, v1DraftOrNull } from "./transport.js";
 
 export const API_VERSION = 3; // 3 adds create(..., {version: 2}) editing (C5-S4)
@@ -222,16 +222,13 @@ export function create(container, opts = {}) {
     return res;
   }
 
-  // v2 mode: a change is followed by `draft` at version 2, the draft getDraft and onChange carry.
+  // v2 mode: a change is followed by `draft` at version 2, the draft getDraft and onChange carry
+  // (`tools-v2.js::followWithDraft`); a reply that lands after a newer change began is dropped.
   // Each call site awaits it only when `version === 2`, so v1 mode keeps its timing too.
-  async function withDraft(res) {
-    if (!res || !res.ok) return res;
-    const out = await transport({ action: "draft", version: 2 });
-    if (out && out.ok) return { ...res, draft: out.draft ?? null };
-    return { ...res, draft: null, draft_refusal: out?.error ?? null };
-  }
+  const withDraft = (res, epoch) => followWithDraft(transport, res, () => opEpoch === epoch && !disposed);
 
   function syncChange(res, emitChange, edits = emitChange) {
+    if (res?.stale) return res; // a newer change owns the screen and the draft
     const out = syncResponse(res, emitChange, edits);
     if (out?.draft_refusal) promptLabel.textContent = refusalText({ error: out.draft_refusal });
     return out;
@@ -239,7 +236,7 @@ export function create(container, opts = {}) {
 
   async function applyOp(opOrOps) {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
-    opEpoch += 1;
+    const epoch = (opEpoch += 1);
     const list = Array.isArray(opOrOps) ? opOrOps : [opOrOps];
     let lastOk = null;
     for (const op of list) {
@@ -247,17 +244,17 @@ export function create(container, opts = {}) {
       try {
         res = await transport({ action: "apply", op });
       } catch (err) {
-        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk) : lastOk, true); // the ops that landed still show, then it throws
+        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk, epoch) : lastOk, true); // the ops that landed still show, then it throws
         throw err;
       }
       if (!res || !res.ok) {
         // The ops before the refused one are applied: show them (and move the revision) first.
-        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk) : lastOk, true);
+        if (lastOk) syncChange(version === 2 ? await withDraft(lastOk, epoch) : lastOk, true);
         return syncResponse(res, false);
       }
       lastOk = res;
     }
-    return syncChange(version === 2 ? await withDraft(lastOk) : lastOk, true);
+    return syncChange(version === 2 ? await withDraft(lastOk, epoch) : lastOk, true);
   }
 
   async function undo() {
@@ -268,33 +265,33 @@ export function create(container, opts = {}) {
       redraw();
       return { ok: true, status: 200, gesture_undo: true };
     }
-    opEpoch += 1;
+    const epoch = (opEpoch += 1);
     const raw = await transport({ action: "undo" });
-    const res = version === 2 ? await withDraft(raw) : raw;
+    const res = version === 2 ? await withDraft(raw, epoch) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
   async function redo() {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
-    opEpoch += 1;
+    const epoch = (opEpoch += 1);
     const raw = await transport({ action: "redo" });
-    const res = version === 2 ? await withDraft(raw) : raw;
+    const res = version === 2 ? await withDraft(raw, epoch) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
   async function loadDraft(payload) {
-    opEpoch += 1;
+    const epoch = (opEpoch += 1);
     const raw = await transport({ action: "load", payload });
-    const out = syncChange(version === 2 ? await withDraft(raw) : raw, false, true);
+    const out = syncChange(version === 2 ? await withDraft(raw, epoch) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
   }
 
   async function loadSeed(seedPayload) {
-    opEpoch += 1;
+    const epoch = (opEpoch += 1);
     const raw = await transport({ action: "seed", payload: seedPayload });
-    const out = syncChange(version === 2 ? await withDraft(raw) : raw, false, true);
+    const out = syncChange(version === 2 ? await withDraft(raw, epoch) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -529,7 +526,7 @@ export function create(container, opts = {}) {
   } else {
     const initEpoch = opEpoch;
     const first = transport({ action: "scene" });
-    void (version === 2 ? first.then(withDraft) : first).then((res) => {
+    void (version === 2 ? first.then((res) => withDraft(res, initEpoch)) : first).then((res) => {
       if (opEpoch === initEpoch && !disposed && res && res.ok) syncResponse(res, false);
     });
   }

@@ -562,3 +562,50 @@ def test_v2_mode_edits_through_the_live_transport(server: ScratchpadServer) -> N
             assert log[i + 1][0] == {"action": "draft", "version": 2}, (i, request)
     sent = {json.dumps(r["op"]["op"]) for r, _ in log if r["action"] == "apply"}
     assert '"EditSectionTemplate"' not in sent  # the client never re-expands a template
+
+
+def test_a_late_v2_draft_never_wins_and_never_rewinds_the_state(
+    server: ScratchpadServer,
+) -> None:
+    """Review of #66, finding 1: bar A's `draft` reply is held while bar B is applied and
+    drafted; then it lands. It is dropped (B's draft stays), and as a read it moved no state,
+    so a third bar makes three. Before the fix the old draft won (1 bar) and C made 2."""
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/api/section/transport"
+    script = f"""
+    import assert from "node:assert/strict";
+    import {{ create, httpTransport }} from {_module("apecad-section.js")!r};
+    const realFetch = globalThis.fetch;
+    let hold = null;
+    globalThis.fetch = async (u, init) => {{
+      const reply = await realFetch(u, init);
+      if (hold && JSON.parse(init.body).action === "draft") {{
+        const h = hold;
+        hold = null;
+        await h;
+      }}
+      return reply;
+    }};
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const changes = [];
+    const ed = create({{}}, {{ transport: httpTransport({url!r}), version: 2,
+      onChange: (d) => changes.push(d) }});
+    await sleep(100);
+    const bar = (x) => ({{ op: "AddBar", x_mm: x, y_mm: x, designation: "Ø16" }});
+    let release;
+    hold = new Promise((r) => (release = r));
+    const a = ed.applyOp(bar(10));
+    while (hold) await sleep(5); // A is applied; its draft reply is held
+    await ed.applyOp(bar(20));
+    assert.equal(ed.getDraft().section.bars.length, 2);
+    release();
+    assert.equal((await a).stale, true);
+    assert.equal(ed.getDraft().section.bars.length, 2, "the late draft does not win");
+    assert.equal(changes.at(-1).section.bars.length, 2);
+    assert.equal(changes.length, 1, "no onChange for the dropped draft");
+    await ed.applyOp(bar(30));
+    assert.equal(ed.getDraft().section.bars.length, 3, "the read moved no state");
+    assert.equal(ed.getScene().bars.length, 3);
+    ed.dispose();
+    """
+    _run(script)

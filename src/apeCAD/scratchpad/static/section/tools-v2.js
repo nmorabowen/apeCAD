@@ -34,6 +34,35 @@ export function editVersion(value) {
 
 export const refusalText = (res) => `Refused: ${res?.error?.message || "the operation was refused"}`;
 
+// Why `draft` is not a v2 section-draft, or null when it is. A v2 editor hands nothing else to
+// getDraft or onChange: a transport that dropped `version` answers v1, and that is refused.
+export function v2DraftProblem(draft) {
+  if (!draft || typeof draft !== "object" || Array.isArray(draft)) return `the transport's draft is ${describe(draft ?? null)}, not an apeCAD.section-draft object`;
+  if (draft.schema !== "apeCAD.section-draft" || draft.version !== 2) {
+    return `the transport answered a v2 draft request with ${describe(draft.schema ?? null)} version ${describe(draft.version ?? null)}; a v2 editor takes apeCAD.section-draft version 2 only`;
+  }
+  return null;
+}
+
+// `res` (a change that landed) followed by `{action: "draft", version: 2}`: `res` plus `draft`,
+// or `draft: null` and a named `draft_refusal` (a refused, failed or non-v2 draft). The landed
+// change still shows. When `isCurrent()` turns false while the draft is in flight (a newer
+// change began), the result is `stale` and the caller drops it: an old draft never wins.
+export async function followWithDraft(transport, res, isCurrent) {
+  if (!res || !res.ok) return res;
+  const refused = (code, message) => ({ ...res, draft: null, draft_refusal: { code, message } });
+  let out;
+  try {
+    out = await transport({ action: "draft", version: 2 });
+  } catch (err) {
+    return isCurrent() ? refused("TRANSPORT_ERROR", `the draft request failed: ${err?.message ?? describe(err)}`) : { ...res, stale: true };
+  }
+  if (!isCurrent()) return { ...res, stale: true };
+  if (!out || !out.ok) return refused(out?.error?.code || "REFUSED", out?.error?.message || "the draft request was refused");
+  const problem = v2DraftProblem(out.draft);
+  return problem ? refused("INVALID_ARGUMENT", problem) : { ...res, draft: out.draft };
+}
+
 // child id (and the template's own id) -> the template item; one pass per scene object.
 const INDEX = new WeakMap();
 export function templateIndex(scene) {

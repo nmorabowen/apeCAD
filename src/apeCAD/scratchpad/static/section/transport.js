@@ -267,9 +267,11 @@ export function httpTransport(url = "/api/section/transport") {
     }
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
     const data = await res.json();
-    if (data && data.ok) {
+    if (data && data.ok && action !== "draft") { // a draft is a read: it never moves the state
       docState = data.document || docState;
       redoState = Array.isArray(data.redo) ? data.redo : [];
+    }
+    if (data && data.ok) {
       if (data.scene) data.scene = normalizeScene(data.scene);
       // A v1 draft only when v1 can say the document; else `draft: null`, never a v1 draft
       // that drops a v2 entity (ADR 0039 D1; v2 mode asks for v2 drafts with `draft`, C5-S4).
