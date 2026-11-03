@@ -215,8 +215,9 @@ TOOLS: dict[str, McpTool] = {
                 },
                 "format": {"enum": ["svg", "png"]},
                 "save_to": {"type": ["string", "null"]},
-                # apeCAD.section-overlay v1 (spec section-overlay.md, ADR 0041): drawn on
-                # the top view, never stored. The tool body validates it field by field.
+                # apeCAD.section-overlay v1 or v2 (spec section-overlay.md and -v2.md, ADR
+                # 0041 and Errata E1): drawn on the top view, never stored. The tool body
+                # validates it field by field.
                 "overlay": {"type": ["object", "null"]},
             },
             lambda t, a: t.render(a["document"], **_rest(a)),

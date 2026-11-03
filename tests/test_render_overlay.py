@@ -666,3 +666,120 @@ def test_apecad_src_never_computes_the_section_hash() -> None:
     client = (ROOT / "src" / "apeCAD" / "scratchpad" / "static" / "section" / "overlay.js")
     assert not re.search(r"hashlib|hexdigest|json\.dumps", reader)
     assert not re.search(r"crypto|digest\(", client.read_text(encoding="utf-8"))
+    for echo in ("render/api.py", "agent/tools.py", "agent/mcp.py", "cli.py"):  # slice 3
+        source = (ROOT / "src" / "apeCAD" / echo).read_text(encoding="utf-8")
+        assert not re.search(r"hashlib|hexdigest|section_sha256 *[!=]=", source), echo
+
+
+# --- the echo (slice 3, spec section-overlay-v2 "Echo"; apeSection#91) ---------------------
+
+V2_RECT_SHA256 = "9142aa65e1a51d956e0a8a9e5b895e4ac550b4a619e7b7bd3a34e68e74213da4"
+ECHO_KEYS = ("overlay_revision", "overlay_section_sha256")
+# The spec's presence rules, written out: no keys without an overlay; with one, both keys,
+# a null revision kept as None (never dropped) and v1's hex as None.
+ECHO_CASES: dict[str, tuple[str | None, Json]] = {
+    "none": (None, {}),
+    "v1_revision_7": ("rect_wall_results.json",
+                      {"overlay_revision": 7, "overlay_section_sha256": None}),
+    "v2_revision_7": ("v2_rect_wall_results.json",
+                      {"overlay_revision": 7, "overlay_section_sha256": V2_RECT_SHA256}),
+    "v2_revision_null": ("v2_not_stamped.json",
+                         {"overlay_revision": None, "overlay_section_sha256": SPIRAL_SHA256}),
+}
+
+
+def _echo(envelope: Json) -> Json:
+    return {key: envelope[key] for key in ECHO_KEYS if key in envelope}
+
+
+@pytest.fixture
+def fake_resvg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PNG without the extra: the echo is the same whatever rasterises the SVG."""
+
+    class FakeResvg:
+        @staticmethod
+        def svg_to_bytes(*, svg_string: str, width: int, height: int) -> bytes:
+            return b"\x89PNG"
+
+    monkeypatch.setitem(sys.modules, "resvg_py", FakeResvg)
+
+
+def test_echo_hexes_are_the_fixtures_own() -> None:
+    """The oracle's hexes and revisions are the inputs' own: apeCAD echoes, never computes."""
+    for name, (fixture, expected) in ECHO_CASES.items():
+        if fixture is not None:
+            given = cast(Json, _json(FIXTURES / "valid" / fixture))
+            assert given.get("section_sha256") == expected["overlay_section_sha256"], name
+            assert given["revision"] == expected["overlay_revision"], name
+
+
+@pytest.mark.usefixtures("fake_resvg")
+@pytest.mark.parametrize("fmt", ["svg", "png"])
+@pytest.mark.parametrize("case", sorted(ECHO_CASES))
+def test_render_api_tool_and_cli_echo_the_overlay_alike(
+    capsys: pytest.CaptureFixture[str], opened: tuple[LocalTools, str, Path], case: str,
+    fmt: str,
+) -> None:
+    tools, document, drawing = opened
+    fixture, expected = ECHO_CASES[case]
+    overlay = None if fixture is None else cast(Json, _json(FIXTURES / "valid" / fixture))
+    api = (render_png if fmt == "png" else render_svg)(rect_boundary_hoops(), overlay=overlay)
+    assert api.overlay_drawn is (fixture is not None)
+    assert (api.overlay_revision, api.overlay_section_sha256) == (
+        expected.get("overlay_revision"), expected.get("overlay_section_sha256"))
+
+    tool = tools.render(document, overlay=overlay, format=fmt)
+    argv = ["render", str(drawing), "--format", fmt]
+    if fixture is not None:
+        argv += ["--overlay", str(FIXTURES / "valid" / fixture)]
+    status, cli = _cli(capsys, *argv)
+    assert tool["ok"] is True and status == 0
+    assert _echo(tool) == expected and _echo(cli) == expected  # presence and value, per key
+    assert set(cli) == set(tool)  # the surfaces carry the same key set
+    assert {k: v for k, v in cli.items() if k != "document"} == {
+        k: v for k, v in tool.items() if k != "document"}
+
+
+def test_the_echo_path_keeps_the_v1_golden_and_the_null_group(
+    opened: tuple[LocalTools, str, Path],
+) -> None:
+    tools, document, _drawing = opened
+    v1 = tools.render(document, view="top", overlay=_results())
+    assert cast(str, v1["svg"]).encode("utf-8") == GOLDEN.read_bytes()
+    unstamped = tools.render(document, overlay=_json(FIXTURES / "valid" / "v2_not_stamped.json"))
+    root = ET.fromstring(cast(str, unstamped["svg"]))
+    group = next(g for g in root if _class(g) == "overlay")
+    assert "data-revision" not in group.attrib
+    assert group.get("data-section-sha256") == unstamped["overlay_section_sha256"]
+    assert "overlay_revision" in unstamped and unstamped["overlay_revision"] is None
+
+
+@pytest.mark.usefixtures("fake_resvg")
+def test_mcp_render_echoes_the_overlay_as_the_tool_does(
+    opened: tuple[LocalTools, str, Path],
+) -> None:
+    pytest.importorskip("mcp", reason="the mcp extra is not installed")
+    import anyio
+    from mcp import Client
+
+    from apeCAD.agent.mcp import build_server
+
+    tools, document, _path = opened
+    calls: list[tuple[str, str, Json]] = []
+    for case, (fixture, _expected) in sorted(ECHO_CASES.items()):
+        for fmt in ("svg", "png"):
+            arguments: Json = {"document": document, "format": fmt}
+            if fixture is not None:
+                arguments["overlay"] = _json(FIXTURES / "valid" / fixture)
+            calls.append((case, fmt, arguments))
+
+    async def go() -> list[Any]:
+        async with Client(build_server(tools)) as client:
+            return [await client.call_tool("render", a) for _c, _f, a in calls]
+
+    for (case, fmt, arguments), result in zip(calls, anyio.run(go), strict=True):
+        assert not result.is_error, (case, fmt)
+        structured = cast(Json, result.structured_content)
+        assert _echo(structured) == ECHO_CASES[case][1], (case, fmt)
+        tool = tools.render(document, **{k: v for k, v in arguments.items() if k != "document"})
+        assert set(structured) == set(tool) - {fmt}, (case, fmt)  # svg/png moved to content
