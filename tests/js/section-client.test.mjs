@@ -154,8 +154,8 @@ test("mockTransport supports apply, undo, redo, load, seed, and draft", async ()
 });
 
 test("APECADSection.create fires onChange on apply/undo/redo and NOT on loadDraft/loadSeed", async () => {
-  assert.equal(API_VERSION, 2); // ADR 0041 D2: setOverlay / getOverlayState
-  assert.equal(APECADSection.API_VERSION, 2);
+  assert.equal(API_VERSION, 3); // 2: ADR 0041 D2 (setOverlay / getOverlayState); 3: {version: 2} editing (C5-S4)
+  assert.equal(APECADSection.API_VERSION, 3);
 
   const changes = [];
   const container = {};

@@ -283,6 +283,10 @@ export function mockTransport(initialDraft = null) {
   return async function handle(request) {
     const action = request?.action;
     try {
+      if (action === "draft" && request.version != null && request.version !== 1) {
+        // The mock says v1 only: a v1 draft handed out as v2 would be a lie (C5-S4).
+        throw new Error(`mockTransport writes section-draft version 1 only, not ${JSON.stringify(request.version)}; v2 needs the Python transport`);
+      }
       if (action === "scene" || action === "draft") {
         const { scene } = rebuild(history);
         const docDict = { schema: "apeCAD.document.v1", units: "mm", ops: history.slice() };

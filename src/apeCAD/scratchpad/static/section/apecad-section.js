@@ -1,13 +1,15 @@
-// Embeddable 2-D Canvas section & rebar client (ADR 0026, stages C7 & C9; overlay ADR 0041).
+// Embeddable 2-D Canvas section & rebar client (ADR 0026, stages C7 & C9; overlay ADR 0041;
+// v2 editing C5-S4, `tools-v2.js`).
 // Zero CDN URLs, no innerHTML, no module-scope DOM access.
 
 import { createViewport, hitTestSection, renderSectionCanvas } from "./canvas2d.js";
 import { displayList, entityTitle } from "./display2d.js";
+import { createV2Tools, editVersion, refusalText, TOOLS_V2 } from "./tools-v2.js";
 import { parseInput, snapPoint2D } from "./input-parse.js";
 import { createOverlayController, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
 import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene, v1DraftOrNull } from "./transport.js";
 
-export const API_VERSION = 2;
+export const API_VERSION = 3; // 3 adds create(..., {version: 2}) editing (C5-S4)
 export { httpTransport, MAX_OVERLAY_PRIMITIVES, mockTransport, parseInput, parseOverlay, snapPoint2D };
 
 const TOOLS = [
@@ -69,6 +71,10 @@ export function create(container, opts = {}) {
   if (!container || typeof container !== "object") {
     throw new Error("APECADSection.create requires a container element");
   }
+  const version = editVersion(opts.version);
+  if (version === 2 && typeof opts.transport !== "function") {
+    throw new Error("APECADSection.create: version 2 needs a transport; mockTransport is v1 only");
+  }
   const doc = getDoc(container);
   const readOnly = Boolean(opts.readOnly);
   const onChange = typeof opts.onChange === "function" ? opts.onChange : null;
@@ -114,7 +120,7 @@ export function create(container, opts = {}) {
 
   const toolButtons = new Map();
   if (!readOnly) {
-    for (const [id, label] of TOOLS) {
+    for (const [id, label] of version === 2 ? TOOLS_V2 : TOOLS) {
       const btn = el(doc, "button", "apecad-section-btn", label);
       btn.type = "button";
       btn.dataset.tool = id;
@@ -130,6 +136,13 @@ export function create(container, opts = {}) {
     redoBtn.addEventListener("click", () => { void redo(); });
     toolbar.appendChild(undoBtn);
     toolbar.appendChild(redoBtn);
+    if (version === 2) {
+      const explodeBtn = el(doc, "button", "apecad-section-btn", "Explode");
+      explodeBtn.type = "button";
+      explodeBtn.dataset.action = "explode";
+      explodeBtn.addEventListener("click", () => { void v2?.explode(); });
+      toolbar.appendChild(explodeBtn);
+    }
   }
   const fitBtn = el(doc, "button", "apecad-section-btn", "Fit");
   fitBtn.type = "button";
@@ -152,6 +165,13 @@ export function create(container, opts = {}) {
   else container.children = [root];
 
   const view = createViewport(canvas);
+  const v2 = version === 2 ? createV2Tools({
+    getScene: () => scene, params, selectedIds, applyOp,
+    gesture: () => gesturePts,
+    clearGesture: () => { gesturePts = []; ghostState = null; },
+    prompt: (text) => { promptLabel.textContent = text; },
+    hitAt: (pt) => hitTestSection(view.worldToScreen(pt), view, scene),
+  }) : null;
   const overlay = createOverlayController({
     doc, el, box: overlayBox, getRevision: () => docRevision, onChange: () => redraw(),
   });
@@ -170,8 +190,9 @@ export function create(container, opts = {}) {
     const selId = selectedIds.values().next().value;
     let title = `Tool: ${activeTool} · Bar ${params.designation}`;
     if (selId != null) title = entityTitle(scene, selId) ?? title;
+    const lines = v2?.props() ?? [title];
     if (typeof propsBox.replaceChildren === "function") {
-      propsBox.replaceChildren(el(doc, "div", "apecad-section-prop-title", title));
+      propsBox.replaceChildren(...lines.map((line, i) => el(doc, "div", i ? "apecad-section-prop" : "apecad-section-prop-title", line)));
     }
   }
 
@@ -187,7 +208,7 @@ export function create(container, opts = {}) {
 
   function syncResponse(res, emitChange, edits = emitChange) {
     if (!res || !res.ok) {
-      promptLabel.textContent = res?.error?.message || "Operation refused";
+      promptLabel.textContent = version === 2 ? refusalText(res) : res?.error?.message || "Operation refused";
       return res;
     }
     if (Number.isInteger(res.revision)) docRevision = res.revision;
@@ -201,6 +222,20 @@ export function create(container, opts = {}) {
     return res;
   }
 
+  // v2 mode: a change is followed by `draft` at version 2, the draft getDraft and onChange carry.
+  async function withDraft(res) {
+    if (version !== 2 || !res || !res.ok) return res;
+    const out = await transport({ action: "draft", version: 2 });
+    if (out && out.ok) return { ...res, draft: out.draft ?? null };
+    return { ...res, draft: null, draft_refusal: out?.error ?? null };
+  }
+
+  function syncChange(res, emitChange, edits = emitChange) {
+    const out = syncResponse(res, emitChange, edits);
+    if (out?.draft_refusal) promptLabel.textContent = refusalText({ error: out.draft_refusal });
+    return out;
+  }
+
   async function applyOp(opOrOps) {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
     opEpoch += 1;
@@ -211,17 +246,17 @@ export function create(container, opts = {}) {
       try {
         res = await transport({ action: "apply", op });
       } catch (err) {
-        if (lastOk) syncResponse(lastOk, true); // the ops that landed still show, then it throws
+        if (lastOk) syncChange(await withDraft(lastOk), true); // the ops that landed still show, then it throws
         throw err;
       }
       if (!res || !res.ok) {
         // The ops before the refused one are applied: show them (and move the revision) first.
-        if (lastOk) syncResponse(lastOk, true);
+        if (lastOk) syncChange(await withDraft(lastOk), true);
         return syncResponse(res, false);
       }
       lastOk = res;
     }
-    return syncResponse(lastOk, true);
+    return syncChange(await withDraft(lastOk), true);
   }
 
   async function undo() {
@@ -233,20 +268,20 @@ export function create(container, opts = {}) {
       return { ok: true, status: 200, gesture_undo: true };
     }
     opEpoch += 1;
-    const res = await transport({ action: "undo" });
-    return syncResponse(res, Boolean(res && res.ok));
+    const res = await withDraft(await transport({ action: "undo" }));
+    return syncChange(res, Boolean(res && res.ok));
   }
 
   async function redo() {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
     opEpoch += 1;
-    const res = await transport({ action: "redo" });
-    return syncResponse(res, Boolean(res && res.ok));
+    const res = await withDraft(await transport({ action: "redo" }));
+    return syncChange(res, Boolean(res && res.ok));
   }
 
   async function loadDraft(payload) {
     opEpoch += 1;
-    const out = syncResponse(await transport({ action: "load", payload }), false, true);
+    const out = syncChange(await withDraft(await transport({ action: "load", payload })), false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -254,7 +289,7 @@ export function create(container, opts = {}) {
 
   async function loadSeed(seedPayload) {
     opEpoch += 1;
-    const out = syncResponse(await transport({ action: "seed", payload: seedPayload }), false, true);
+    const out = syncChange(await withDraft(await transport({ action: "seed", payload: seedPayload })), false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -266,6 +301,7 @@ export function create(container, opts = {}) {
     gesturePts = [];
     gestureBarIds = [];
     ghostState = null;
+    v2?.reset();
     for (const [id, btn] of toolButtons.entries()) btn.classList.toggle("active", id === activeTool);
     promptLabel.textContent = `Tool: ${activeTool}`;
     redraw();
@@ -277,6 +313,8 @@ export function create(container, opts = {}) {
 
   function updateGhost(cursorWorld) {
     if (!cursorWorld) { ghostState = null; return; }
+    const v2Ghost = v2?.ghost(activeTool, cursorWorld);
+    if (v2Ghost !== undefined) { ghostState = v2Ghost; return; }
     if (activeTool === "rect" && gesturePts.length === 1) {
       const [x0, y0] = gesturePts[0], [x1, y1] = cursorWorld;
       ghostState = { ring: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]] };
@@ -300,6 +338,7 @@ export function create(container, opts = {}) {
   }
 
   async function commitPolygonOrChain() {
+    if (v2 && (await v2.commit(activeTool))) return;
     if ((activeTool === "polygon" || activeTool === "opening") && gesturePts.length >= 3) {
       const pts = gesturePts.slice();
       gesturePts = [];
@@ -322,8 +361,9 @@ export function create(container, opts = {}) {
     }
   }
 
-  async function handlePointInput(pt, hit = null) {
+  async function handlePointInput(pt, hit = null, typed = false) {
     if (readOnly) return;
+    if (v2 && (await v2.point(activeTool, pt, typed ? v2.hitAt(pt) : hit))) { redraw(); return; }
     if (activeTool === "select") {
       selectedIds.clear();
       if (hit && hit.id != null) selectedIds.add(hit.id);
@@ -443,12 +483,12 @@ export function create(container, opts = {}) {
       if (typeof evt.preventDefault === "function") evt.preventDefault();
       void redo();
     } else if (key === "Escape") {
-      gesturePts = []; gestureBarIds = []; ghostState = null; redraw();
+      gesturePts = []; gestureBarIds = []; ghostState = null; v2?.reset(); redraw();
     } else if (key === "Enter" && evt.target !== cmdInput) {
       void commitPolygonOrChain();
     } else if ((key === "Delete" || key === "Backspace") && evt.target !== cmdInput && !readOnly) {
-      const ids = Array.from(selectedIds);
-      if (ids.length) { selectedIds.clear(); void applyOp({ op: "Delete", entity_ids: ids }); }
+      const ids = v2 ? v2.deletionIds() : Array.from(selectedIds);
+      if (ids.length) { v2?.select(null); selectedIds.clear(); void applyOp({ op: "Delete", entity_ids: ids }); }
     }
   };
 
@@ -465,7 +505,7 @@ export function create(container, opts = {}) {
       promptLabel.textContent = `Thickness = ${parsed.thickness_mm} mm`;
       redraw();
     } else if (parsed.kind === "point") {
-      void handlePointInput(parsed.point, null);
+      void handlePointInput(parsed.point, null, true);
     } else if (parsed.kind === "error") {
       promptLabel.textContent = parsed.message;
     }
@@ -483,7 +523,7 @@ export function create(container, opts = {}) {
     void loadDraft(opts.initialDraft);
   } else {
     const initEpoch = opEpoch;
-    void transport({ action: "scene" }).then((res) => {
+    void transport({ action: "scene" }).then(withDraft).then((res) => {
       if (opEpoch === initEpoch && !disposed && res && res.ok) syncResponse(res, false);
     });
   }

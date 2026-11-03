@@ -2,16 +2,17 @@
 
 A host application (such as ape-web-tools HA-04) either copies the files returned by
 `client_files()` at a pinned apeCAD sha or mounts `SECTION_DIR` as a static directory, and
-asserts `CLIENT_API_VERSION == 2` at startup (2 since ADR 0041 added `setOverlay` and
-`getOverlayState`; nothing of version 1 was removed). Importing this module does not load
-the HTTP server (`scratchpad.server`).
+asserts `CLIENT_API_VERSION >= 1` at startup: each move is additive. 2 added `setOverlay` and
+`getOverlayState` (ADR 0041); 3 adds `create(container, {version: 2})` editing (C5-S4, ADR
+0026 Errata 1). Nothing of an earlier version was removed. Importing this module does not
+load the HTTP server (`scratchpad.server`).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-CLIENT_API_VERSION = 2
+CLIENT_API_VERSION = 3
 """Version of the `APECADSection` browser contract (`APECADSection.API_VERSION`)."""
 
 SECTION_DIR = Path(__file__).resolve().parent / "static" / "section"
