@@ -1,0 +1,88 @@
+{
+  "about": "section_sha256 vectors (spec section-overlay-v2.md, \"The hash\"): each committed draft fixture with canonical_section_hash of its stored text. Both definitions gave every value: apeSection 8620629 src/apeSection/project/draft_header.py::canonical_section_hash and apeConcrete 9fac3bd src/apeConcrete/io/apecad.py::_canonical_section_sha256. apeCAD src never computes it; tests/test_render_overlay.py recomputes the literals with a reference copy of the formula.",
+  "formula": "hashlib.sha256(json.dumps(draft[\"section\"], sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False, allow_nan=False).encode(\"utf-8\")).hexdigest()",
+  "vectors": [
+    {
+      "draft": "tests/fixtures/section_draft/c_wall_crossties.json",
+      "section_sha256": "13af92b89d24fc5950fbfecdb7d42c5c2212d5c15732891d9eaf9da16f828c09"
+    },
+    {
+      "draft": "tests/fixtures/section_draft/inclined_outline.json",
+      "section_sha256": "51faff0f7b6d8ac24333ec8a48419d595e4ca6ef7da039df3284fe6a5b38161b"
+    },
+    {
+      "draft": "tests/fixtures/section_draft/l_wall_two_hoops.json",
+      "section_sha256": "2f54af04f6093b8bc3ef915744e8bdde1bd27468a85eede0ca1355c193af8c7f"
+    },
+    {
+      "draft": "tests/fixtures/section_draft/rect_boundary_hoops.json",
+      "section_sha256": "9142aa65e1a51d956e0a8a9e5b895e4ac550b4a619e7b7bd3a34e68e74213da4"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/bare_w_shape.json",
+      "section_sha256": "d5b620e32b8822e2cce69ae83fea438cef040fe42e3be41cf6e48eb924db0181"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/box_with_void.json",
+      "section_sha256": "ec99b4b10db0eae27f00b1c191c87f4c113ec26cf0e1b4d4a694db1067b29251"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/cft_rect_template.json",
+      "section_sha256": "2d51eb7188e6923937a99d4166fd36537b29a91c47221b5afbc8bb3375063cc4"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/cft_round.json",
+      "section_sha256": "b63daa7967fec623673bedb2b8c1d692a5cb96551e612104248d2492b6efe27d"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/circular_column_spiral.json",
+      "section_sha256": "fd20de574ef8e5c73a027ac3972beecc0b1f42538510bd004ea954aedde548df"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/rect_boundary_hoops.json",
+      "section_sha256": "14d3ac754a585a83dc149f14f7a7635d8daaf3e59ffc2401c90093800cfb7acb"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/rect_column_template.json",
+      "section_sha256": "281d5a26a3ac387d9a5ceb49a368fdc10c58f186c90f39b52012b5f4642ab470"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/rect_column_ties.json",
+      "section_sha256": "64cce8dcdd00564ff31c752f673060e6a0f384b1216c8fa77d9654d3f21f6bcf"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/src_w_in_rect.json",
+      "section_sha256": "0067da3dfe86d51dda2040047b27659d9ac93190c5a500528e47e212f6503b11"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/t_beam.json",
+      "section_sha256": "7e09b5ec1a4c08bca06448c1b98ca9d21dbc5fa6fecfbd9bb287f751c482ef31"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/t_beam_template.json",
+      "section_sha256": "82b9c5f4231ad915c95f07920bafbfd7348b974abb34d2fb44d9f6535ac9bd68"
+    }
+  ],
+  "js_round_trip": [
+    {
+      "draft": "tests/fixtures/section_draft_v2/circular_column_spiral.json",
+      "section_sha256": "d53418e20d6594f05f1b7b30a8ec45783c3c496fb4e1da37076202f3a4ab9d55",
+      "about": "the same formula over the section after one JSON.parse, keys sorted by code point, compact, JS number text: never section_sha256"
+    }
+  ],
+  "unhashable": [
+    {
+      "case": "lone_surrogate_label",
+      "draft": "tests/fixtures/section_draft_v2/circular_column_spiral.json",
+      "set": [
+        "section",
+        "bars",
+        0,
+        "label"
+      ],
+      "to": "bad\ud800",
+      "raises": "UnicodeEncodeError",
+      "about": "no UTF-8 encoding: both definitions raise at .encode(\"utf-8\"); the host refuses it by name and never hashes it another way"
+    }
+  ]
+}
