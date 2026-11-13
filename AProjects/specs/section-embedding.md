@@ -1,6 +1,6 @@
 # Spec — Section embedding kit (stage C9)
 
-**Status:** Implemented (2026-10-23); results overlay, client API 2 (2026-11-01, stage C2-S2); draws v2 (2026-11-02, C5-S3, client API still 2); edits v2, client API 3 (2026-11-03, C5-S4)  
+**Status:** Implemented (2026-10-23); results overlay, client API 2 (2026-11-01, stage C2-S2); draws v2 (2026-11-02, C5-S3, client API still 2); edits v2, client API 3 (2026-11-03, C5-S4); `sync()`, `chrome` and `setGlyphs`, client API 4 (2026-11-13, C8a)  
 **ADRs:** 0023, 0024, 0025, 0026, 0038, 0041
 
 ## Goal
@@ -14,7 +14,7 @@ FastAPI / ASGI process without spawning a separate `ScratchpadServer`.
 
 | Symbol | Module | Contract |
 |---|---|---|
-| `CLIENT_API_VERSION = 3` | `apeCAD.scratchpad.section_assets` | Matches `API_VERSION = 3` exported by `apecad-section.js`. 3 adds `create(container, {version: 2})` editing (C5-S4, ADR 0026 Errata 1) and removes nothing of 2; 2 added the results overlay (ADR 0041 decision 2) and removed nothing of 1. Every move is additive, so a host asserts `CLIENT_API_VERSION >= 1`. |
+| `CLIENT_API_VERSION = 4` | `apeCAD.scratchpad.section_assets` | Matches `API_VERSION = 4` exported by `apecad-section.js`. 4 adds `sync()`, the `create` option `chrome` and `setGlyphs` (C8a, below) and removes nothing of 3; 3 added `create(container, {version: 2})` editing (C5-S4, ADR 0026 Errata 1) and removed nothing of 2; 2 added the results overlay (ADR 0041 decision 2) and removed nothing of 1. Every move is additive, so a host asserts `CLIENT_API_VERSION >= 1`. |
 | `SECTION_DIR` | `apeCAD.scratchpad.section_assets` | `Path` to `src/apeCAD/scratchpad/static/section/`. |
 | `client_files()` | `apeCAD.scratchpad.section_assets` | Returns `dict[str, Path]` mapping relative asset names (`apecad-section.js`, `transport.js`, `mock-transport.js`, `input-parse.js`, `canvas2d.js`, `display2d.js`, `tools-v2.js`, `overlay.js`, `section.css`, `index.html`) to absolute `Path`s. |
 | `TRANSPORT_VERSION = 1`, `MAX_OPS`, `handle(request)` | `apeCAD.scratchpad.transport` | Stateless single-endpoint transport (`scene`, `apply`, `undo`, `redo`, `draft`, `load`, `seed`). Importing `section_assets` or `transport` never loads `scratchpad.server`. |
@@ -29,6 +29,7 @@ const editor = create(container, {
   readOnly: false,
   units: "mm",
   version: 1, // or 2: edit v2 sections (API 3); anything else throws
+  chrome: { toolbar: true, sidebar: true }, // API 4: false hides that part; other keys throw
   onChange(draft) {
     // Fired on apply / undo / redo; NEVER fired on loadDraft or loadSeed.
   },
@@ -49,6 +50,8 @@ const editor = create(container, {
 - `editor.dispose()`: Detach event listeners and remove the root element from `container`.
 - `editor.setOverlay(overlay | null)`: Show an `apeCAD.section-overlay` v1 overlay (see below), or clear it with `null`.
 - `editor.getOverlayState()`: The overlay as the client holds it (see below).
+- `await editor.sync()`: Re-read the document after another writer changed it (API 4, below).
+- `editor.setGlyphs(glyphs | null)`: Draw the glyphs a host supplies (API 4, below).
 
 The module also exports `parseOverlay` (the client's reader) and `MAX_OVERLAY_PRIMITIVES`.
 
@@ -121,6 +124,46 @@ The code is `tools-v2.js`.
   `draft`.
 - **Huge input.** A v2 scene of 10^4 faces and 10^5 bars edits, selects and deletes in
   bounded time (`tests/js/section-v2-edit.test.mjs`).
+
+## A host that owns the document (API 4, C8a)
+
+For a host that holds the document behind its own transport and has other writers (apeSection's
+Geometry tab: its `docs/contracts/host-api-v1.md` §9, `verbTransport`; owner ruling
+apeSection#113 c2383). The transport and overlay versions are unchanged.
+
+- **`sync()`.** Sends `{action: "scene"}`, then in v2 mode `{action: "draft", version: 2}`,
+  and shows what they return. It takes the scene reply's `revision` when it is an integer
+  and otherwise leaves the revision as it was: it never counts an edit. It never refits or
+  moves the view, never fires `onChange`, and keeps the selection, the tool, the overlay and
+  the glyphs. A refused `scene` shows the refusal in the prompt (`Refused: <message>` in v2
+  mode) and changes nothing; a refused `draft` leaves `getDraft()` null, as after any change.
+  It works in read-only editors too.
+- **The revision is monotonic** (review round 1 of apeCAD PR #70). No reply lowers it: an ok
+  reply (to `sync()`, the opening scene, apply, undo, redo, load or seed) whose integer
+  `revision` is below the editor's is not painted, leaves the draft alone, fires no
+  `onChange`, and resolves with `stale: true`. So the screen and `getDraft()` always come from
+  one reply, and a `sync()` gives way only to a local edit with a newer revision: an older
+  edit that lands while it waits does not stop it. A `sync()` reply is also dropped when a
+  later `sync()` has already been shown, and the opening scene is dropped once any `sync()`
+  has been shown. With a transport that sends no revision, a `sync()` reply is dropped when a
+  local change landed while it waited.
+- **`chrome`.** `create(container, {chrome: {toolbar, sidebar}})`: `false` leaves that part
+  out of the DOM (the toolbar with its tool, Undo, Redo, Explode and Fit buttons; the sidebar
+  with the properties, warnings and overlay panel), so the host draws its own. Both default to
+  `true`; `null` or absent is the default. A key other than `toolbar` or `sidebar`, a value
+  that is not a boolean, or a `chrome` that is not an object throws at `create`, naming it.
+  The canvas, the prompt and the command line always show, and keys still work.
+- **`setGlyphs({centroid_mm})`.** Draws the centroid symbol, a circle quartered by a cross at
+  a fixed size on screen, at the world point `[x, y]` (mm) the host supplies. The client
+  never computes a centroid: apeSection supplies the net solid-area centroid that apeConcrete
+  reports (its PR #121 c2410). The glyph sits with the overlay, above the section and below
+  the selection; it moves with pan and zoom, survives `sync()`, and is display only (no hit
+  testing, no snapping, not an edit). `setGlyphs(null)`, `{}` or `{centroid_mm: null}`
+  clears it. The result is `{ok: true, status: 200, centroid_mm}`, or `{ok: false, status:
+  422, error: {code: "INVALID_ARGUMENT", path, message}}` for a value that is not an object,
+  an unknown key (the axes glyph is C8b's), or a `centroid_mm` that is not two finite
+  numbers (a sparse array, a string, `NaN` or `±Infinity` among them). A refusal clears the
+  glyph, as a refused overlay does: never a stale point.
 
 ## Results overlay (API 2, ADR 0041 decision 2)
 

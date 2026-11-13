@@ -609,3 +609,51 @@ def test_a_late_v2_draft_never_wins_and_never_rewinds_the_state(
     ed.dispose();
     """
     _run(script)
+
+
+# ---- C8a: client API 4, `sync()` over the live Python transport --------------------------
+
+
+def test_sync_reads_an_outside_writers_edits_as_section_draft_v2(
+    server: ScratchpadServer,
+) -> None:
+    """`sync()` (C8a): another writer edits through the transport the editor uses, as
+    apeSection's host does; then `sync()` makes `getDraft()` deep-equal
+    `section_draft(doc, version=2)` of a document built here from the same ops. It fires no
+    `onChange`, and with a transport that sends no `revision` it counts no edit."""
+    port = server.server_address[1]
+    url = f"http://127.0.0.1:{port}/api/section/transport"
+    face: Json = {
+        "op": "AddSectionFace", "role": "concrete", "material": "C30",
+        "point_ids": [_xyz(0, 0), _xyz(400, 0), _xyz(400, 600), _xyz(0, 600)],
+    }  # fmt: skip
+    bar: Json = {"op": "AddBar", "x_mm": 60, "y_mm": 60, "designation": "Ø16"}
+    script = f"""
+    import {{ create, httpTransport }} from {_module("apecad-section.js")!r};
+    const shared = httpTransport({url!r});
+    const changes = [];
+    const ed = create({{}}, {{ transport: shared, version: 2, onChange: (d) => changes.push(d) }});
+    await new Promise((r) => setTimeout(r, 100));
+    const before = ed.getOverlayState().revision;
+    for (const op of [{json.dumps(face)}, {json.dumps(bar)}]) {{
+      const res = await shared({{ action: "apply", op }});
+      if (!res.ok) throw new Error(JSON.stringify(res.error));
+    }}
+    const stale = ed.getDraft();
+    const res = await ed.sync();
+    process.stdout.write(JSON.stringify({{ ok: res.ok, stale, draft: ed.getDraft(),
+      bars: ed.getScene().bars.length, faces: ed.getScene().section_faces.length,
+      changes: changes.length, before, after: ed.getOverlayState().revision }}));
+    ed.dispose();
+    """
+    out = cast(Json, json.loads(_run(script)))
+    document = Document()
+    for op in (face, bar):
+        name, params = catalog.split_request(op)
+        catalog.apply(document, name, params)
+    assert out["ok"] is True
+    assert out["stale"] == section_draft(Document(), version=2)  # nothing seen before sync
+    assert out["draft"] == section_draft(document, version=2)
+    assert (out["faces"], out["bars"]) == (1, 1)
+    assert out["changes"] == 0
+    assert out["after"] == out["before"] == 0
