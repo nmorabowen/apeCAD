@@ -271,6 +271,20 @@ def _centres(low: list[float], high: list[float], scale: float) -> list[tuple[fl
     return [((x - low[0]) * scale, (high[1] - y) * scale) for (x, y), _ in BAR_MARKERS]
 
 
+DISC = ((0.0, 0.0), (2.0, 0.0), (-2.0, 0.0), (0.0, 2.0), (0.0, -2.0))
+"""Each marker's centre and four points 2 px from it: inside the 3 px minimum fill. At 1:25 a
+16 mm bar is 1.6 px, so before the fix only the centre was the status colour: 2 px out was its
+ring and the bar's ink ring, which hid the colour on screen (review F1)."""
+
+
+def _disc(centres: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    return [(x + dx, y + dy) for x, y in centres for dx, dy in DISC]
+
+
+def _want() -> list[str]:
+    return [colour for _at, colour in BAR_MARKERS for _point in DISC]
+
+
 WINDOW_1_25 = ((-500.0, -1650.0, 0.0), (3500.0, 1350.0, 0.0))
 """4000 mm across 800 px: exactly 0.2 px/mm, the 1:25 plan's scale, with no annotation (a
 window turns it off), so nothing but the section and the overlay sits on a bar's centre."""
@@ -281,7 +295,7 @@ def test_at_1_to_25_each_bar_marker_centre_pixel_is_its_status_colour_in_the_svg
     result = render_svg(doc, view="top", overlay=overlay, window=WINDOW_1_25, margin=0.0)
     assert result.scale_px_per_mm == pytest.approx(0.2)
     centres = _centres(result.extents_mm["min"], result.extents_mm["max"], result.scale_px_per_mm)
-    assert _sample_svg(result.svg, centres) == [colour for _at, colour in BAR_MARKERS]
+    assert _sample_svg(result.svg, _disc(centres)) == _want()
 
 
 def test_on_the_annotated_1_to_25_plan_the_status_colour_shows_beside_each_leader_dot() -> None:
@@ -305,8 +319,10 @@ def test_at_1_to_25_the_rasterised_png_agrees_where_resvg_is_installed() -> None
     result = render_svg(doc, view="top", overlay=overlay, window=WINDOW_1_25, margin=0.0)
     png = render_png(doc, view="top", overlay=overlay, window=WINDOW_1_25, margin=0.0).png
     centres = _centres(result.extents_mm["min"], result.extents_mm["max"], result.scale_px_per_mm)
-    for (x, y), (_at, colour) in zip(centres, BAR_MARKERS, strict=True):
-        assert _png_pixel(png, int(x), int(y)) == colour, (x, y)
+    for (x, y), colour in zip(_disc(centres), _want(), strict=True):
+        got = _png_pixel(png, int(x), int(y))  # anti-aliased: each channel within 24 of it
+        assert all(abs(int(got[k : k + 2], 16) - int(colour[k : k + 2], 16)) <= 24
+                   for k in (1, 3, 5)), (x, y, got, colour)
 
 
 def test_at_1_to_25_each_bar_marker_centre_pixel_is_its_status_colour_in_the_client(
@@ -325,6 +341,8 @@ def test_at_1_to_25_each_bar_marker_centre_pixel_is_its_status_colour_in_the_cli
         "canvas2d.js", "overlay.js", "transport.js"))
     # The client at 1:25 (0.2 px/mm), the wall centred in 800 x 600, wired as apecad-section.js
     # wires it: the fields, then the section ink (canvas2d), then the markers.
+    markers = json.dumps([list(p) for p, _c in BAR_MARKERS])
+    disc = json.dumps([list(d) for d in DISC])
     script = f"""
     import fs from "node:fs";
     import {{ samplingContext }} from {raster!r};
@@ -335,7 +353,8 @@ def test_at_1_to_25_each_bar_marker_centre_pixel_is_its_status_colour_in_the_cli
     const scene = normalizeScene(read("scene.json")), overlay = parseOverlay(read("overlay.json"));
     const view = createViewport({{ width: 800, height: 600 }});
     view.scale = 0.2; view.panX = 400 - 1500 * 0.2; view.panY = 300 + 150 * 0.2;
-    const at = {json.dumps([list(p) for p, _c in BAR_MARKERS])}.map((p) => view.worldToScreen(p));
+    const centres = {markers}.map((p) => view.worldToScreen(p));
+    const at = centres.flatMap(([x, y]) => {disc}.map(([dx, dy]) => [x + dx, y + dy]));
     const s = samplingContext(at);
     renderSectionCanvas(s.canvas, view, {{ scene, gridOn: false,
       drawOverlay: (c, v) => paintOverlay(c, v, overlay, {{ pass: "field" }}),
@@ -345,7 +364,7 @@ def test_at_1_to_25_each_bar_marker_centre_pixel_is_its_status_colour_in_the_cli
     out = subprocess.run([node, "--input-type=module", "-e", script], capture_output=True,
                          text=True, timeout=60, check=False)
     assert out.returncode == 0, out.stderr
-    assert json.loads(out.stdout) == [colour for _at, colour in BAR_MARKERS]
+    assert json.loads(out.stdout) == _want()
 
 
 # --- F7: the axes glyph ----------------------------------------------------------------------
