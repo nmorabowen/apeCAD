@@ -58,7 +58,8 @@ function recorder() {
 }
 
 function mount(opts) {
-  const container = { children: [], appendChild(c) { this.children.push(c); return c; }, addEventListener() {}, removeEventListener() {} };
+  const listeners = {};
+  const container = { children: [], appendChild(c) { this.children.push(c); return c; }, addEventListener(t, f) { listeners[t] = f; }, removeEventListener() {} };
   const changes = [];
   const ed = create(container, { onChange: (d) => changes.push(d), ...opts });
   const root = container.children[0];
@@ -69,6 +70,8 @@ function mount(opts) {
   const fire = (evt) => canvas.dispatchEvent(evt);
   return {
     ed, root, stage, changes, rec,
+    prompt: () => root.children.at(-1).children[0].textContent,
+    key: (evt) => listeners.keydown({ target: null, preventDefault() {}, ...evt }),
     zoom: (x, y, deltaY) => fire({ type: "wheel", clientX: x, clientY: y, deltaY, preventDefault() {} }),
     pan: (dx, dy) => {
       fire({ type: "mousedown", button: 0, altKey: true, clientX: 300, clientY: 300 });
@@ -210,11 +213,24 @@ test("a refused sync() names the refusal and changes nothing", async () => {
   let refuse = false;
   const m = mount({ transport: (req) => (refuse ? { ok: false, status: 409, error: { code: "STALE", message: "revision 3 is behind 4" } } : host(req)), version: 2 });
   await tick();
+  const draft = m.ed.getDraft();
   refuse = true;
   const res = await m.ed.sync();
   assert.equal(res.ok, false);
+  assert.equal(m.prompt(), "Refused: revision 3 is behind 4");
   assert.equal(m.ed.getOverlayState().revision, 3);
+  assert.equal(m.ed.getDraft(), draft);
   assert.deepEqual(m.changes, []);
+});
+
+test("a read-only editor syncs too", async () => {
+  const host = fakeHost({ revision: 2 });
+  const m = mount({ transport: host, version: 2, readOnly: true });
+  await tick();
+  host.outside({ x_mm: 5, y_mm: 5 });
+  assert.equal((await m.ed.sync()).ok, true);
+  assert.deepEqual(m.ed.getDraft().bar_ids, [2]);
+  assert.equal(m.ed.getOverlayState().revision, 3);
 });
 
 // --- chrome --------------------------------------------------------------------------------
@@ -234,6 +250,18 @@ test("chrome {toolbar: false, sidebar: false} renders neither; the canvas and co
   assert.ok(all.includes("apecad-section-canvas") && all.includes("apecad-section-cmd"));
   assert.deepEqual(m.root.children.map((c) => c.className), ["apecad-section-stage", "apecad-section-bottom"]);
   assert.deepEqual(m.stage.children.map((c) => c.className), ["apecad-section-canvas"]);
+});
+
+test("with the toolbar hidden, the keys still undo and redo", async () => {
+  const host = fakeHost();
+  const m = mount({ transport: host, version: 2, chrome: { toolbar: false } });
+  await tick();
+  host.log.length = 0;
+  m.key({ key: "z", ctrlKey: true });
+  await tick();
+  m.key({ key: "y", ctrlKey: true });
+  await tick();
+  assert.deepEqual(host.log, ["undo", "redo"]);
 });
 
 test("chrome hides each part on its own, and the default shows both", () => {
