@@ -192,6 +192,44 @@ test("a local edit that lands while sync() waits for its draft wins", async () =
   assert.equal(m.changes.length, 1);
 });
 
+test("v1 mode: an undo that lands while sync() is on the wire wins", async () => {
+  const inner = mockTransport();
+  let gate = null;
+  const transport = async (req) => {
+    const res = await inner(req); // computed now, delivered when released
+    if (gate && req.action === "scene") { const g = gate; gate = null; await g; }
+    return res;
+  };
+  const m = mount({ transport });
+  await tick();
+  await m.ed.applyOp({ op: "AddBar", x_mm: 10, y_mm: 10, designation: "Ø16" });
+  let release;
+  gate = new Promise((r) => { release = r; });
+  const syncing = m.ed.sync(); // reads one bar, held
+  await tick();
+  await m.ed.undo(); // no bar
+  release();
+  assert.equal((await syncing).stale, true);
+  assert.equal(m.ed.getScene().bars.length, 0, "the undo stays on screen");
+  assert.equal(m.ed.getDraft().version, 1);
+});
+
+test("a local edit refused while sync() is on the wire does not stop the sync", async () => {
+  const host = fakeHost({ revision: 8 });
+  const m = mount({ transport: (req) => (req.action === "apply" ? { ok: false, status: 422, error: { code: "REFUSED", message: "no" } } : host(req)), version: 2 });
+  await tick();
+  host.outside({ x_mm: 1, y_mm: 1 }); // 9
+  const release = host.hold("scene");
+  const syncing = m.ed.sync();
+  await tick();
+  assert.equal((await m.ed.applyOp({ op: "AddBar", x_mm: 9, y_mm: 9, designation: "Ø16" })).ok, false);
+  release();
+  const res = await syncing;
+  assert.equal(res.stale, undefined);
+  assert.deepEqual(m.ed.getDraft().bar_ids, [2]);
+  assert.equal(m.ed.getOverlayState().revision, 9);
+});
+
 test("a local edit already in flight when sync() starts still ends on screen", async () => {
   const host = fakeHost();
   const m = mount({ transport: host, version: 2 });

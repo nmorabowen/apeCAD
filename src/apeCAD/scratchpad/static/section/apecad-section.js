@@ -254,6 +254,7 @@ export function create(container, opts = {}) {
   // (`tools-v2.js::followWithDraft`). The draft of the change that landed as `landed` is kept iff
   // no newer change has landed since; a newer attempt that is refused or throws changes nothing.
   // Each call site awaits it only when `version === 2`, so v1 mode keeps its timing too.
+  // `landedSeq` counts in both modes: `sync()` drops its reply when a change lands meanwhile.
   const landing = (res) => (res && res.ok ? (landedSeq += 1) : landedSeq);
   const withDraft = (res, landed) => followWithDraft(transport, res, () => landedSeq === landed && !disposed);
 
@@ -298,7 +299,7 @@ export function create(container, opts = {}) {
     }
     opEpoch += 1;
     const raw = await transport({ action: "undo" });
-    const res = version === 2 ? await withDraft(raw, landing(raw)) : raw;
+    const landed = landing(raw), res = version === 2 ? await withDraft(raw, landed) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
@@ -306,14 +307,14 @@ export function create(container, opts = {}) {
     if (readOnly) return { ok: false, status: 422, error: { code: "READ_ONLY", message: "Editor is read-only" } };
     opEpoch += 1;
     const raw = await transport({ action: "redo" });
-    const res = version === 2 ? await withDraft(raw, landing(raw)) : raw;
+    const landed = landing(raw), res = version === 2 ? await withDraft(raw, landed) : raw;
     return syncChange(res, Boolean(res && res.ok));
   }
 
   async function loadVia(action, payload) { // `load` or `seed`: an edit that fits the view
     opEpoch += 1;
     const raw = await transport({ action, payload });
-    const out = syncChange(version === 2 ? await withDraft(raw, landing(raw)) : raw, false, true);
+    const landed = landing(raw), out = syncChange(version === 2 ? await withDraft(raw, landed) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
@@ -322,13 +323,13 @@ export function create(container, opts = {}) {
   const loadSeed = (seedPayload) => loadVia("seed", seedPayload);
 
   // API 4: re-read the scene, then (v2) the draft, and take the transport's revision. Never
-  // refits, never fires onChange, never counts an edit. An edit that starts or lands meanwhile
-  // wins: the reply is dropped and returned with `stale: true`.
+  // refits, never fires onChange, never counts an edit. A local edit that lands meanwhile wins:
+  // the reply is dropped and returned with `stale: true`. One still in flight repaints on landing.
   async function sync() {
-    const epoch = opEpoch, seq = landedSeq;
+    const seq = landedSeq;
     const raw = await transport({ action: "scene" });
     const res = version === 2 ? await withDraft(raw, seq) : raw;
-    if (opEpoch !== epoch || landedSeq !== seq || disposed) return { ...res, stale: true };
+    if (landedSeq !== seq || disposed) return { ...res, stale: true };
     return syncChange(res, false, false);
   }
 

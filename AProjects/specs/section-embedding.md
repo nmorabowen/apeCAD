@@ -135,9 +135,10 @@ apeSection#113 c2383). The transport and overlay versions are unchanged.
   and shows what they return. It takes the scene reply's `revision` when it is an integer
   and otherwise leaves the revision as it was: it never counts an edit. It never refits or
   moves the view, never fires `onChange`, and keeps the selection, the tool, the overlay and
-  the glyphs. A local edit wins: if an apply, undo, redo, load or seed starts or lands while
-  `sync()` waits, its reply is dropped and the promise resolves to it with `stale: true`; an
-  edit already in flight when `sync()` starts shows when it lands. A refused `scene` shows
+  the glyphs. A local edit wins: if an apply, undo, redo, load or seed lands while `sync()`
+  waits (in either mode), its reply is dropped and the promise resolves to it with `stale:
+  true`; an edit still in flight when the reply arrives repaints when it lands, and a refused
+  one does not stop the sync. A refused `scene` shows
   the refusal in the prompt (`Refused: <message>` in v2 mode) and changes nothing; a refused
   `draft` leaves `getDraft()` null, as after any change. It works in read-only editors too.
 - **`chrome`.** `create(container, {chrome: {toolbar, sidebar}})`: `false` leaves that part
