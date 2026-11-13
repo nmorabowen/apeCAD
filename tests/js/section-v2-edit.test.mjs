@@ -51,9 +51,9 @@ function mount(opts) {
 
 // --- API 3: the option, and what it refuses -----------------------------------------------
 
-test("API_VERSION is 3, and create reads version 1 (the default) and 2 only", () => {
-  assert.equal(API_VERSION, 3);
-  assert.equal(APECADSection.API_VERSION, 3);
+test("API_VERSION is 4, and create reads version 1 (the default) and 2 only", () => {
+  assert.equal(API_VERSION, 4);
+  assert.equal(APECADSection.API_VERSION, 4);
   for (const version of [undefined, null, 1]) create({}, { version }).dispose();
   create({}, { version: 2, transport: scripted({}) }).dispose();
   for (const [bad, named] of [[3, "3"], [0, "0"], [1.5, "1.5"], ["2", '"2"'], [true, "true"], [{}, "{}"], [[2], "[2]"], [Number.NaN, "NaN"]]) {

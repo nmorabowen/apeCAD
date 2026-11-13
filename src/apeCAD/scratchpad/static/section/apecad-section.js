@@ -2,14 +2,14 @@
 // v2 editing C5-S4, `tools-v2.js`).
 // Zero CDN URLs, no innerHTML, no module-scope DOM access.
 
-import { createViewport, hitTestSection, renderSectionCanvas } from "./canvas2d.js";
+import { createViewport, hitTestSection, PALETTE, renderSectionCanvas } from "./canvas2d.js";
 import { displayList, entityTitle } from "./display2d.js";
 import { parseInput, snapPoint2D } from "./input-parse.js";
 import { createOverlayController, MAX_OVERLAY_PRIMITIVES, parseOverlay } from "./overlay.js";
 import { createV2Tools, editVersion, followWithDraft, refusalText, TOOLS_V2 } from "./tools-v2.js";
 import { barDiameterMm, buildDraftFromScene, httpTransport, mockTransport, normalizeScene, v1DraftOrNull } from "./transport.js";
 
-export const API_VERSION = 3; // 3 adds create(..., {version: 2}) editing (C5-S4)
+export const API_VERSION = 4; // 3 adds {version: 2} editing (C5-S4); 4 sync, chrome, setGlyphs (C8a)
 export { httpTransport, MAX_OVERLAY_PRIMITIVES, mockTransport, parseInput, parseOverlay, snapPoint2D };
 
 const TOOLS = [
@@ -67,6 +67,41 @@ function el(doc, tag, className = "", text = "") {
   return node;
 }
 
+// API 4: `chrome` hides the client's own toolbar or sidebar, so a host can embed the canvas.
+function chromeOptions(chrome) {
+  if (chrome == null) return { toolbar: true, sidebar: true };
+  if (typeof chrome !== "object" || Array.isArray(chrome)) throw new Error(`APECADSection.create: chrome ${JSON.stringify(chrome)} is not supported, expected {toolbar?, sidebar?}`);
+  for (const [key, value] of Object.entries(chrome)) {
+    if (key !== "toolbar" && key !== "sidebar") throw new Error(`APECADSection.create: unknown chrome option "${key}", expected toolbar or sidebar`);
+    if (typeof value !== "boolean") throw new Error(`APECADSection.create: chrome.${key} must be true or false, not ${JSON.stringify(value)}`);
+  }
+  return { toolbar: chrome.toolbar !== false, sidebar: chrome.sidebar !== false };
+}
+
+// API 4: the glyphs a host supplies (C8a: `centroid_mm`, a world point the host computed; the
+// client never computes it). A refusal names the key and replaces what was shown, as an overlay's does.
+function parseGlyphs(value) {
+  const refuse = (path, message) => ({ ok: false, status: 422, error: { code: "INVALID_ARGUMENT", path, message } });
+  if (value == null) return { ok: true, glyphs: { centroid_mm: null } };
+  if (typeof value !== "object" || Array.isArray(value)) return refuse("glyphs", "glyphs must be an object or null");
+  const unknown = Object.keys(value).find((k) => k !== "centroid_mm");
+  if (unknown !== undefined) return refuse(`glyphs.${unknown}`, `unknown glyph "${unknown}", expected centroid_mm`);
+  const c = value.centroid_mm ?? null;
+  if (c !== null && !(Array.isArray(c) && c.length === 2 && c.every((v) => typeof v === "number" && Number.isFinite(v)))) {
+    return refuse("glyphs.centroid_mm", "centroid_mm must be [x, y] in finite millimetres, or null");
+  }
+  return { ok: true, glyphs: { centroid_mm: c && [c[0], c[1]] } };
+}
+
+// The centroid symbol: a circle quartered by a cross, a fixed size on screen, at its world point.
+function paintCentroid(ctx, view, point) {
+  const [x, y] = view.worldToScreen(point), r = 6, arm = 10;
+  ctx.save(); ctx.strokeStyle = PALETTE.concreteEdge; ctx.lineWidth = 1.25;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI);
+  ctx.moveTo(x - arm, y); ctx.lineTo(x + arm, y); ctx.moveTo(x, y - arm); ctx.lineTo(x, y + arm);
+  ctx.stroke(); ctx.restore();
+}
+
 export function create(container, opts = {}) {
   if (!container || typeof container !== "object") {
     throw new Error("APECADSection.create requires a container element");
@@ -75,6 +110,7 @@ export function create(container, opts = {}) {
   if (version === 2 && typeof opts.transport !== "function") {
     throw new Error("APECADSection.create: version 2 needs a transport; mockTransport is v1 only");
   }
+  const chrome = chromeOptions(opts.chrome);
   const doc = getDoc(container);
   const readOnly = Boolean(opts.readOnly);
   const onChange = typeof opts.onChange === "function" ? opts.onChange : null;
@@ -93,6 +129,7 @@ export function create(container, opts = {}) {
   let opEpoch = 0;
   let landedSeq = 0; // v2: +1 each time a change is known to have landed (an ok apply/undo/redo/load/seed)
   let docRevision = 0; // the transport's `revision` when it sends one, else a count of edits
+  let glyphs = { centroid_mm: null };
 
   const params = {
     b_mm: 400, h_mm: 600, thickness_mm: 250, cover_mm: 25, tie_diameter_mm: 10, bar_diameter_mm: 16,
@@ -120,45 +157,31 @@ export function create(container, opts = {}) {
   const statusLabel = el(doc, "span", "apecad-section-status", "0 bars");
 
   const toolButtons = new Map();
+  const button = (label, onClick, data = {}) => {
+    const btn = el(doc, "button", "apecad-section-btn", label);
+    btn.type = "button";
+    Object.assign(btn.dataset, data);
+    btn.addEventListener("click", onClick);
+    toolbar.appendChild(btn);
+    return btn;
+  };
   if (!readOnly) {
-    for (const [id, label] of version === 2 ? TOOLS_V2 : TOOLS) {
-      const btn = el(doc, "button", "apecad-section-btn", label);
-      btn.type = "button";
-      btn.dataset.tool = id;
-      btn.addEventListener("click", () => setTool(id));
-      toolbar.appendChild(btn);
-      toolButtons.set(id, btn);
-    }
-    const undoBtn = el(doc, "button", "apecad-section-btn", "Undo");
-    undoBtn.type = "button";
-    undoBtn.addEventListener("click", () => { void undo(); });
-    const redoBtn = el(doc, "button", "apecad-section-btn", "Redo");
-    redoBtn.type = "button";
-    redoBtn.addEventListener("click", () => { void redo(); });
-    toolbar.appendChild(undoBtn);
-    toolbar.appendChild(redoBtn);
-    if (version === 2) {
-      const explodeBtn = el(doc, "button", "apecad-section-btn", "Explode");
-      explodeBtn.type = "button";
-      explodeBtn.dataset.action = "explode";
-      explodeBtn.addEventListener("click", () => { void v2?.explode(); });
-      toolbar.appendChild(explodeBtn);
-    }
+    for (const [id, label] of version === 2 ? TOOLS_V2 : TOOLS) toolButtons.set(id, button(label, () => setTool(id), { tool: id }));
+    button("Undo", () => { void undo(); });
+    button("Redo", () => { void redo(); });
+    if (version === 2) button("Explode", () => { void v2?.explode(); }, { action: "explode" });
   }
-  const fitBtn = el(doc, "button", "apecad-section-btn", "Fit");
-  fitBtn.type = "button";
-  fitBtn.addEventListener("click", () => fitView());
-  toolbar.appendChild(fitBtn);
+  button("Fit", () => fitView());
 
   stage.appendChild(canvas);
   sidebar.appendChild(propsBox);
   sidebar.appendChild(warnBox);
   sidebar.appendChild(overlayBox);
-  stage.appendChild(sidebar);
+  if (chrome.sidebar) stage.appendChild(sidebar);
   bottomBar.appendChild(promptLabel);
   bottomBar.appendChild(cmdInput);
   bottomBar.appendChild(statusLabel);
-  root.appendChild(toolbar);
+  if (chrome.toolbar) root.appendChild(toolbar);
   root.appendChild(stage);
   root.appendChild(bottomBar);
   if (typeof container.appendChild === "function") container.appendChild(root);
@@ -199,9 +222,13 @@ export function create(container, opts = {}) {
 
   function redraw() {
     if (disposed) return;
+    const centroid = glyphs.centroid_mm;
     renderSectionCanvas(canvas, view, {
       scene, selectedIds, snap: snapState, ghost: ghostState, gridOn: true, gridStepMm: params.gridStepMm,
-      drawOverlay: overlay.active ? (ctx, v) => overlay.paint(ctx, v) : null,
+      drawOverlay: overlay.active || centroid ? (ctx, v) => {
+        if (overlay.active) overlay.paint(ctx, v);
+        if (centroid) paintCentroid(ctx, v, centroid);
+      } : null,
     });
     updateStatusAndProps();
     overlay.refresh();
@@ -283,22 +310,26 @@ export function create(container, opts = {}) {
     return syncChange(res, Boolean(res && res.ok));
   }
 
-  async function loadDraft(payload) {
+  async function loadVia(action, payload) { // `load` or `seed`: an edit that fits the view
     opEpoch += 1;
-    const raw = await transport({ action: "load", payload });
+    const raw = await transport({ action, payload });
     const out = syncChange(version === 2 ? await withDraft(raw, landing(raw)) : raw, false, true);
     if (out && out.ok) view.fit(scene);
     redraw();
     return out;
   }
+  const loadDraft = (payload) => loadVia("load", payload);
+  const loadSeed = (seedPayload) => loadVia("seed", seedPayload);
 
-  async function loadSeed(seedPayload) {
-    opEpoch += 1;
-    const raw = await transport({ action: "seed", payload: seedPayload });
-    const out = syncChange(version === 2 ? await withDraft(raw, landing(raw)) : raw, false, true);
-    if (out && out.ok) view.fit(scene);
-    redraw();
-    return out;
+  // API 4: re-read the scene, then (v2) the draft, and take the transport's revision. Never
+  // refits, never fires onChange, never counts an edit. An edit that starts or lands meanwhile
+  // wins: the reply is dropped and returned with `stale: true`.
+  async function sync() {
+    const epoch = opEpoch, seq = landedSeq;
+    const raw = await transport({ action: "scene" });
+    const res = version === 2 ? await withDraft(raw, seq) : raw;
+    if (opEpoch !== epoch || landedSeq !== seq || disposed) return { ...res, stale: true };
+    return syncChange(res, false, false);
   }
 
   function setTool(toolName) {
@@ -538,8 +569,14 @@ export function create(container, opts = {}) {
   return {
     loadDraft, load: loadDraft, loadSeed,
     getDraft: () => currentDraft, getScene: () => scene,
-    applyOp, undo, redo, setTool, setParam, fitView, resize,
+    applyOp, undo, redo, sync, setTool, setParam, fitView, resize,
     setOverlay: (value) => overlay.set(value), getOverlayState: () => overlay.state(),
+    setGlyphs(value) {
+      const out = parseGlyphs(value);
+      glyphs = out.ok ? out.glyphs : { centroid_mm: null };
+      redraw();
+      return out.ok ? { ok: true, status: 200, ...glyphs } : out;
+    },
     dispose() {
       disposed = true;
       canvas.removeEventListener("mousemove", onMouseMove);

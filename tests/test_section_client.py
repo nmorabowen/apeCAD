@@ -43,7 +43,7 @@ EXPECTED_ASSETS = {
 
 
 def test_section_assets_manifest_and_version() -> None:
-    assert CLIENT_API_VERSION == 3  # 2: ADR 0041 D2; 3: {version: 2} editing (C5-S4)
+    assert CLIENT_API_VERSION == 4  # 2: ADR 0041 D2; 3: {version: 2} editing (C5-S4); 4: C8a
     assert SECTION_DIR.is_dir()
     files = client_files()
     assert set(files.keys()) >= EXPECTED_ASSETS
@@ -51,14 +51,14 @@ def test_section_assets_manifest_and_version() -> None:
         assert path.is_file(), f"Missing asset {name} at {path}"
 
     entry_js = files["apecad-section.js"].read_text(encoding="utf-8")
-    assert re.search(r"export\s+const\s+API_VERSION\s*=\s*3\b", entry_js)
+    assert re.search(r"export\s+const\s+API_VERSION\s*=\s*4\b", entry_js)
 
 
 def test_section_assets_imports_do_not_load_server() -> None:
     code = (
         "import sys\n"
         "import apeCAD.scratchpad.section_assets as sa\n"
-        "assert sa.CLIENT_API_VERSION == 3\n"
+        "assert sa.CLIENT_API_VERSION == 4\n"
         "prefixes = ('apeCAD.scratchpad.server', 'http.server')\n"
         "loaded = [m for m in sys.modules if m.startswith(prefixes)]\n"
         "assert not loaded, loaded\n"
