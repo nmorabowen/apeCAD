@@ -1,6 +1,6 @@
 # Spec — Section embedding kit (stage C9)
 
-**Status:** Implemented (2026-10-23); results overlay, client API 2 (2026-11-01, stage C2-S2); draws v2 (2026-11-02, C5-S3, client API still 2); edits v2, client API 3 (2026-11-03, C5-S4); `sync()`, `chrome` and `setGlyphs`, client API 4 (2026-11-13, C8a)  
+**Status:** Implemented (2026-10-23); results overlay, client API 2 (2026-11-01, stage C2-S2); draws v2 (2026-11-02, C5-S3, client API still 2); edits v2, client API 3 (2026-11-03, C5-S4); `sync()`, `chrome` and `setGlyphs`, client API 4 (2026-11-13, C8a); overlay legibility and the axes glyph, client API still 4 (2026-11-13, C8b)  
 **ADRs:** 0023, 0024, 0025, 0026, 0038, 0041
 
 ## Goal
@@ -16,7 +16,7 @@ FastAPI / ASGI process without spawning a separate `ScratchpadServer`.
 |---|---|---|
 | `CLIENT_API_VERSION = 4` | `apeCAD.scratchpad.section_assets` | Matches `API_VERSION = 4` exported by `apecad-section.js`. 4 adds `sync()`, the `create` option `chrome` and `setGlyphs` (C8a, below) and removes nothing of 3; 3 added `create(container, {version: 2})` editing (C5-S4, ADR 0026 Errata 1) and removed nothing of 2; 2 added the results overlay (ADR 0041 decision 2) and removed nothing of 1. Every move is additive, so a host asserts `CLIENT_API_VERSION >= 1`. |
 | `SECTION_DIR` | `apeCAD.scratchpad.section_assets` | `Path` to `src/apeCAD/scratchpad/static/section/`. |
-| `client_files()` | `apeCAD.scratchpad.section_assets` | Returns `dict[str, Path]` mapping relative asset names (`apecad-section.js`, `transport.js`, `mock-transport.js`, `input-parse.js`, `canvas2d.js`, `display2d.js`, `tools-v2.js`, `overlay.js`, `section.css`, `index.html`) to absolute `Path`s. |
+| `client_files()` | `apeCAD.scratchpad.section_assets` | Returns `dict[str, Path]` mapping relative asset names (`apecad-section.js`, `transport.js`, `mock-transport.js`, `input-parse.js`, `canvas2d.js`, `display2d.js`, `tools-v2.js`, `overlay.js`, `glyphs.js`, `section.css`, `index.html`) to absolute `Path`s. |
 | `TRANSPORT_VERSION = 1`, `MAX_OPS`, `handle(request)` | `apeCAD.scratchpad.transport` | Stateless single-endpoint transport (`scene`, `apply`, `undo`, `redo`, `draft`, `load`, `seed`). Importing `section_assets` or `transport` never loads `scratchpad.server`. |
 
 ## Client surface (`apecad-section.js`)
@@ -147,6 +147,11 @@ apeSection#113 c2383). The transport and overlay versions are unchanged.
   later `sync()` has already been shown, and the opening scene is dropped once any `sync()`
   has been shown. With a transport that sends no revision, a `sync()` reply is dropped when a
   local change landed while it waited.
+- **A host with other writers must send `revision`** (review round 2 of apeCAD PR #70). Its
+  transport puts the document's integer revision on every reply. Without one, the client
+  counts its own edits and cannot tell another writer's change from its own: a stamped overlay
+  can read as current over an outside edit, and a `sync()` reply is dropped whenever a local
+  change landed while it waited.
 - **`chrome`.** `create(container, {chrome: {toolbar, sidebar}})`: `false` leaves that part
   out of the DOM (the toolbar with its tool, Undo, Redo, Explode and Fit buttons; the sidebar
   with the properties, warnings and overlay panel), so the host draws its own. Both default to
@@ -156,12 +161,13 @@ apeSection#113 c2383). The transport and overlay versions are unchanged.
 - **`setGlyphs({centroid_mm})`.** Draws the centroid symbol, a circle quartered by a cross at
   a fixed size on screen, at the world point `[x, y]` (mm) the host supplies. The client
   never computes a centroid: apeSection supplies the net solid-area centroid that apeConcrete
-  reports (its PR #121 c2410). The glyph sits with the overlay, above the section and below
-  the selection; it moves with pan and zoom, survives `sync()`, and is display only (no hit
+  reports (its PR #121 c2410). The glyph sits above the section, the overlay and the
+  section's ink over it, and below the axes glyph and the selection (C8b); it moves with pan
+  and zoom, survives `sync()`, and is display only (no hit
   testing, no snapping, not an edit). `setGlyphs(null)`, `{}` or `{centroid_mm: null}`
   clears it. The result is `{ok: true, status: 200, centroid_mm}`, or `{ok: false, status:
   422, error: {code: "INVALID_ARGUMENT", path, message}}` for a value that is not an object,
-  an unknown key (the axes glyph is C8b's), or a `centroid_mm` that is not two finite
+  an unknown key (the axes glyph takes none: it is always drawn, below), or a `centroid_mm` that is not two finite
   numbers (a sparse array, a string, `NaN` or `±Infinity` among them). A refusal clears the
   glyph, as a refused overlay does: never a stale point.
 
@@ -202,12 +208,15 @@ the same `code` and `path` as `apeCAD.render.overlay.parse_overlay`.
   stale at every live revision, 0 included, and the client never compares hashes. The host
   sends an overlay only to the editor whose stored draft hashes to its `section_sha256`, so
   two editors at equal revisions never show each other's results as current.
-- **Draw order.** Section, then the overlay, then the selection, stroked again on top. The
-  ghost preview and the snap marker stay above all three. The overlay is display only: hit
-  testing and snapping ignore it.
+- **Draw order.** Section, then the overlay, then the section's ink again (below), the host's
+  glyphs, the axes glyph, and the selection, stroked again on top. The ghost preview and the
+  snap marker stay above them all. The overlay is display only: hit testing and snapping
+  ignore it.
 - **Panel.** The sidebar lists each layer's `label` (`(hidden)` after a hidden one) and one
   legend per visible layer with a scale: the title and unit, a gradient bar with the domain
-  values (numeric scales) or a swatch per category.
+  values (numeric scales) or a swatch per category. Each value sits at its stop: `lo` at the
+  bar's left end, `hi` at its right end, and a diverging `mid` on a second row, centred under a
+  mark at `(mid - lo) / (hi - lo)` of the bar and clamped inside it (C8b).
 - **Text and colour.** Every overlay string reaches the page through `textContent` and the
   canvas through `fillText`, never as markup. Colours are validated by the reader. A token
   resolves to its light value, `canvas2d.js::OVERLAY_TOKENS` (equal to
@@ -220,9 +229,36 @@ the same `code` and `path` as `apeCAD.render.overlay.parse_overlay`.
   every pair of neighbouring stops, is at least 0.055 apart in OKLab under normal vision,
   protanopia and deuteranopia. Red against green fails the deuteranopia check.
 
+## Legibility and the axes glyph (C8b; apeSection RGc3 F6, F7; no API change)
+
+Both renderers, the client canvas and `render_svg`, draw these the same way. Nothing is
+computed from the overlay or the document: they are display only (ADR 0026 Errata 3).
+
+- **The section's ink over an overlay.** With an overlay drawn, the section's outlines, hoops,
+  crossties, circular ties and bars are stroked again above it: every line first on a paper
+  halo 1 px wider each side, then in its own ink and pen. A bar is a 1 px ring at its drawn
+  radius with its halo just outside, so the overlay's colour stays visible inside it. Cover
+  and leg guides are not drawn again. With no overlay nothing is drawn twice. In the SVG it is
+  one `<g class="section-ink">` after `<g class="overlay">`.
+- **Valued markers.** A `circle` or `point` painted by `value` is filled as before, inside a
+  1 px ring in `--ink-edge` (`#14181d`) on a 3 px paper halo, so it shows on a field of its
+  own colour. A styled marker is drawn exactly as styled. Ink or halo contrasts at least 3:1
+  with every colour the example scales paint (`tests/js/section-legibility.test.mjs`).
+- **The axes and origin glyph.** An open 5 px box at the world origin and two 18 px arrows,
+  `x` to the right and `y` up (apeSection ADR-0006), in annotation blue (`#000077`,
+  `PALETTE.originGlyph`) on a paper halo, at a fixed size on screen. The client draws it on
+  every frame, empty or not; the SVG draws it on every plan of a section (`top` view, any
+  section layer drawn), after the annotation and below the labels. It moves with pan and
+  zoom, takes no key and is never hit.
+- **The diverging example palette** (`OVERLAY_EXAMPLE_SCALES.stress`) is colour-vision-safe
+  by a stated method: under normal vision, protanopia and deuteranopia (Viénot 1999), the
+  luminance of each arm rises strictly to the mid, and the two arms at the same fraction of
+  their length from the ends, up to the half, are at least 0.055 apart in OKLab. A red-green
+  diverging scale fails it.
+
 ## Security, CSP, and isolation rules
 
 1. **Zero external URLs:** No file in `static/section/` may contain `https://` or load external scripts, stylesheets, or fonts.
 2. **No `innerHTML`:** DOM construction in `static/section/` uses `document.createElement` and `textContent` exclusively.
 3. **Scoped events:** Keyboard listeners attach to `container` (`container.tabIndex = 0`), never `window`.
-4. **No module-scope DOM access:** Importing `apecad-section.js`, `canvas2d.js`, `display2d.js`, `input-parse.js`, `tools-v2.js`, `transport.js`, or `mock-transport.js` in Node (`node --test`) succeeds without a global `window` or `document`.
+4. **No module-scope DOM access:** Importing `apecad-section.js`, `canvas2d.js`, `display2d.js`, `glyphs.js`, `input-parse.js`, `tools-v2.js`, `transport.js`, or `mock-transport.js` in Node (`node --test`) succeeds without a global `window` or `document`.

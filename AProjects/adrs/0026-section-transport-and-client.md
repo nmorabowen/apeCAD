@@ -106,3 +106,34 @@ moves, which decision 5 ties together but no rule numbers.
    `CLIENT_API_VERSION >= 1`, as ape-web-tools HA-04 does since apeSection#45. Decision 1's
    `TRANSPORT_VERSION = 1` is unchanged: `draft` already takes `version` (ADR 0039 Errata 1).
    The surface is [`specs/section-embedding.md`](../specs/section-embedding.md), "Editing v2".
+
+## Errata (2026-11-13)
+
+Recorded with apeCAD C8a (PR #70, merged as 2cbf09d) and C8b (apeSection#132), the client work
+for apeSection's embed (A4.0 reconciliation, apeSection#113 comment 2382). The Decision above is
+unchanged, and so are `TRANSPORT_VERSION = 1` and the section-overlay contracts (v1, v2).
+
+2. **Client API 4 (owner decision 1 of apeSection#113 comment 2382: one bump, one pin move).**
+   `APECADSection.API_VERSION` and `section_assets.CLIENT_API_VERSION` are 4. 4 adds an
+   instance method `sync()`, which re-reads the scene (and, in v2 mode, the draft) after
+   another writer changed the document, takes the host's `revision`, and never refits or fires
+   `onChange`; a `create` option `chrome: {toolbar, sidebar}`, which leaves either part out of
+   the DOM; and an instance method `setGlyphs({centroid_mm})`, which draws a centroid the host
+   supplies. The client computes no centroid (apeSection PR #121 comment 2410). The revision is
+   monotonic: no reply lowers it. 4 removes nothing of 3, so a host still asserts
+   `CLIENT_API_VERSION >= 1`. The surface is
+   [`specs/section-embedding.md`](../specs/section-embedding.md), "A host that owns the
+   document".
+3. **Legibility and the axes glyph move no version (C8b; apeSection RGc3 findings F6, F7).**
+   They change what both renderers draw, not the API or a contract:
+   - Over a drawn overlay, the section's outlines, hoops, ties and bar rings are stroked again
+     on a paper halo, so an opaque result field never hides the reinforcement. The overlay
+     still sits above the section and below the selection (ADR 0041 decisions 2 and 3), and the
+     extra pass is display only.
+   - A valued circle or point marker is ringed in `--ink-edge` on a paper halo, so a yielded
+     bar shows on a red field.
+   - The client legend sets each tick at its stop, as the render does.
+   - Every client frame and every SVG section plan carries an x-right, y-up axes and origin
+     glyph at the world origin (apeSection ADR-0006). It takes no key: `setGlyphs` still
+     refuses any key but `centroid_mm`.
+   - `PALETTE` gains `originGlyph`. Rendering goldens changed; their tool regenerated them.
