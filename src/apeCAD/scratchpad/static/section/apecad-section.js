@@ -202,7 +202,8 @@ export function create(container, opts = {}) {
     const centroid = glyphs.centroid_mm;
     renderSectionCanvas(canvas, view, {
       scene, selectedIds, snap: snapState, ghost: ghostState, gridOn: true, gridStepMm: params.gridStepMm,
-      drawOverlay: overlay.active ? (ctx, v) => overlay.paint(ctx, v) : null,
+      drawOverlay: overlay.active ? (ctx, v) => overlay.paint(ctx, v, "field") : null,
+      drawMarkers: overlay.active ? (ctx, v) => overlay.paint(ctx, v, "markers") : null, // over the ink (C8b)
       drawGlyphs: centroid ? (ctx, v) => paintCentroid(ctx, v, centroid) : null, // over the section ink (C8b)
     });
     updateStatusAndProps();

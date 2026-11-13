@@ -18,7 +18,7 @@ import { create, mockTransport } from "../../src/apeCAD/scratchpad/static/sectio
 import {
   AXES_ARM_PX, OVERLAY_EXAMPLE_SCALES, OVERLAY_TOKENS, PALETTE, createViewport, renderSectionCanvas,
 } from "../../src/apeCAD/scratchpad/static/section/canvas2d.js";
-import { MARKER_RING, paintOverlay, parseOverlay, scaleColor, tickPercent } from "../../src/apeCAD/scratchpad/static/section/overlay.js";
+import { MARKER_MIN_RADIUS_PX, MARKER_RING, paintOverlay, parseOverlay, scaleColor, tickPercent } from "../../src/apeCAD/scratchpad/static/section/overlay.js";
 import { normalizeScene } from "../../src/apeCAD/scratchpad/static/section/transport.js";
 import { contrastRatio, oklabDistance, relativeLuminance, simulateCvdHex } from "../../src/apeCAD/scratchpad/static/js/theme.js";
 
@@ -75,22 +75,26 @@ test("over an overlay the section is stroked again: every halo, then every ink l
   renderSectionCanvas(rec.canvas, view, {
     scene, gridOn: false,
     drawOverlay: () => rec.log.push(["overlay"]),
+    drawMarkers: () => rec.log.push(["markers"]),
     drawGlyphs: () => rec.log.push(["glyphs"]),
   });
   const at = (tag) => rec.log.findIndex((e) => e[0] === tag);
-  const between = strokes(rec.log.slice(at("overlay"), at("glyphs")));
+  const between = strokes(rec.log.slice(at("overlay"), at("markers")));
   // The face's outline, the hoop, the crosstie and the four bars: back to front, as drawn.
   const inks = [PALETTE.concreteEdge, PALETTE.hoop, PALETTE.crosstie, ...Array(4).fill(PALETTE.rebar)];
   assert.deepEqual(between.map((e) => e[1]), [...Array(inks.length).fill(PALETTE.bg), ...inks]);
   // Each halo line is 1 px wider each side than its ink line, bars excepted (rings below).
   between.slice(0, 3).forEach((halo, i) => assert.equal(halo[2], between[inks.length + i][2] + 2));
   // A bar is a ring at its drawn radius, its halo just outside it: the overlay shows inside.
-  const arcs = rec.log.slice(at("overlay"), at("glyphs")).filter((e) => e[0] === "arc");
+  const arcs = rec.log.slice(at("overlay"), at("markers")).filter((e) => e[0] === "arc");
   const r = Math.max(3.5, 8 * view.scale);
   assert.deepEqual(arcs.map((e) => [e[3], e[4], e[5]]), [
     ...Array(4).fill([r + 1, 1, PALETTE.bg]), ...Array(4).fill([r, 1, PALETTE.rebar]),
   ]);
   assert.ok(at("glyphs") < rec.log.findIndex((e) => e[0] === "text" && e[1] === "x"), "the axes over the glyphs");
+  // The valued markers come after every ink line and before the host's glyphs (review F1).
+  assert.ok(at("markers") < at("glyphs"));
+  assert.deepEqual(strokes(rec.log.slice(at("markers"), at("glyphs"))), [], "no ink over the markers");
 });
 
 test("with no overlay nothing is stroked again", async () => {
@@ -104,7 +108,7 @@ test("with no overlay nothing is stroked again", async () => {
 
 // --- F6: valued markers --------------------------------------------------------------------
 
-test("a valued marker is ringed in --ink-edge on a paper halo; a styled one is drawn as styled", () => {
+test("a valued marker: paper disc under it, fill of at least 3 px, ring outside the fill; styled ones as styled", () => {
   assert.equal(MARKER_RING, OVERLAY_TOKENS["--ink-edge"]);
   const scale = { kind: "categorical", domain: ["elastic", "yielded"], colors: ["#2f74ad", "#c64a1a"], unit: "", title: "" };
   const overlay = parseOverlay({
@@ -115,13 +119,24 @@ test("a valued marker is ringed in --ink-edge on a paper halo; a styled one is d
       { kind: "circle", center: [20, 0], radius: 8, style: { fill: "#123456" } },
     ] }],
   });
+  assert.equal(MARKER_MIN_RADIUS_PX, 3);
   const rec = recorder();
-  paintOverlay(rec.ctx, { scale: 1, worldToScreen: ([x, y]) => [x, -y] }, overlay);
-  assert.deepEqual(rec.log.filter((e) => e[0] === "stroke" || e[0] === "fill"), [
-    ["stroke", PALETTE.bg, 3], ["fill", "#c64a1a"], ["stroke", MARKER_RING, 1],
-    ["stroke", PALETTE.bg, 3], ["fill", "#2f74ad"], ["stroke", MARKER_RING, 1],
-    ["fill", "#123456"],
+  const view = { scale: 0.2, worldToScreen: ([x, y]) => [x, -y] }; // 1:25: the 8 mm radius is 1.6 px
+  paintOverlay(rec.ctx, view, overlay);
+  const ops = rec.log.filter((e) => e[0] !== "move" && e[0] !== "line").map((e) => (e[0] === "arc" ? e.slice(0, 4) : e));
+  assert.deepEqual(ops, [
+    ["arc", 0, -0, 5], ["fill", PALETTE.bg], ["arc", 0, -0, 3], ["fill", "#c64a1a"],
+    ["arc", 0, -0, 3.5], ["stroke", MARKER_RING, 1],
+    ["arc", 10, -0, 5], ["fill", PALETTE.bg], ["arc", 10, -0, 3], ["fill", "#2f74ad"],
+    ["arc", 10, -0, 3.5], ["stroke", MARKER_RING, 1],
+    ["arc", 20, -0, 1.6], ["fill", "#123456"],
   ]);
+  // `pass` splits them: the field pass leaves the markers out, the marker pass draws only them.
+  const field = recorder(), markers = recorder();
+  paintOverlay(field.ctx, view, overlay, { pass: "field" });
+  paintOverlay(markers.ctx, view, overlay, { pass: "markers" });
+  assert.deepEqual(field.log.filter((e) => e[0] === "fill").map((e) => e[1]), ["#123456"]);
+  assert.deepEqual(markers.log.filter((e) => e[0] === "fill").map((e) => e[1]), [PALETTE.bg, "#c64a1a", PALETTE.bg, "#2f74ad"]);
 });
 
 const sampled = (scaleJson) => {

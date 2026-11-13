@@ -22,6 +22,7 @@ from apeCAD.render.svg import (
     FONT,
     LEGEND_EDGE_PX,
     LEGEND_GAP_PX,
+    MARKERS_OPEN,
     ScaleLegend,
     Viewport,
     clean_text,
@@ -60,17 +61,12 @@ OVERLAY_POINT_RADIUS_PX = 2.5
 
 # Which paint keys a `style` may set, per kind (spec "Paint").
 _PAINTS: dict[str, frozenset[str]] = {
-    "polygon": frozenset({"fill", "stroke"}),
-    "circle": frozenset({"fill", "stroke"}),
-    "polyline": frozenset({"stroke"}),
-    "point": frozenset({"fill"}),
-    "label": frozenset({"fill"}),
+    "polygon": frozenset({"fill", "stroke"}), "circle": frozenset({"fill", "stroke"}),
+    "polyline": frozenset({"stroke"}), "point": frozenset({"fill"}), "label": frozenset({"fill"}),
 }
 _SHAPE_KEYS: dict[str, frozenset[str]] = {
-    "polygon": frozenset({"ring", "holes"}),
-    "circle": frozenset({"center", "radius"}),
-    "polyline": frozenset({"points"}),
-    "point": frozenset({"at"}),
+    "polygon": frozenset({"ring", "holes"}), "circle": frozenset({"center", "radius"}),
+    "polyline": frozenset({"points"}), "point": frozenset({"at"}),
     "label": frozenset({"at", "text"}),
 }
 _REQUIRED_SHAPE_KEYS: dict[str, frozenset[str]] = {**_SHAPE_KEYS, "polygon": frozenset({"ring"})}
@@ -515,7 +511,8 @@ def as_overlay(value: Overlay | Mapping[str, object] | object) -> Overlay:
 # --- drawing -------------------------------------------------------------------------------
 
 def overlay_svg(overlay: Overlay, view: View, viewport: Viewport) -> list[str]:
-    """One `<g class="overlay">`: the visible layers in order, then their legends."""
+    """One `<g class="overlay">`: the visible layers in order, their valued markers (`MARKERS_OPEN`
+    groups: `write_svg` puts the section ink before them, C8b), then the legends."""
 
     def px(p: Vec2) -> Vec2:
         return viewport.to_px(view.project((p[0], p[1], 0.0)))
@@ -524,16 +521,16 @@ def overlay_svg(overlay: Overlay, view: View, viewport: Viewport) -> list[str]:
     tag = "" if overlay.revision is None else f' data-revision="{overlay.revision}"'
     if overlay.section_sha256 is not None:
         tag += f' data-section-sha256="{overlay.section_sha256}"'
-    out = [f'<g class="overlay"{tag}>']
-    for layer in overlay.layers:
-        if not layer.visible:
-            continue
-        out.append(
-            f'<g class="overlay-layer" data-layer="{clean_text(layer.id)}" '
-            f'data-label="{clean_text(layer.label)}">'
-        )
-        out.extend(_primitive_svg(p, px, viewport.scale) for p in layer.primitives)
+    out, markers = [f'<g class="overlay"{tag}>'], list[str]()
+    for layer in (layer for layer in overlay.layers if layer.visible):
+        name = f'data-layer="{clean_text(layer.id)}"'
+        out.append(f'<g class="overlay-layer" {name} data-label="{clean_text(layer.label)}">')
+        drawn = [_primitive_svg(p, px, viewport.scale) for p in layer.primitives]
+        mine = [m for p, m in zip(layer.primitives, drawn, strict=True) if is_marker(p)]
+        out += [m for p, m in zip(layer.primitives, drawn, strict=True) if not is_marker(p)]
         out.append("</g>")
+        markers += [f"{MARKERS_OPEN} {name}>", *mine, "</g>"] if mine else []
+    out.extend(markers)
     top = LEGEND_EDGE_PX
     right = viewport.width - LEGEND_EDGE_PX
     for index, layer in enumerate(overlay.layers):
@@ -570,6 +567,11 @@ def _path_data(points: Sequence[Vec2], px: _Px, closed: bool) -> str:
     return " ".join(parts) + (" Z" if closed else "")
 
 
+def is_marker(p: Primitive) -> bool:
+    """A valued circle or point: drawn over the section ink, at least `MARKER_MIN_RADIUS_PX`."""
+    return p.value is not None and p.kind in ("circle", "point")
+
+
 def _primitive_svg(p: Primitive, px: _Px, scale: float) -> str:
     paint = _paint_attrs(p.paint)
     data = _data_attrs(p)
@@ -582,7 +584,7 @@ def _primitive_svg(p: Primitive, px: _Px, scale: float) -> str:
     x, y = px(p.points[0])
     if p.kind in ("circle", "point"):
         r = p.radius * scale if p.kind == "circle" else OVERLAY_POINT_RADIUS_PX
-        if p.value is not None:  # a valued marker: ringed on a halo (C8b, RGc3 F6)
+        if is_marker(p):  # ringed outside its fill, on a paper halo (C8b, RGc3 F6)
             return marker_svg(x, y, r, p.paint.fill or "none", data)
         return f'<circle cx="{num(x)}" cy="{num(y)}" r="{num(r)}" {paint}{data}/>'
     return f'<text x="{num(x)}" y="{num(y)}" {FONT} {paint}{data}>{clean_text(p.text)}</text>'

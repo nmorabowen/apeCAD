@@ -24,15 +24,15 @@
 <g data-id="13"><circle cx="490.25" cy="131.75" r="1.25" fill="#000000" stroke="none"/></g>
 <g data-id="14"><circle cx="490.25" cy="369.75" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
-<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
-<g class="dimension" data-dim="width"><path d="M346.25 378.75 L346.25 403.75 M496.25 378.75 L496.25 403.75 M346.25 399.75 L496.25 399.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(346.25 399.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(496.25 399.75) rotate(180)"/><text x="421.25" y="396.75" text-anchor="middle" stroke="none" font-size="12.5">300</text></g>
-<g class="dimension" data-dim="depth"><path d="M343.25 125.75 L318.25 125.75 M343.25 375.75 L318.25 375.75 M322.25 125.75 L322.25 375.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(322.25 125.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(322.25 375.75) rotate(-90)"/><text transform="translate(319.25 250.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">500</text></g>
-</g>
 <g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
 <path d="M368.75 348.25 h5 v5 h-5 Z M371.25 350.75 L389.25 350.75 M384.25 347.75 L389.25 350.75 L384.25 353.75 M371.25 350.75 L371.25 332.75 M368.25 337.75 L371.25 332.75 L374.25 337.75" stroke="#ffffff" stroke-width="3"/>
 <path d="M368.75 348.25 h5 v5 h-5 Z M371.25 350.75 L389.25 350.75 M384.25 347.75 L389.25 350.75 L384.25 353.75 M371.25 350.75 L371.25 332.75 M368.25 337.75 L371.25 332.75 L374.25 337.75" stroke="#000077" stroke-width="1"/>
 <text x="392.25" y="354.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
 <text x="376.25" y="338.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="dimension" data-dim="width"><path d="M346.25 378.75 L346.25 403.75 M496.25 378.75 L496.25 403.75 M346.25 399.75 L496.25 399.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(346.25 399.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(496.25 399.75) rotate(180)"/><text x="421.25" y="396.75" text-anchor="middle" stroke="none" font-size="12.5">300</text></g>
+<g class="dimension" data-dim="depth"><path d="M343.25 125.75 L318.25 125.75 M343.25 375.75 L318.25 375.75 M322.25 125.75 L322.25 375.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(322.25 125.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(322.25 375.75) rotate(-90)"/><text transform="translate(319.25 250.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">500</text></g>
 </g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
 </g>

@@ -37,17 +37,17 @@
 <g data-id="16"><circle cx="418.98" cy="338.1" r="1.25" fill="#000000" stroke="none"/></g>
 <g data-id="17"><circle cx="357.75" cy="338.1" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
-<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
-<g class="tag"><path d="M326.25 173.75 L405.25 127.75 L405.25 118.25" fill="none"/><circle cx="326.25" cy="173.75" r="1" stroke="none"/><text x="411.25" y="121.75" stroke="none" font-size="10">4 Φ20</text></g>
-<g class="tag"><path d="M447.5 163.75 L455.25 127.75 L455.25 118.25" fill="none"/><circle cx="447.5" cy="163.75" r="1" stroke="none"/><text x="461.25" y="121.75" stroke="none" font-size="10">Cover 40 mm</text></g>
-<g class="dimension" data-dim="width"><path d="M296.25 396.75 L296.25 421.75 M546.25 396.75 L546.25 421.75 M296.25 417.75 L546.25 417.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(296.25 417.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(546.25 417.75) rotate(180)"/><text x="421.25" y="414.75" text-anchor="middle" stroke="none" font-size="12.5">500</text></g>
-<g class="dimension" data-dim="depth"><path d="M293.25 143.75 L268.25 143.75 M293.25 393.75 L268.25 393.75 M272.25 143.75 L272.25 393.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(272.25 143.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(272.25 393.75) rotate(-90)"/><text transform="translate(269.25 268.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">500</text></g>
-</g>
 <g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
 <path d="M418.75 266.25 h5 v5 h-5 Z M421.25 268.75 L439.25 268.75 M434.25 265.75 L439.25 268.75 L434.25 271.75 M421.25 268.75 L421.25 250.75 M418.25 255.75 L421.25 250.75 L424.25 255.75" stroke="#ffffff" stroke-width="3"/>
 <path d="M418.75 266.25 h5 v5 h-5 Z M421.25 268.75 L439.25 268.75 M434.25 265.75 L439.25 268.75 L434.25 271.75 M421.25 268.75 L421.25 250.75 M418.25 255.75 L421.25 250.75 L424.25 255.75" stroke="#000077" stroke-width="1"/>
 <text x="442.25" y="272.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
 <text x="426.25" y="256.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
+<g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
+<g class="tag"><path d="M326.25 173.75 L405.25 127.75 L405.25 118.25" fill="none"/><circle cx="326.25" cy="173.75" r="1" stroke="none"/><text x="411.25" y="121.75" stroke="none" font-size="10">4 Φ20</text></g>
+<g class="tag"><path d="M447.5 163.75 L455.25 127.75 L455.25 118.25" fill="none"/><circle cx="447.5" cy="163.75" r="1" stroke="none"/><text x="461.25" y="121.75" stroke="none" font-size="10">Cover 40 mm</text></g>
+<g class="dimension" data-dim="width"><path d="M296.25 396.75 L296.25 421.75 M546.25 396.75 L546.25 421.75 M296.25 417.75 L546.25 417.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(296.25 417.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(546.25 417.75) rotate(180)"/><text x="421.25" y="414.75" text-anchor="middle" stroke="none" font-size="12.5">500</text></g>
+<g class="dimension" data-dim="depth"><path d="M293.25 143.75 L268.25 143.75 M293.25 393.75 L268.25 393.75 M272.25 143.75 L272.25 393.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(272.25 143.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(272.25 393.75) rotate(-90)"/><text transform="translate(269.25 268.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">500</text></g>
 </g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
 <text x="426.25" y="263.75" data-for="18">W</text>

@@ -32,18 +32,18 @@
 <g data-id="8"><circle cx="411.45" cy="175.75" r="1.25" fill="#000000" stroke="none"/></g>
 <g data-id="9"><circle cx="311.45" cy="175.75" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
+<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M358.95 248.25 h5 v5 h-5 Z M361.45 250.75 L379.45 250.75 M374.45 247.75 L379.45 250.75 L374.45 253.75 M361.45 250.75 L361.45 232.75 M358.45 237.75 L361.45 232.75 L364.45 237.75" stroke="#ffffff" stroke-width="3"/>
+<path d="M358.95 248.25 h5 v5 h-5 Z M361.45 250.75 L379.45 250.75 M374.45 247.75 L379.45 250.75 L374.45 253.75 M361.45 250.75 L361.45 232.75 M358.45 237.75 L361.45 232.75 L364.45 237.75" stroke="#000077" stroke-width="1"/>
+<text x="382.45" y="254.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
+<text x="366.45" y="238.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
 <g class="tag"><path d="M432.45 129.75 L483.45 243.25" fill="none"/><circle cx="432.45" cy="129.75" r="1" stroke="none"/><text x="489.45" y="246.75" stroke="none" font-size="10">4 Φ16</text></g>
 <g class="tag"><path d="M438.95 371.75 L483.45 257.25" fill="none"/><circle cx="438.95" cy="371.75" r="1" stroke="none"/><text x="489.45" y="260.75" stroke="none" font-size="10">Tie Φ10 @ 150 mm</text></g>
 <g class="tag"><path d="M441.45 283.25 L483.45 285.25" fill="none"/><circle cx="441.45" cy="283.25" r="1" stroke="none"/><text x="489.45" y="288.75" stroke="none" font-size="10">Cover 40 mm</text></g>
 <g class="dimension" data-dim="width"><path d="M261.45 403.75 L261.45 428.75 M461.45 403.75 L461.45 428.75 M261.45 424.75 L461.45 424.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(261.45 424.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(461.45 424.75) rotate(180)"/><text x="361.45" y="421.75" text-anchor="middle" stroke="none" font-size="12.5">400</text></g>
 <g class="dimension" data-dim="depth"><path d="M258.45 100.75 L233.45 100.75 M258.45 400.75 L233.45 400.75 M237.45 100.75 L237.45 400.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(237.45 100.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(237.45 400.75) rotate(-90)"/><text transform="translate(234.45 250.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">600</text></g>
-</g>
-<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
-<path d="M358.95 248.25 h5 v5 h-5 Z M361.45 250.75 L379.45 250.75 M374.45 247.75 L379.45 250.75 L374.45 253.75 M361.45 250.75 L361.45 232.75 M358.45 237.75 L361.45 232.75 L364.45 237.75" stroke="#ffffff" stroke-width="3"/>
-<path d="M358.95 248.25 h5 v5 h-5 Z M361.45 250.75 L379.45 250.75 M374.45 247.75 L379.45 250.75 L374.45 253.75 M361.45 250.75 L361.45 232.75 M358.45 237.75 L361.45 232.75 L364.45 237.75" stroke="#000077" stroke-width="1"/>
-<text x="382.45" y="254.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
-<text x="366.45" y="238.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
 </g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
 <text x="366.45" y="245.75" data-for="10">duct</text>

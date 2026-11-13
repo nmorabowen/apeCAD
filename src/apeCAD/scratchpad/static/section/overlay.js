@@ -20,7 +20,10 @@ export const STALE_ALPHA = 0.35;
 const VALUE_STROKE_PX = 1.5;
 const POINT_RADIUS_PX = 2.5;
 export const MARKER_RING = OVERLAY_TOKENS["--ink-edge"]; // a valued marker's ring (C8b)
-const MARKER_HALO_PX = 3; // under the 1 px ring: 1 px of paper shows outside it
+// A valued marker's fill is a disc of at least this radius on screen, whatever the scale
+// (`render/svg.py::MARKER_MIN_RADIUS_PX`; C8b review F1: a 16 mm bar is 1.6 px at 1:25).
+export const MARKER_MIN_RADIUS_PX = 3;
+const isMarker = (p) => !p.style && (p.kind === "circle" || p.kind === "point");
 const INVALID_ARGUMENT = "INVALID_ARGUMENT";
 const TOO_LARGE = "TOO_LARGE";
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -347,14 +350,37 @@ function tracePath(ctx, view, pts, closed) {
   if (closed) ctx.closePath();
 }
 
-/** Paint the visible layers in order; a stale overlay is dimmed, never hidden. */
-export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERLAY_TOKENS } = {}) {
+// A valued marker (C8b, RGc3 F6; `render/svg.py::marker_svg`): a paper disc 2 px wider under
+// it, its fill over a disc of at least MARKER_MIN_RADIUS_PX, its 1 px ring just outside the fill.
+function paintMarker(ctx, view, p, color) {
+  const [sx, sy] = view.worldToScreen(p.points[0]);
+  const r = Math.max(p.kind === "circle" ? p.radius * view.scale : POINT_RADIUS_PX, MARKER_MIN_RADIUS_PX);
+  const disc = (radius) => { ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); };
+  disc(r + 2); ctx.fillStyle = PALETTE.bg; ctx.fill();
+  disc(r); ctx.fillStyle = color; ctx.fill();
+  disc(r + 0.5); ctx.strokeStyle = MARKER_RING; ctx.lineWidth = 1; ctx.stroke();
+}
+
+/**
+ * Paint the visible layers in order; a stale overlay is dimmed, never hidden. `pass` "field"
+ * leaves out the valued markers and "markers" paints only them, so the client can draw the
+ * section's ink between the two (C8b); without `pass`, everything in order.
+ */
+export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERLAY_TOKENS, pass } = {}) {
   if (!ctx || !overlay) return;
   const dim = stale ? STALE_ALPHA : 1;
   for (const layer of overlay.layers) {
     if (!layer.visible) continue;
     for (const p of layer.primitives) {
+      if ((pass === "field" && isMarker(p)) || (pass === "markers" && !isMarker(p))) continue;
       const paint = paintOf(p, layer.scale, tokens);
+      if (isMarker(p)) {
+        ctx.save();
+        ctx.globalAlpha = dim;
+        paintMarker(ctx, view, p, paint.fill);
+        ctx.restore();
+        continue;
+      }
       ctx.save();
       ctx.globalAlpha = paint.opacity * dim;
       ctx.lineWidth = paint.width;
@@ -374,13 +400,8 @@ export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERL
         ctx.fillStyle = paint.fill;
         if (typeof ctx.fillText === "function") ctx.fillText(p.text, sx, sy);
       } else {
-        // A valued marker is ringed on a paper halo, so it shows on a field of its own colour
-        // (C8b, RGc3 F6; `render/svg.py::marker_svg`). A styled one is drawn as styled.
-        const marker = !p.style && (p.kind === "circle" || p.kind === "point");
-        if (marker) { ctx.strokeStyle = PALETTE.bg; ctx.lineWidth = MARKER_HALO_PX; ctx.stroke(); }
         if (paint.fill) { ctx.fillStyle = paint.fill; ctx.fill("evenodd"); }
         if (paint.stroke) { ctx.strokeStyle = paint.stroke; ctx.stroke(); }
-        if (marker) { ctx.strokeStyle = MARKER_RING; ctx.lineWidth = 1; ctx.stroke(); }
       }
       ctx.restore();
     }
@@ -520,7 +541,7 @@ export function createOverlayController({ doc, el, box, getRevision, onChange })
     set,
     state,
     refresh,
-    paint(ctx, view) { if (overlay) paintOverlay(ctx, view, overlay, { stale: isStale(), tokens: tokens() }); },
+    paint(ctx, view, pass) { if (overlay) paintOverlay(ctx, view, overlay, { stale: isStale(), tokens: tokens(), pass }); },
     get active() { return overlay !== null; },
   };
 }

@@ -414,12 +414,14 @@ export function renderSectionCanvas(canvas, view, state) {
   for (const e of display.entries) paintEntry(ctx, view, e, selectedIds.has(e.id));
 
   // 6b. The results overlay sits above the section and below the selection (ADR 0041 D2).
-  // Over it, the section's linework is stroked again on a paper halo (C8b, RGc3 F6), then
+  // Over its fields, the section's linework is stroked again on a paper halo (C8b, RGc3 F6),
+  // then the overlay's valued markers (`drawMarkers`: nothing covers a bar's status colour),
   // the host's glyphs, the axes and origin glyph (F7), and the selection on top.
   const overlaid = Boolean(scene) && typeof state?.drawOverlay === "function";
   if (overlaid) {
     state.drawOverlay(ctx, view);
     paintInk(ctx, view, display);
+    if (typeof state.drawMarkers === "function") state.drawMarkers(ctx, view);
   }
   const glyphs = Boolean(scene) && typeof state?.drawGlyphs === "function";
   if (glyphs) state.drawGlyphs(ctx, view);

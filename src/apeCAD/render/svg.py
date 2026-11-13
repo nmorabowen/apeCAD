@@ -94,9 +94,10 @@ def write_svg(
     overlay: Sequence[str] = (),
 ) -> str:
     """The whole SVG. `overlay` is the drawn `apeCAD.section-overlay` group (`overlay.py`,
-    ADR 0041 decision 3): above the geometry, below the annotation, highlight and text. Over
-    it the section linework is drawn again (`_section_ink`), and a section plan carries the
-    axes glyph at the world origin (C8b)."""
+    ADR 0041 decision 3): above the geometry, below the annotation, highlight and text. A
+    section plan carries the axes glyph at the world origin; inside the overlay group, the
+    section linework and the glyph are drawn again over the fields and under the valued
+    markers (`splice_ink`, C8b)."""
     w, h = viewport.width, viewport.height
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
@@ -124,13 +125,13 @@ def write_svg(
         _group(d, view, viewport, "data-id", _dot_body(POINT_RADIUS_PX, point_ink)) for d in points
     )
     out.append("</g>")
-    out.extend(overlay)
-    if overlay:
-        out.extend(_section_ink(items, view, viewport))
+    plan = view.name == "top" and any(d.layer in SECTION_LAYERS for d in items)
+    axes = axes_svg(viewport.to_px(view.project((0.0, 0.0, 0.0)))) if plan else []
+    out.extend(axes)  # under the annotation: a leader is never cut (C8b review, F2)
+    if overlay:  # the section ink and the axes again, over the fields, under the markers
+        out.extend(splice_ink(overlay, [*_section_ink(items, view, viewport), *axes]))
     if layout is not None:
         out.extend(notes_svg(layout, viewport.to_px, num, clean_text))
-    if view.name == "top" and any(d.layer in SECTION_LAYERS for d in items):
-        out.extend(axes_svg(viewport.to_px(view.project((0.0, 0.0, 0.0)))))
     marked = [d for d in items if d.entity_id in highlight]
     if marked:
         out.append(
@@ -180,6 +181,10 @@ cover and leg guides). A face is its outline only; a bar is a ring, so the field
 HALO_PX = 1.0  # the paper each side of an ink line over an overlay
 BAR_RING_PX = 1.0  # a bar's ring over an overlay; its halo sits just outside it
 MARKER_RING = "#14181d"  # a valued marker's ring: the `--ink-edge` role, in a paper halo
+MARKER_MIN_RADIUS_PX = 3.0
+"""A valued marker's fill is a disc of at least this radius on screen, whatever the scale: at
+1:25 a 16 mm bar is 1.6 px, too small to show its colour (C8b review, F1)."""
+MARKERS_OPEN = '<g class="overlay-markers"'  # a layer's valued markers, after the ink
 AXES_ARM_PX = 18.0
 AXES_HEAD_PX = 5.0  # an arrowhead's length; its half-width is 0.6 of it
 AXES_PEN_PX = 1.0
@@ -223,11 +228,23 @@ def _ring_body(grow_px: float) -> _BodyFn:
 
 
 def marker_svg(x: float, y: float, r: float, fill: str, data: str) -> str:
-    """A valued overlay marker (a circle or point): its fill inside a dark ring on a paper
-    halo, so it shows on a field of its own colour (a yielded bar on a red field)."""
-    at = f'cx="{num(x)}" cy="{num(y)}" r="{num(r)}"'
-    halo = f'<circle {at} fill="none" stroke="{BACKGROUND}" stroke-width="3"/>'
-    return f'{halo}<circle {at} fill="{fill}" stroke="{MARKER_RING}" stroke-width="1"{data}/>'
+    """A valued overlay marker (a circle or point): a paper disc 2 px wider under it, then its
+    fill over a disc of radius max(r, MARKER_MIN_RADIUS_PX), its 1 px ring just outside the
+    fill. Nothing covers it: it shows on a field of its own colour (a yielded bar on red)."""
+    filled = max(r, MARKER_MIN_RADIUS_PX)
+    at = f'cx="{num(x)}" cy="{num(y)}"'
+    halo = f'<circle {at} r="{num(filled + 2.0)}" fill="{BACKGROUND}" stroke="none"/>'
+    ring = f'r="{num(filled + 0.5)}" fill="{fill}" stroke="{MARKER_RING}" stroke-width="1"'
+    return f"{halo}<circle {at} {ring}{data}/>"
+
+
+def splice_ink(overlay: Sequence[str], ink: Sequence[str]) -> list[str]:
+    """The overlay group with `ink` inside it, after the field layers and before the valued
+    markers (`MARKERS_OPEN`) and the legends; at the group's end when it has neither."""
+    lines = list(overlay)
+    starts = (MARKERS_OPEN, '<g class="overlay-legend"')
+    at = next((i for i, line in enumerate(lines) if line.startswith(starts)), len(lines) - 1)
+    return [*lines[:at], *ink, *lines[at:]]
 
 
 def axes_svg(origin: Vec2) -> list[str]:
