@@ -135,12 +135,18 @@ apeSection#113 c2383). The transport and overlay versions are unchanged.
   and shows what they return. It takes the scene reply's `revision` when it is an integer
   and otherwise leaves the revision as it was: it never counts an edit. It never refits or
   moves the view, never fires `onChange`, and keeps the selection, the tool, the overlay and
-  the glyphs. A local edit wins: if an apply, undo, redo, load or seed lands while `sync()`
-  waits (in either mode), its reply is dropped and the promise resolves to it with `stale:
-  true`; an edit still in flight when the reply arrives repaints when it lands, and a refused
-  one does not stop the sync. A refused `scene` shows
-  the refusal in the prompt (`Refused: <message>` in v2 mode) and changes nothing; a refused
-  `draft` leaves `getDraft()` null, as after any change. It works in read-only editors too.
+  the glyphs. A refused `scene` shows the refusal in the prompt (`Refused: <message>` in v2
+  mode) and changes nothing; a refused `draft` leaves `getDraft()` null, as after any change.
+  It works in read-only editors too.
+- **The revision is monotonic** (review round 1 of apeCAD PR #70). No reply lowers it: an ok
+  reply (to `sync()`, the opening scene, apply, undo, redo, load or seed) whose integer
+  `revision` is below the editor's is not painted, leaves the draft alone, fires no
+  `onChange`, and resolves with `stale: true`. So the screen and `getDraft()` always come from
+  one reply, and a `sync()` gives way only to a local edit with a newer revision: an older
+  edit that lands while it waits does not stop it. A `sync()` reply is also dropped when a
+  later `sync()` has already been shown, and the opening scene is dropped once any `sync()`
+  has been shown. With a transport that sends no revision, a `sync()` reply is dropped when a
+  local change landed while it waited.
 - **`chrome`.** `create(container, {chrome: {toolbar, sidebar}})`: `false` leaves that part
   out of the DOM (the toolbar with its tool, Undo, Redo, Explode and Fit buttons; the sidebar
   with the properties, warnings and overlay panel), so the host draws its own. Both default to
@@ -156,7 +162,8 @@ apeSection#113 c2383). The transport and overlay versions are unchanged.
   clears it. The result is `{ok: true, status: 200, centroid_mm}`, or `{ok: false, status:
   422, error: {code: "INVALID_ARGUMENT", path, message}}` for a value that is not an object,
   an unknown key (the axes glyph is C8b's), or a `centroid_mm` that is not two finite
-  numbers. A refusal clears the glyph, as a refused overlay does: never a stale point.
+  numbers (a sparse array, a string, `NaN` or `±Infinity` among them). A refusal clears the
+  glyph, as a refused overlay does: never a stale point.
 
 ## Results overlay (API 2, ADR 0041 decision 2)
 
