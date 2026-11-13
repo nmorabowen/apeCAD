@@ -208,8 +208,9 @@ the same `code` and `path` as `apeCAD.render.overlay.parse_overlay`.
   stale at every live revision, 0 included, and the client never compares hashes. The host
   sends an overlay only to the editor whose stored draft hashes to its `section_sha256`, so
   two editors at equal revisions never show each other's results as current.
-- **Draw order.** Section, then the overlay, then the section's ink again (below), the host's
-  glyphs, the axes glyph, and the selection, stroked again on top. The ghost preview and the
+- **Draw order.** Section, then the overlay's fields (everything but its valued markers),
+  the section's ink again (below), the overlay's valued markers, the host's glyphs, the axes
+  glyph, and the selection, stroked again on top. The ghost preview and the
   snap marker stay above them all. The overlay is display only: hit testing and snapping
   ignore it.
 - **Panel.** The sidebar lists each layer's `label` (`(hidden)` after a hidden one) and one
@@ -239,16 +240,23 @@ computed from the overlay or the document: they are display only (ADR 0026 Errat
   halo 1 px wider each side, then in its own ink and pen. A bar is a 1 px ring at its drawn
   radius with its halo just outside, so the overlay's colour stays visible inside it. Cover
   and leg guides are not drawn again. With no overlay nothing is drawn twice. In the SVG it is
-  one `<g class="section-ink">` after `<g class="overlay">`.
-- **Valued markers.** A `circle` or `point` painted by `value` is filled as before, inside a
-  1 px ring in `--ink-edge` (`#14181d`) on a 3 px paper halo, so it shows on a field of its
-  own colour. A styled marker is drawn exactly as styled. Ink or halo contrasts at least 3:1
-  with every colour the example scales paint (`tests/js/section-legibility.test.mjs`).
+  one `<g class="section-ink">` inside `<g class="overlay">`, after the field layers and
+  before the valued markers and the legends; the axes glyph is drawn again after it.
+- **Valued markers** (review round 1 of apeCAD PR #71). A `circle` or `point` painted by
+  `value` is drawn after the section ink, so nothing covers it: a paper disc 2 px wider under
+  it, then its colour over a disc of radius `max(r, MARKER_MIN_RADIUS_PX)` (3 px; a 16 mm bar
+  is 1.6 px at 1:25), then a 1 px ring in `--ink-edge` (`#14181d`) just outside the fill. In
+  the SVG each layer's are one `<g class="overlay-markers" data-layer="id">` after the section
+  ink; the client paints them in a second overlay pass. A styled marker is drawn exactly as
+  styled, in its layer. Ring or paper contrasts at least 3:1 with every colour the example
+  scales paint (`tests/js/section-legibility.test.mjs`). At 1:25 every point of each bar
+  marker's 3 px disc is its status colour, in both renderers (`tests/test_render_legibility.py`).
 - **The axes and origin glyph.** An open 5 px box at the world origin and two 18 px arrows,
   `x` to the right and `y` up (apeSection ADR-0006), in annotation blue (`#000077`,
   `PALETTE.originGlyph`) on a paper halo, at a fixed size on screen. The client draws it on
   every frame, empty or not; the SVG draws it on every plan of a section (`top` view, any
-  section layer drawn), after the annotation and below the labels. It moves with pan and
+  section layer drawn), before the annotation, so no leader or tag is cut, and again inside
+  an overlay, so no field hides it. It moves with pan and
   zoom, takes no key and is never hit.
 - **The diverging example palette** (`OVERLAY_EXAMPLE_SCALES.stress`) is colour-vision-safe
   by a stated method: under normal vision, protanopia and deuteranopia (Viénot 1999), the

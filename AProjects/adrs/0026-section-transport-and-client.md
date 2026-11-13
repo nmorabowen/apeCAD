@@ -130,8 +130,9 @@ unchanged, and so are `TRANSPORT_VERSION = 1` and the section-overlay contracts 
      on a paper halo, so an opaque result field never hides the reinforcement. The overlay
      still sits above the section and below the selection (ADR 0041 decisions 2 and 3), and the
      extra pass is display only.
-   - A valued circle or point marker is ringed in `--ink-edge` on a paper halo, so a yielded
-     bar shows on a red field.
+   - A valued circle or point marker is drawn after that pass, at least 3 px in radius on
+     screen, its `--ink-edge` ring outside its fill and a paper disc under it, so a yielded bar
+     shows on a red field at any scale (review round 1 of PR #71).
    - The client legend sets each tick at its stop, as the render does.
    - Every client frame and every SVG section plan carries an x-right, y-up axes and origin
      glyph at the world origin (apeSection ADR-0006). It takes no key: `setGlyphs` still
