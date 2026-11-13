@@ -94,7 +94,9 @@ def write_svg(
     overlay: Sequence[str] = (),
 ) -> str:
     """The whole SVG. `overlay` is the drawn `apeCAD.section-overlay` group (`overlay.py`,
-    ADR 0041 decision 3): above the geometry, below the annotation, highlight and text."""
+    ADR 0041 decision 3): above the geometry, below the annotation, highlight and text. Over
+    it the section linework is drawn again (`_section_ink`), and a section plan carries the
+    axes glyph at the world origin (C8b)."""
     w, h = viewport.width, viewport.height
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
@@ -123,8 +125,12 @@ def write_svg(
     )
     out.append("</g>")
     out.extend(overlay)
+    if overlay:
+        out.extend(_section_ink(items, view, viewport))
     if layout is not None:
         out.extend(notes_svg(layout, viewport.to_px, num, clean_text))
+    if view.name == "top" and any(d.layer in SECTION_LAYERS for d in items):
+        out.extend(axes_svg(viewport.to_px(view.project((0.0, 0.0, 0.0)))))
     marked = [d for d in items if d.entity_id in highlight]
     if marked:
         out.append(
@@ -164,6 +170,90 @@ def _section_layers(items: list[Drawable], view: View, viewport: Viewport) -> li
         out.extend(_group(d, view, viewport, "data-id", body) for d in members)
         out.append("</g>")
     return out
+
+
+# --- legibility over a results overlay, and the axes glyph (C8b; RGc3 F6, F7) ---------------
+
+INK_LAYERS = ("concrete", "steel", "void", "hoop", "crosstie", "circular-tie", "bar")
+"""The section linework drawn again over an overlay: outlines, hoops, ties and bars (not the
+cover and leg guides). A face is its outline only; a bar is a ring, so the field shows in it."""
+HALO_PX = 1.0  # the paper each side of an ink line over an overlay
+BAR_RING_PX = 1.0  # a bar's ring over an overlay; its halo sits just outside it
+MARKER_RING = "#14181d"  # a valued marker's ring: the `--ink-edge` role, in a paper halo
+AXES_ARM_PX = 18.0
+AXES_HEAD_PX = 5.0  # an arrowhead's length; its half-width is 0.6 of it
+AXES_PEN_PX = 1.0
+
+
+def _section_ink(items: list[Drawable], view: View, viewport: Viewport) -> list[str]:
+    """Over a drawn overlay, the section's linework again, each line on a paper halo: an
+    opaque field never hides a bar, hoop or tie, and any line shows on any field colour."""
+    out = ['<g class="section-ink" fill="none" stroke-linecap="round" stroke-linejoin="round">']
+    for halo in (True, False):
+        for layer in INK_LAYERS:
+            members = [d for d in items if d.layer == layer]
+            if not members:
+                continue
+            if layer == "bar":  # the halo just outside the ring, never over the bar itself
+                body = _ring_body((BAR_RING_PX + HALO_PX) / 2.0 if halo else 0.0)
+                pen = HALO_PX if halo else BAR_RING_PX
+            else:
+                body = _plain_body
+                pen = SECTION_STYLE[layer].stroke_width + (2.0 * HALO_PX if halo else 0.0)
+            paint = BACKGROUND if halo else SECTION_STYLE[layer].stroke
+            out.append(f'<g class="{"halo" if halo else "ink"}" data-layer="{layer}" '
+                       f'stroke="{paint}" stroke-width="{pen:g}">')
+            out.extend(body(d, view, viewport) for d in members)
+            out.append("</g>")
+    out.append("</g>")
+    return out
+
+
+def _ring_body(grow_px: float) -> _BodyFn:
+    def body(d: Drawable, view: View, viewport: Viewport) -> str:
+        radius = max(d.radius_mm * viewport.scale, MIN_BAR_RADIUS_PX) + grow_px
+        rings: list[str] = []
+        for points, _closed in d.paths:
+            for p in points:
+                x, y = viewport.to_px(view.project(p))
+                rings.append(f'<circle cx="{num(x)}" cy="{num(y)}" r="{num(radius)}"/>')
+        return "".join(rings)
+
+    return body
+
+
+def marker_svg(x: float, y: float, r: float, fill: str, data: str) -> str:
+    """A valued overlay marker (a circle or point): its fill inside a dark ring on a paper
+    halo, so it shows on a field of its own colour (a yielded bar on a red field)."""
+    at = f'cx="{num(x)}" cy="{num(y)}" r="{num(r)}"'
+    halo = f'<circle {at} fill="none" stroke="{BACKGROUND}" stroke-width="3"/>'
+    return f'{halo}<circle {at} fill="{fill}" stroke="{MARKER_RING}" stroke-width="1"{data}/>'
+
+
+def axes_svg(origin: Vec2) -> list[str]:
+    """The world origin and its axes, x right and y up (apeSection ADR-0006), a fixed size on
+    screen, in annotation blue on a paper halo. Drawn on every section plan; computes nothing."""
+    ox, oy = origin
+    arm, head, half = AXES_ARM_PX, AXES_HEAD_PX, 0.6 * AXES_HEAD_PX
+    xe, ye = ox + arm, oy - arm
+    d = (
+        f"M{num(ox - 2.5)} {num(oy - 2.5)} h5 v5 h-5 Z "
+        f"M{num(ox)} {num(oy)} L{num(xe)} {num(oy)} "
+        f"M{num(xe - head)} {num(oy - half)} L{num(xe)} {num(oy)} "
+        f"L{num(xe - head)} {num(oy + half)} "
+        f"M{num(ox)} {num(oy)} L{num(ox)} {num(ye)} "
+        f"M{num(ox - half)} {num(ye + head)} L{num(ox)} {num(ye)} "
+        f"L{num(ox + half)} {num(ye + head)}"
+    )
+    text = f'{FONT} fill="{BLUE}" stroke="{BACKGROUND}" stroke-width="3" paint-order="stroke"'
+    return [
+        '<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">',
+        f'<path d="{d}" stroke="{BACKGROUND}" stroke-width="{AXES_PEN_PX + 2.0 * HALO_PX:g}"/>',
+        f'<path d="{d}" stroke="{BLUE}" stroke-width="{AXES_PEN_PX:g}"/>',
+        f'<text x="{num(xe + 3.0)}" y="{num(oy + 3.5)}" {text}>x</text>',
+        f'<text x="{num(ox + 5.0)}" y="{num(ye + 6.0)}" {text}>y</text>',
+        "</g>",
+    ]
 
 
 def _group(d: Drawable, view: View, viewport: Viewport, attr: str, body: _BodyFn) -> str:

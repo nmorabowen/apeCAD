@@ -8,7 +8,7 @@
 // it reaches the page through `textContent` and the canvas through `fillText` only.
 // Zero external dependencies; no module-scope DOM access.
 
-import { OVERLAY_TOKENS } from "./canvas2d.js";
+import { OVERLAY_TOKENS, PALETTE } from "./canvas2d.js";
 
 export const OVERLAY_SCHEMA = "apeCAD.section-overlay";
 export const OVERLAY_SCHEMA_VERSIONS = Object.freeze([1, 2]); // each read by its own block
@@ -19,6 +19,8 @@ export const PRIMITIVE_KINDS = ["polygon", "circle", "polyline", "point", "label
 export const STALE_ALPHA = 0.35;
 const VALUE_STROKE_PX = 1.5;
 const POINT_RADIUS_PX = 2.5;
+export const MARKER_RING = OVERLAY_TOKENS["--ink-edge"]; // a valued marker's ring (C8b)
+const MARKER_HALO_PX = 3; // under the 1 px ring: 1 px of paper shows outside it
 const INVALID_ARGUMENT = "INVALID_ARGUMENT";
 const TOO_LARGE = "TOO_LARGE";
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -372,8 +374,13 @@ export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERL
         ctx.fillStyle = paint.fill;
         if (typeof ctx.fillText === "function") ctx.fillText(p.text, sx, sy);
       } else {
+        // A valued marker is ringed on a paper halo, so it shows on a field of its own colour
+        // (C8b, RGc3 F6; `render/svg.py::marker_svg`). A styled one is drawn as styled.
+        const marker = !p.style && (p.kind === "circle" || p.kind === "point");
+        if (marker) { ctx.strokeStyle = PALETTE.bg; ctx.lineWidth = MARKER_HALO_PX; ctx.stroke(); }
         if (paint.fill) { ctx.fillStyle = paint.fill; ctx.fill("evenodd"); }
         if (paint.stroke) { ctx.strokeStyle = paint.stroke; ctx.stroke(); }
+        if (marker) { ctx.strokeStyle = MARKER_RING; ctx.lineWidth = 1; ctx.stroke(); }
       }
       ctx.restore();
     }
@@ -383,6 +390,12 @@ export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERL
 // --- the panel: layer list, legends and the stale badge -----------------------------------
 
 const tick = (v) => String(Number(v.toPrecision(6)));
+
+/** Where a domain value sits along a numeric legend bar, in percent, as a string. */
+export function tickPercent(scale, value) {
+  const lo = scale.domain[0], hi = scale.domain[scale.domain.length - 1];
+  return tick(((value - lo) / (hi - lo)) * 100);
+}
 
 function legendNode(doc, el, layer, tokens) {
   const { scale } = layer;
@@ -405,9 +418,23 @@ function legendNode(doc, el, layer, tokens) {
   const bar = el(doc, "div", "apecad-section-legend-bar");
   bar.style.background = `linear-gradient(to right, ${colors.map((c, i) => `${c} ${tick(((stops[i] - lo) / span) * 100)}%`).join(", ")})`;
   box.appendChild(bar);
-  const ticks = el(doc, "div", "apecad-section-legend-ticks");
-  for (const v of scale.kind === "diverging" ? scale.domain : [scale.domain[0], scale.domain[1]]) {
-    ticks.appendChild(el(doc, "span", "apecad-section-legend-tick", tick(v)));
+  // Each tick sits at its stop (C8b, RGc3 F6), as in the render: lo at the left end, hi at the
+  // right end, a diverging mid centred over its mark on the bar, on a row of its own.
+  const ticks = el(doc, "div", `apecad-section-legend-ticks${scale.kind === "diverging" ? " two-rows" : ""}`);
+  for (const [i, v] of (scale.kind === "diverging" ? scale.domain : [scale.domain[0], scale.domain[1]]).entries()) {
+    const label = tick(v), at = tickPercent(scale, v);
+    const node = el(doc, "span", "apecad-section-legend-tick", label);
+    node.dataset.at = at;
+    if (i === 0) node.style.left = "0";
+    else if (at === "100") node.style.right = "0";
+    else {
+      node.className += " mid";
+      node.style.left = `clamp(0px, calc(${at}% - ${label.length / 2}ch), calc(100% - ${label.length}ch))`;
+      const mark = el(doc, "span", "apecad-section-legend-mark");
+      mark.style.left = `${at}%`;
+      bar.appendChild(mark);
+    }
+    ticks.appendChild(node);
   }
   box.appendChild(ticks);
   return box;

@@ -25,6 +25,7 @@ from apeCAD.render.svg import (
     ScaleLegend,
     Viewport,
     clean_text,
+    marker_svg,
     num,
     scale_legend,
 )
@@ -579,11 +580,10 @@ def _primitive_svg(p: Primitive, px: _Px, scale: float) -> str:
         d = _path_data(p.points, px, False)
         return f'<path d="{d}" {paint} stroke-linecap="round" stroke-linejoin="round"{data}/>'
     x, y = px(p.points[0])
-    if p.kind == "circle":
-        r = p.radius * scale
-        return f'<circle cx="{num(x)}" cy="{num(y)}" r="{num(r)}" {paint}{data}/>'
-    if p.kind == "point":
-        r = OVERLAY_POINT_RADIUS_PX
+    if p.kind in ("circle", "point"):
+        r = p.radius * scale if p.kind == "circle" else OVERLAY_POINT_RADIUS_PX
+        if p.value is not None:  # a valued marker: ringed on a halo (C8b, RGc3 F6)
+            return marker_svg(x, y, r, p.paint.fill or "none", data)
         return f'<circle cx="{num(x)}" cy="{num(y)}" r="{num(r)}" {paint}{data}/>'
     return f'<text x="{num(x)}" y="{num(y)}" {FONT} {paint}{data}>{clean_text(p.text)}</text>'
 

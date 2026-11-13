@@ -59,6 +59,12 @@
 <g data-id="6"><circle cx="36.36" cy="300" r="1.25" fill="#000000" stroke="none"/></g>
 <g data-id="7"><circle cx="763.64" cy="300" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
+<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M33.86 333.86 h5 v5 h-5 Z M36.36 336.36 L54.36 336.36 M49.36 333.36 L54.36 336.36 L49.36 339.36 M36.36 336.36 L36.36 318.36 M33.36 323.36 L36.36 318.36 L39.36 323.36" stroke="#ffffff" stroke-width="3"/>
+<path d="M33.86 333.86 h5 v5 h-5 Z M36.36 336.36 L54.36 336.36 M49.36 333.36 L54.36 336.36 L49.36 339.36 M36.36 336.36 L36.36 318.36 M33.36 323.36 L36.36 318.36 L39.36 323.36" stroke="#000077" stroke-width="1"/>
+<text x="57.36" y="339.86" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
+<text x="41.36" y="324.36" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
 <text x="405" y="295" data-for="5">pier</text>
 <text x="98.88" y="295" data-for="74">BE-left</text>

@@ -190,16 +190,46 @@
 }
 
 .apecad-section-legend-bar {
+  position: relative;
   height: 10px;
   border: 1px solid #c9c5bc;
 }
 
+/* A diverging mid's mark, at its stop (C8b): a short tick under the bar. */
+.apecad-section-legend-mark {
+  position: absolute;
+  bottom: -5px;
+  width: 1px;
+  height: 4px;
+  margin-left: -0.5px;
+  background: #525860;
+}
+
+/* Each tick label at its stop (C8b, RGc3 F6), never spread `space-between`: lo at the left
+   end, hi at the right end, a diverging mid centred on its mark on a second row. The font is
+   monospaced, so `ch` is a label character's width (overlay.js clamps a mid inside the bar). */
 .apecad-section-legend-ticks {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 13px;
+  margin-top: 3px;
   color: #525860;
   font-family: "Cascadia Mono", "Consolas", monospace;
   font-size: 10px;
+  line-height: 13px;
+}
+
+.apecad-section-legend-ticks.two-rows {
+  height: 26px;
+}
+
+.apecad-section-legend-tick {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
+}
+
+.apecad-section-legend-tick.mid {
+  top: 13px;
 }
 
 .apecad-section-legend-row {

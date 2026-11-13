@@ -58,6 +58,12 @@
 <g class="dimension" data-dim="width"><path d="M546.25 353.75 L546.25 378.75 M696.25 353.75 L696.25 378.75 M546.25 374.75 L696.25 374.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(546.25 374.75) rotate(0)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(696.25 374.75) rotate(180)"/><text x="621.25" y="371.75" text-anchor="middle" stroke="none" font-size="12.5">1500</text></g>
 <g class="dimension" data-dim="depth"><path d="M543.25 50.75 L518.25 50.75 M543.25 350.75 L518.25 350.75 M522.25 50.75 L522.25 350.75" fill="none"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(522.25 50.75) rotate(90)"/><path d="M0 0 L8 -2.14 L8 2.14 Z" stroke="none" transform="translate(522.25 350.75) rotate(-90)"/><text transform="translate(519.25 125.75) rotate(-90)" text-anchor="middle" stroke="none" font-size="12.5">3000</text></g>
 </g>
+<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M543.75 348.25 h5 v5 h-5 Z M546.25 350.75 L564.25 350.75 M559.25 347.75 L564.25 350.75 L559.25 353.75 M546.25 350.75 L546.25 332.75 M543.25 337.75 L546.25 332.75 L549.25 337.75" stroke="#ffffff" stroke-width="3"/>
+<path d="M543.75 348.25 h5 v5 h-5 Z M546.25 350.75 L564.25 350.75 M559.25 347.75 L564.25 350.75 L559.25 353.75 M546.25 350.75 L546.25 332.75 M543.25 337.75 L546.25 332.75 L549.25 337.75" stroke="#000077" stroke-width="1"/>
+<text x="567.25" y="354.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
+<text x="551.25" y="338.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
 </g>
 <g class="legend" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#000077" stroke-width="0.75">

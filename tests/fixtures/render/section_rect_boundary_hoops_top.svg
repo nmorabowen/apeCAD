@@ -83,6 +83,12 @@
 <g data-id="5"><circle cx="1145.45" cy="95.45" r="1.25" fill="#000000" stroke="none"/></g>
 <g data-id="6"><circle cx="54.55" cy="95.45" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
+<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M52.05 92.95 h5 v5 h-5 Z M54.55 95.45 L72.55 95.45 M67.55 92.45 L72.55 95.45 L67.55 98.45 M54.55 95.45 L54.55 77.45 M51.55 82.45 L54.55 77.45 L57.55 82.45" stroke="#ffffff" stroke-width="3"/>
+<path d="M52.05 92.95 h5 v5 h-5 Z M54.55 95.45 L72.55 95.45 M67.55 92.45 L72.55 95.45 L67.55 98.45 M54.55 95.45 L54.55 77.45 M51.55 82.45 L54.55 77.45 L57.55 82.45" stroke="#000077" stroke-width="1"/>
+<text x="75.55" y="98.95" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
+<text x="59.55" y="83.45" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
 <g class="text" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077">
 <text x="605" y="145" data-for="7">rect_300x3000</text>
 <text x="168.64" y="145" data-for="46">C1</text>
