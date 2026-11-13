@@ -246,6 +246,102 @@ test("a local edit already in flight when sync() starts still ends on screen", a
   assert.equal(m.changes.length, 1);
 });
 
+// --- review round 1 of PR #70: the revision is monotonic on every reply path -------------------
+
+const bars = (m) => m.ed.getScene().bars.map((b) => b.id);
+const BAR = { op: "AddBar", x_mm: 50, y_mm: 50, designation: "Ø16" };
+
+for (const version of [1, 2]) {
+  const draftBars = (m) => (version === 2 ? m.ed.getDraft().bar_ids : bars(m)); // v1: the draft follows the scene
+
+  test(`v${version}: two syncs out of order: the older reply never lowers the revision`, async () => {
+    const host = fakeHost({ revision: 10 });
+    const m = mount({ transport: host, version });
+    await tick();
+    const release = host.hold("scene");
+    const first = m.ed.sync(); // reads revision 10, held
+    await tick();
+    host.outside({ x_mm: 100, y_mm: 100 }); // 11
+    assert.equal((await m.ed.sync()).ok, true);
+    release();
+    assert.equal((await first).stale, true);
+    assert.equal(m.ed.getOverlayState().revision, 11);
+    assert.deepEqual(bars(m), [2]);
+    assert.deepEqual(draftBars(m), [2]);
+  });
+
+  test(`v${version}: an older apply reply landing after sync() is not painted, and the draft stays with the screen`, async () => {
+    const host = fakeHost({ revision: 10 });
+    const m = mount({ transport: host, version });
+    await tick();
+    const release = host.hold("apply");
+    const applying = m.ed.applyOp(BAR); // bar 2 at 11, held
+    await tick();
+    host.outside({ x_mm: 100, y_mm: 100 }); // bar 3 at 12
+    await m.ed.sync();
+    assert.deepEqual(bars(m), [2, 3]);
+    release();
+    assert.equal((await applying).stale, true);
+    assert.equal(m.ed.getOverlayState().revision, 12);
+    assert.deepEqual(bars(m), [2, 3]);
+    assert.deepEqual(draftBars(m), [2, 3]);
+  });
+
+  test(`v${version}: sync() does not give way to an older local edit that lands while it waits`, async () => {
+    const host = fakeHost({ revision: 10 });
+    const m = mount({ transport: host, version });
+    await tick();
+    const releaseApply = host.hold("apply");
+    const applying = m.ed.applyOp(BAR); // 11, held
+    await tick();
+    host.outside({ x_mm: 100, y_mm: 100 }); // 12
+    const releaseScene = host.hold("scene");
+    const syncing = m.ed.sync(); // reads 12, held
+    await tick();
+    releaseApply();
+    await applying; // the editor shows 11
+    releaseScene();
+    const res = await syncing;
+    assert.equal(res.stale, undefined);
+    assert.equal(m.ed.getOverlayState().revision, 12);
+    assert.deepEqual(bars(m), [2, 3]);
+    assert.deepEqual(draftBars(m), [2, 3]);
+  });
+
+  test(`v${version}: the opening scene arriving after a sync() is not painted`, async () => {
+    const host = fakeHost({ revision: 10 });
+    const release = host.hold("scene");
+    const m = mount({ transport: host, version }); // the opening scene reads 10, held
+    await tick();
+    host.outside({ x_mm: 100, y_mm: 100 }); // 11
+    await m.ed.sync();
+    release();
+    await tick(); await tick();
+    assert.equal(m.ed.getOverlayState().revision, 11);
+    assert.deepEqual(bars(m), [2]);
+    assert.deepEqual(draftBars(m), [2]);
+  });
+
+  test(`v${version}: without revisions, an older sync and the opening scene yield to a newer sync`, async () => {
+    const host = fakeHost({ revisions: false });
+    const releaseOpen = host.hold("scene");
+    const m = mount({ transport: host, version });
+    await tick();
+    host.outside({ x_mm: 1, y_mm: 1 });
+    const releaseFirst = host.hold("scene");
+    const first = m.ed.sync(); // reads bar 2, held
+    await tick();
+    host.outside({ x_mm: 2, y_mm: 2 });
+    await m.ed.sync(); // bars 2, 3
+    releaseFirst();
+    releaseOpen();
+    assert.equal((await first).stale, true);
+    await tick(); await tick();
+    assert.deepEqual(bars(m), [2, 3]);
+    assert.deepEqual(draftBars(m), [2, 3]);
+  });
+}
+
 test("a refused sync() names the refusal and changes nothing", async () => {
   const host = fakeHost({ revision: 3 });
   let refuse = false;
@@ -363,7 +459,10 @@ test("setGlyphs refuses by name, and a refusal or null clears the glyph", async 
   assert.equal(drawn(), 1);
   for (const [bad, path] of [[{ axes: { angle_deg: 0 } }, "glyphs.axes"], [{ centroid_mm: [1, Number.NaN] }, "glyphs.centroid_mm"],
     [{ centroid_mm: [1, 2, 3] }, "glyphs.centroid_mm"], [{ centroid_mm: "0,0" }, "glyphs.centroid_mm"],
-    [{ centroid_mm: [1, "2"] }, "glyphs.centroid_mm"], [[0, 0], "glyphs"], ["centroid", "glyphs"]]) {
+    [{ centroid_mm: [1, "2"] }, "glyphs.centroid_mm"], [[0, 0], "glyphs"], ["centroid", "glyphs"],
+    // review round 1 of PR #70: sparse arrays (`every` skips holes) and non-finite values
+    [{ centroid_mm: new Array(2) }, "glyphs.centroid_mm"], [{ centroid_mm: [, 5] }, "glyphs.centroid_mm"],
+    [{ centroid_mm: [Infinity, 0] }, "glyphs.centroid_mm"], [{ centroid_mm: [0, -Infinity] }, "glyphs.centroid_mm"]]) {
     m.ed.setGlyphs({ centroid_mm: [0, 0] });
     const res = m.ed.setGlyphs(bad);
     assert.equal(res.ok, false, JSON.stringify(bad));

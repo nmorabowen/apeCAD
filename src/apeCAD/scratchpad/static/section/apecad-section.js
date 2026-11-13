@@ -86,8 +86,8 @@ function parseGlyphs(value) {
   if (typeof value !== "object" || Array.isArray(value)) return refuse("glyphs", "glyphs must be an object or null");
   const unknown = Object.keys(value).find((k) => k !== "centroid_mm");
   if (unknown !== undefined) return refuse(`glyphs.${unknown}`, `unknown glyph "${unknown}", expected centroid_mm`);
-  const c = value.centroid_mm ?? null;
-  if (c !== null && !(Array.isArray(c) && c.length === 2 && c.every((v) => typeof v === "number" && Number.isFinite(v)))) {
+  const c = value.centroid_mm ?? null; // Array.from: a hole becomes undefined, which `every` would skip
+  if (c !== null && !(Array.isArray(c) && c.length === 2 && Array.from(c).every((v) => typeof v === "number" && Number.isFinite(v)))) {
     return refuse("glyphs.centroid_mm", "centroid_mm must be [x, y] in finite millimetres, or null");
   }
   return { ok: true, glyphs: { centroid_mm: c && [c[0], c[1]] } };
@@ -128,8 +128,8 @@ export function create(container, opts = {}) {
   let disposed = false;
   let opEpoch = 0;
   let landedSeq = 0; // v2: +1 each time a change is known to have landed (an ok apply/undo/redo/load/seed)
-  let docRevision = 0; // the transport's `revision` when it sends one, else a count of edits
-  let glyphs = { centroid_mm: null };
+  let docRevision = 0; // the transport's `revision` when it sends one, else a count of edits; never lowered
+  let glyphs = { centroid_mm: null }, syncTicket = 0, syncShown = 0;
 
   const params = {
     b_mm: 400, h_mm: 600, thickness_mm: 250, cover_mm: 25, tie_diameter_mm: 10, bar_diameter_mm: 16,
@@ -239,8 +239,11 @@ export function create(container, opts = {}) {
       promptLabel.textContent = version === 2 ? refusalText(res) : res?.error?.message || "Operation refused";
       return res;
     }
-    if (Number.isInteger(res.revision)) docRevision = res.revision;
-    else if (edits) docRevision += 1;
+    // API 4: the revision is monotonic. An older reply (a late apply, a late sync) is not painted
+    // and leaves the draft alone, so the screen and getDraft() never come from different replies.
+    if (!Number.isInteger(res.revision)) docRevision += edits ? 1 : 0;
+    else if (res.revision < docRevision) return { ...res, stale: true };
+    else docRevision = res.revision;
     if (res.scene) scene = normalizeScene(res.scene);
     // `draft: null` (v1 cannot say the document) stays null: never a v1 draft that drops a v2 entity.
     currentDraft = res.draft !== undefined ? res.draft : v1DraftOrNull(scene, res.document);
@@ -261,7 +264,7 @@ export function create(container, opts = {}) {
   function syncChange(res, emitChange, edits = emitChange) {
     if (res?.stale) return res; // a newer change owns the screen and the draft
     const out = syncResponse(res, emitChange, edits);
-    if (out?.draft_refusal) promptLabel.textContent = refusalText({ error: out.draft_refusal });
+    if (out?.draft_refusal && !out.stale) promptLabel.textContent = refusalText({ error: out.draft_refusal });
     return out;
   }
 
@@ -322,15 +325,17 @@ export function create(container, opts = {}) {
   const loadDraft = (payload) => loadVia("load", payload);
   const loadSeed = (seedPayload) => loadVia("seed", seedPayload);
 
-  // API 4: re-read the scene, then (v2) the draft, and take the transport's revision. Never
-  // refits, never fires onChange, never counts an edit. A local edit that lands meanwhile wins:
-  // the reply is dropped and returned with `stale: true`. One still in flight repaints on landing.
+  // API 4: re-read the scene, then (v2) the draft. Never refits, fires onChange or counts an edit. The reply
+  // is dropped (`stale: true`) under a newer revision or sync; with no revision, when a change landed.
   async function sync() {
-    const seq = landedSeq;
+    const seq = landedSeq, ticket = ++syncTicket;
     const raw = await transport({ action: "scene" });
-    const res = version === 2 ? await withDraft(raw, seq) : raw;
-    if (landedSeq !== seq || disposed) return { ...res, stale: true };
-    return syncChange(res, false, false);
+    const fresh = () => !disposed && ticket > syncShown && (Number.isInteger(raw?.revision) ? raw.revision >= docRevision : landedSeq === seq);
+    const res = version === 2 ? await followWithDraft(transport, raw, fresh) : raw;
+    if (raw?.ok && !fresh()) return { ...res, stale: true };
+    const out = syncChange(res, false, false);
+    if (out?.ok && !out.stale) { syncShown = ticket; opEpoch += 1; } // the opening scene yields to it
+    return out;
   }
 
   function setTool(toolName) {
