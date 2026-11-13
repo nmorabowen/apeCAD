@@ -8,7 +8,7 @@
 // it reaches the page through `textContent` and the canvas through `fillText` only.
 // Zero external dependencies; no module-scope DOM access.
 
-import { OVERLAY_TOKENS } from "./canvas2d.js";
+import { OVERLAY_TOKENS, PALETTE } from "./canvas2d.js";
 
 export const OVERLAY_SCHEMA = "apeCAD.section-overlay";
 export const OVERLAY_SCHEMA_VERSIONS = Object.freeze([1, 2]); // each read by its own block
@@ -19,6 +19,11 @@ export const PRIMITIVE_KINDS = ["polygon", "circle", "polyline", "point", "label
 export const STALE_ALPHA = 0.35;
 const VALUE_STROKE_PX = 1.5;
 const POINT_RADIUS_PX = 2.5;
+export const MARKER_RING = OVERLAY_TOKENS["--ink-edge"]; // a valued marker's ring (C8b)
+// A valued marker's fill is a disc of at least this radius on screen, whatever the scale
+// (`render/svg.py::MARKER_MIN_RADIUS_PX`; C8b review F1: a 16 mm bar is 1.6 px at 1:25).
+export const MARKER_MIN_RADIUS_PX = 3;
+const isMarker = (p) => !p.style && (p.kind === "circle" || p.kind === "point");
 const INVALID_ARGUMENT = "INVALID_ARGUMENT";
 const TOO_LARGE = "TOO_LARGE";
 const HEX = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -345,14 +350,37 @@ function tracePath(ctx, view, pts, closed) {
   if (closed) ctx.closePath();
 }
 
-/** Paint the visible layers in order; a stale overlay is dimmed, never hidden. */
-export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERLAY_TOKENS } = {}) {
+// A valued marker (C8b, RGc3 F6; `render/svg.py::marker_svg`): a paper disc 2 px wider under
+// it, its fill over a disc of at least MARKER_MIN_RADIUS_PX, its 1 px ring just outside the fill.
+function paintMarker(ctx, view, p, color) {
+  const [sx, sy] = view.worldToScreen(p.points[0]);
+  const r = Math.max(p.kind === "circle" ? p.radius * view.scale : POINT_RADIUS_PX, MARKER_MIN_RADIUS_PX);
+  const disc = (radius) => { ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); };
+  disc(r + 2); ctx.fillStyle = PALETTE.bg; ctx.fill();
+  disc(r); ctx.fillStyle = color; ctx.fill();
+  disc(r + 0.5); ctx.strokeStyle = MARKER_RING; ctx.lineWidth = 1; ctx.stroke();
+}
+
+/**
+ * Paint the visible layers in order; a stale overlay is dimmed, never hidden. `pass` "field"
+ * leaves out the valued markers and "markers" paints only them, so the client can draw the
+ * section's ink between the two (C8b); without `pass`, everything in order.
+ */
+export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERLAY_TOKENS, pass } = {}) {
   if (!ctx || !overlay) return;
   const dim = stale ? STALE_ALPHA : 1;
   for (const layer of overlay.layers) {
     if (!layer.visible) continue;
     for (const p of layer.primitives) {
+      if ((pass === "field" && isMarker(p)) || (pass === "markers" && !isMarker(p))) continue;
       const paint = paintOf(p, layer.scale, tokens);
+      if (isMarker(p)) {
+        ctx.save();
+        ctx.globalAlpha = dim;
+        paintMarker(ctx, view, p, paint.fill);
+        ctx.restore();
+        continue;
+      }
       ctx.save();
       ctx.globalAlpha = paint.opacity * dim;
       ctx.lineWidth = paint.width;
@@ -384,6 +412,12 @@ export function paintOverlay(ctx, view, overlay, { stale = false, tokens = OVERL
 
 const tick = (v) => String(Number(v.toPrecision(6)));
 
+/** Where a domain value sits along a numeric legend bar, in percent, as a string. */
+export function tickPercent(scale, value) {
+  const lo = scale.domain[0], hi = scale.domain[scale.domain.length - 1];
+  return tick(((value - lo) / (hi - lo)) * 100);
+}
+
 function legendNode(doc, el, layer, tokens) {
   const { scale } = layer;
   const box = el(doc, "div", "apecad-section-legend");
@@ -405,9 +439,23 @@ function legendNode(doc, el, layer, tokens) {
   const bar = el(doc, "div", "apecad-section-legend-bar");
   bar.style.background = `linear-gradient(to right, ${colors.map((c, i) => `${c} ${tick(((stops[i] - lo) / span) * 100)}%`).join(", ")})`;
   box.appendChild(bar);
-  const ticks = el(doc, "div", "apecad-section-legend-ticks");
-  for (const v of scale.kind === "diverging" ? scale.domain : [scale.domain[0], scale.domain[1]]) {
-    ticks.appendChild(el(doc, "span", "apecad-section-legend-tick", tick(v)));
+  // Each tick sits at its stop (C8b, RGc3 F6), as in the render: lo at the left end, hi at the
+  // right end, a diverging mid centred over its mark on the bar, on a row of its own.
+  const ticks = el(doc, "div", `apecad-section-legend-ticks${scale.kind === "diverging" ? " two-rows" : ""}`);
+  for (const [i, v] of (scale.kind === "diverging" ? scale.domain : [scale.domain[0], scale.domain[1]]).entries()) {
+    const label = tick(v), at = tickPercent(scale, v);
+    const node = el(doc, "span", "apecad-section-legend-tick", label);
+    node.dataset.at = at;
+    if (i === 0) node.style.left = "0";
+    else if (at === "100") node.style.right = "0";
+    else {
+      node.className += " mid";
+      node.style.left = `clamp(0px, calc(${at}% - ${label.length / 2}ch), calc(100% - ${label.length}ch))`;
+      const mark = el(doc, "span", "apecad-section-legend-mark");
+      mark.style.left = `${at}%`;
+      bar.appendChild(mark);
+    }
+    ticks.appendChild(node);
   }
   box.appendChild(ticks);
   return box;
@@ -493,7 +541,7 @@ export function createOverlayController({ doc, el, box, getRevision, onChange })
     set,
     state,
     refresh,
-    paint(ctx, view) { if (overlay) paintOverlay(ctx, view, overlay, { stale: isStale(), tokens: tokens() }); },
+    paint(ctx, view, pass) { if (overlay) paintOverlay(ctx, view, overlay, { stale: isStale(), tokens: tokens(), pass }); },
     get active() { return overlay !== null; },
   };
 }

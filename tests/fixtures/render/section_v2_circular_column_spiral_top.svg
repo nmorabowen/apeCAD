@@ -26,6 +26,12 @@
 <g class="points" fill="#000000">
 <g data-id="1"><circle cx="421.25" cy="275.75" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
+<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M418.75 273.25 h5 v5 h-5 Z M421.25 275.75 L439.25 275.75 M434.25 272.75 L439.25 275.75 L434.25 278.75 M421.25 275.75 L421.25 257.75 M418.25 262.75 L421.25 257.75 L424.25 262.75" stroke="#ffffff" stroke-width="3"/>
+<path d="M418.75 273.25 h5 v5 h-5 Z M421.25 275.75 L439.25 275.75 M434.25 272.75 L439.25 275.75 L434.25 278.75 M421.25 275.75 L421.25 257.75 M418.25 262.75 L421.25 257.75 L424.25 262.75" stroke="#000077" stroke-width="1"/>
+<text x="442.25" y="279.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
+<text x="426.25" y="263.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
 <g class="tag"><path d="M421.25 155.75 L368.85 109.75 L368.85 86.25" fill="none"/><circle cx="421.25" cy="155.75" r="1" stroke="none"/><text x="374.85" y="89.75" stroke="none" font-size="10">8 Φ20</text></g>
 <g class="tag"><path d="M384.24 153.74 L368.85 109.75 L368.85 100.25" fill="none"/><circle cx="384.24" cy="153.74" r="1" stroke="none"/><text x="374.85" y="103.75" stroke="none" font-size="10">Spiral Φ10 @ 75 mm</text></g>

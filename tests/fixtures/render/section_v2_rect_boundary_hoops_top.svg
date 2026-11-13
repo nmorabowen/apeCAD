@@ -83,6 +83,12 @@
 <g data-id="5"><circle cx="721.25" cy="252.75" r="1.25" fill="#000000" stroke="none"/></g>
 <g data-id="6"><circle cx="121.25" cy="252.75" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
+<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M118.75 250.25 h5 v5 h-5 Z M121.25 252.75 L139.25 252.75 M134.25 249.75 L139.25 252.75 L134.25 255.75 M121.25 252.75 L121.25 234.75 M118.25 239.75 L121.25 234.75 L124.25 239.75" stroke="#ffffff" stroke-width="3"/>
+<path d="M118.75 250.25 h5 v5 h-5 Z M121.25 252.75 L139.25 252.75 M134.25 249.75 L139.25 252.75 L134.25 255.75 M121.25 252.75 L121.25 234.75 M118.25 239.75 L121.25 234.75 L124.25 239.75" stroke="#000077" stroke-width="1"/>
+<text x="142.25" y="256.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
+<text x="126.25" y="240.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
 <g class="tag"><path d="M129.85 261.35 L112.05 236.75 L112.05 199.25" fill="none"/><circle cx="129.85" cy="261.35" r="1" stroke="none"/><text x="118.05" y="202.75" stroke="none" font-size="10">18 Φ16</text></g>
 <g class="tag"><path d="M128.97 258.9 L112.05 236.75 L112.05 213.25" fill="none"/><circle cx="128.97" cy="258.9" r="1" stroke="none"/><text x="118.05" y="216.75" stroke="none" font-size="10">C1: Tie Φ10 @ 100 mm</text></g>

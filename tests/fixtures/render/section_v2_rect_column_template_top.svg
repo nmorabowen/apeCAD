@@ -33,6 +33,12 @@
 <g data-id="4"><circle cx="439.05" cy="100.75" r="1.25" fill="#000000" stroke="none"/></g>
 <g data-id="5"><circle cx="239.05" cy="100.75" r="1.25" fill="#000000" stroke="none"/></g>
 </g>
+<g class="axes" fill="none" stroke-linecap="round" stroke-linejoin="round">
+<path d="M236.55 398.25 h5 v5 h-5 Z M239.05 400.75 L257.05 400.75 M252.05 397.75 L257.05 400.75 L252.05 403.75 M239.05 400.75 L239.05 382.75 M236.05 387.75 L239.05 382.75 L242.05 387.75" stroke="#ffffff" stroke-width="3"/>
+<path d="M236.55 398.25 h5 v5 h-5 Z M239.05 400.75 L257.05 400.75 M252.05 397.75 L257.05 400.75 L252.05 403.75 M239.05 400.75 L239.05 382.75 M236.05 387.75 L239.05 382.75 L242.05 387.75" stroke="#000077" stroke-width="1"/>
+<text x="260.05" y="404.25" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">x</text>
+<text x="244.05" y="388.75" font-family="Arial Narrow, Archivo Narrow, sans-serif" font-size="10" fill="#000077" stroke="#ffffff" stroke-width="3" paint-order="stroke">y</text>
+</g>
 <g class="annotation" font-family="Arial Narrow, Archivo Narrow, sans-serif" fill="#000077" stroke="#000077" stroke-width="0.75">
 <g class="tag"><path d="M409.05 250.75 L461.05 236.25" fill="none"/><circle cx="409.05" cy="250.75" r="1" stroke="none"/><text x="467.05" y="239.75" stroke="none" font-size="10">8 Φ20</text></g>
 <g class="tag"><path d="M416.55 130.75 L461.05 250.25" fill="none"/><circle cx="416.55" cy="130.75" r="1" stroke="none"/><text x="467.05" y="253.75" stroke="none" font-size="10">Tie Φ10 @ 150 mm</text></g>

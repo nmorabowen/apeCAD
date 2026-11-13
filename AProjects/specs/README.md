@@ -12,7 +12,7 @@ to implement without re-arguing the ADR.
 | [section-draft v2](section-draft-v2.md) | Specified (writer, reader and fixtures planned, C1) | 0006, 0023, 0024, 0025, 0026, 0039, 0040 |
 | [section-overlay v1](section-overlay.md) | Implemented (render tool C2-S1, section client C2-S2) | 0024, 0025, 0026, 0028, 0031, 0041 |
 | [section-overlay v2](section-overlay-v2.md) | Specified (readers slice 2, echo slice 3) | 0024, 0025, 0026, 0028, 0031, 0041 |
-| [section embedding kit](section-embedding.md) | Implemented; client API 2 (results overlay) | 0023, 0024, 0025, 0026, 0038, 0041 |
+| [section embedding kit](section-embedding.md) | Implemented; client API 4 (`sync()`, `chrome`, `setGlyphs`, C8a; legibility and the axes glyph, C8b) | 0023, 0024, 0025, 0026, 0038, 0041 |
 | [agent surface (MCP)](agent-surface-mcp.md) | Implemented (S1–S7; DXF export in D5) | 0006, 0019, 0023, 0026, 0027, 0028, 0034, 0040 |
 | [APE design system](ape-design.md) | Implemented (D1–D5) | 0014, 0023, 0024, 0028, 0031, 0033, 0034 |
 | [modelling helpers](modeling-helpers.md) | Implemented | 0003, 0004, 0008, 0009, 0010, 0011, 0012, 0013, 0015, 0016, 0017, 0018, 0029 |
