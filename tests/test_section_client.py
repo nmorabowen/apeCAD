@@ -143,6 +143,17 @@ def test_cli_accepts_section_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_js_client_against_live_python_http_transport(server: ScratchpadServer) -> None:
+    """A wall chain typed on the command line lands over the live HTTP transport.
+
+    The command line fires the edit and drops its promise, so the script waits for the edit
+    itself: `onChange` (the change landed), then every request in flight, both inside one 20 s
+    budget. A fixed 80 ms wait stood here and failed on the CI runner when a reply took longer
+    (apeSection#244).
+
+    A late opening `scene` reply leaves the screen right (`opEpoch` drops it), but it resets the
+    transport's `docState` (`docState = data.document || docState` in `transport.js`), tracked
+    in apeSection#250. This test asserts the screen and the draft only; it does not cover a
+    later `sync()` or edit over that reset state."""
     import shutil
 
     node = shutil.which("node")
@@ -156,8 +167,20 @@ def test_js_client_against_live_python_http_transport(server: ScratchpadServer) 
     import assert from "node:assert/strict";
     import {{ create, httpTransport }} from {entry!r};
 
+    const http = httpTransport({url!r});
+    const inflight = new Set();
+    const transport = (request) => {{
+      const reply = http(request);
+      inflight.add(reply);
+      reply.then(() => inflight.delete(reply), () => inflight.delete(reply));
+      return reply;
+    }};
+    const changes = [];
+    let changed;
+    const landed = new Promise((resolve) => {{ changed = resolve; }});
     const container = {{}};
-    const ed = create(container, {{ transport: httpTransport({url!r}) }});
+    const onChange = (draft) => {{ changes.push(draft); changed(); }};
+    const ed = create(container, {{ transport, onChange }});
     const root = container.children[0];
     const cmdInput = root.children[2].children[1];
     const sendCmd = (txt) => {{
@@ -170,11 +193,24 @@ def test_js_client_against_live_python_http_transport(server: ScratchpadServer) 
     sendCmd("0,0");
     sendCmd("1500,0");
     sendCmd("c");
-    await new Promise((r) => setTimeout(r, 80));
+    // One 20 s budget for both waits; a timeout names the wait it ran out in.
+    let phase = "no change landed", timer;
+    const bound = new Promise((_, reject) => {{
+      timer = setTimeout(() => reject(new Error(`${{phase}} within 20 s`)), 20000);
+    }});
+    await Promise.race([landed, bound]);
+    phase = "the requests in flight did not settle";
+    const settled = (async () => {{
+      while (inflight.size) await Promise.allSettled([...inflight]);
+    }})();
+    await Promise.race([settled, bound]);
+    clearTimeout(timer);
 
+    assert.equal(changes.length, 1, "one edit, one onChange; the opening scene fires none");
     assert.equal(ed.getScene().concrete_faces.length, 1);
     assert.equal(ed.getScene().wall_legs.length, 1);
     assert.equal(ed.getDraft().section.wall_legs[0].thickness_mm, 250);
+    assert.deepEqual(changes[0], ed.getDraft());
     ed.dispose();
     """
     res = subprocess.run(
