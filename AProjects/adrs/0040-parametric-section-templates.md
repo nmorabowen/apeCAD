@@ -241,3 +241,7 @@ question open.
        explosion are exact at any wall; only the seed path loses it. v1 does not refuse a
        thin wall: a minimum wall would be the owner's to set, and could arrive in a later
        version.
+
+## Errata (2026-11-20): template holes stay parametric
+
+Draft in progress (C9-1, apeSection#203).
