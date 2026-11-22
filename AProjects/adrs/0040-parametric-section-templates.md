@@ -279,7 +279,11 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
           `holes`. So a v2 unknown-parameter refusal lists `holes` among the known ones, and
           v1's refusal text is unchanged.
        2. It checks that `holes` is a list (16.1, first row).
-       3. It counts the caps (16.2).
+       3. It counts the caps (16.2). The count covers only the list-valued `ring_mm` of
+          object entries. An entry that is not an object, or whose `ring_mm` is not a list,
+          counts as one hole and no vertices, and is refused as a shape fault at step 4. So
+          `holes: [{"ring_mm": "x" * 300}]` is refused at `holes[0].ring_mm`, not by the
+          vertex cap.
        4. It checks each hole's shape faults that need no placement, hole by hole in index
           order (16.1, the rows before "after placement").
        5. It runs the v1 function on the params without `holes`. Every v1 refusal and every
@@ -368,18 +372,25 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
        - an entry does not hold exactly one of the two forms (`holes[k]`);
        - a `center_mm` is not two finite numbers (`holes[k].center_mm`);
        - a `radius_mm` is not a positive finite number (`holes[k].radius_mm`);
-       - a `ring_mm` has fewer than 3 vertices (`holes[k].ring_mm`), or holds a vertex that
-         is not two finite numbers (`holes[k].ring_mm[i]`);
+       - a `ring_mm` is not a list, or has fewer than 3 vertices (`holes[k].ring_mm`), or
+         holds a vertex that is not two finite numbers (`holes[k].ring_mm[i]`);
        - after placement, a point lies outside the ADR 0032 extent (`holes[k]`, as
          `plan.py::require_extent` words it);
-       - after placement, a ring is not simple or has zero signed area (`holes[k].ring_mm`,
-         by `section/geometry.py::is_simple` and `::signed_area`).
+       - after placement, a ring is not simple or has zero area (`holes[k].ring_mm`).
 
-       A bad ring is therefore never left to the `DocumentError` of `plan.py::_check_plan`.
+       The simplicity, the zero area and the orientation of a placed ring are decided
+       **exactly**, like the rules (17.5). They use an orientation predicate on the stored
+       floats: the sign of twice the shoelace area, and the signs of the cross products in
+       the crossing tests, computed in `fractions.Fraction`. `section/geometry.py::is_simple`
+       and `::signed_area` sum in floats, so they are not the verdict. `signed_area` can
+       get the sign wrong on a thin ring far from the origin (18.4). A ring the step accepts
+       is stored clockwise by that exact sign, so `plan.py::_check_plan` passes it. A bad
+       ring is therefore never left to the `DocumentError` of `_check_plan`.
     2. *Caps.* This is the owner's ruling, comment 4844: "32 / 256 (Recommended)". A
        template takes at most 32 holes, and at most 256 ring vertices across all its rings.
        Both caps name `holes`, and both are counted (13.2 step 3) before any other hole
-       work.
+       work. Only the list-valued `ring_mm` of object entries is counted; a malformed entry
+       is left to the shape faults of 16.1 (13.2 step 3).
        - The largest params any version 2 accepts are a `polygon_column` ring of
          `plan.py::MAX_TEMPLATE_BARS` (1000) vertices plus holes at the caps. They hold
          3,935 values as `ops/templates.py::freeze_params` counts them, which is within
@@ -423,7 +434,8 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
        but it may not touch them. R6 is conservative where a hoop's bars differ in size.
     5. *Exact decision.* Every comparison reduces to the sign of a polynomial in the stored
        floats:
-       - orientations decide containment and crossing;
+       - orientations decide containment and crossing, and also a placed ring's
+         simplicity, zero area and clockwise storage (16.1);
        - squared distances are compared with squared sums of radii and clearances. For
          example, a circle hole of centre c and radius r clears a bar when
          |c − p|² > (r + d_b / 2)².
@@ -511,7 +523,16 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
          at its template coordinates (apeSection#204);
        - `polygon_column` holes stay in section coordinates: the stored points equal the
          given ones;
-       - every stored ring hole is clockwise, whichever orientation it was given in;
+       - every stored ring hole is clockwise, whichever orientation it was given in.
+         "Clockwise" means that the exact twice-shoelace area of the stored floats, summed
+         in `fractions.Fraction`, is negative. The oracle includes the ring
+         `[(39999.56872848823, 40000.99486747388), (40260.93513113888, 39758.30007034527),
+         (40527.11796644146, 39511.13291895272)]`, given as section coordinates on
+         `polygon_column` so that the stored floats are the given ones. `is_simple`
+         accepts it, and the float `signed_area` returns +1.19e-07, but its exact sign is
+         negative (twice the area is about −4.66e-09 mm²). So it is already clockwise. The
+         step must store it unreversed, or refuse it by name if it fails the exact rules;
+         it must never store it reversed into a counter-clockwise hole;
        - `rect_hollow`'s first user hole is at `hole_index` 1, after its void at 0 (13.5).
     5. *Op oracles.*
        - Editing `b` keeps the holes.
@@ -574,7 +595,9 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
       - `tests/test_section_template_holes.py`, with the placement and op oracles
         (18.4, 18.5) for its three templates;
       - the seams, including the version 1 pin on `rect_column_template` in
-        `tests/_section_fixtures_v2.py` (15.1);
+        `tests/_section_fixtures_v2.py` (15.1), and `tests/test_section_client_v2.py`,
+        whose props test asserts `"Template #{id} (rect_column v1) · locked"` for a
+        template added without a version;
       - three v2 logs.
     - *C9-2c* does the same for `circular_column`, `t_beam`, `cft_round` and `cft_rect`,
       with four v2 logs. It pins version 1 on `t_beam_template` and `cft_rect_template`
@@ -611,10 +634,11 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
     unknown. They are found by a search, not from a list:
 
     ```
-    git grep -n -E "template_version|latest_version|@v1" -- tests ':!tests/fixtures' ':!tests/js'
+    git grep -n -E "template_version|latest_version|@v1| v1\)" -- tests ':!tests/fixtures' ':!tests/js'
     ```
 
-    At 131c340 this finds five files: `test_atomic_ops.py`, `test_section_draft_v2.py`,
+    At 131c340 this finds six files: `test_atomic_ops.py`, `test_section_client_v2.py`
+    (the `rect_column v1)` props line), `test_section_draft_v2.py`,
     `test_section_template_ops.py`, `test_section_template_projection.py` and
     `test_section_templates.py`. `tests/_section_fixtures_v2.py` is also a seam. Its three
     template builders name no version at 131c340, so C9-2b and C9-2c must each pin
