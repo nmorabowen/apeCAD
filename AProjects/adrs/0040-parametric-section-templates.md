@@ -291,8 +291,9 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
        6. It places each hole once, in floats. On a template centred at `(cx, cy)`, the
           offset `(x, y)` becomes the point `(cx + x, cy + y)`; on `polygon_column` the point
           is taken as given. These placed floats are the ones the materialiser writes and the
-          ones the rules decide on. Then, hole by hole in index order, it checks the extent
-          and the ring's simplicity (16.1, the "after placement" rows).
+          ones the rules decide on. Then, hole by hole in index order, it checks the extent,
+          the ring's exact simplicity and zero area, and that the float and exact
+          orientations agree (16.1, the "after placement" rows).
        7. It decides the seven rules R1 to R7 (17) on the placed floats.
        8. It appends the holes, in index order and with rings stored clockwise, after the
           face's own holes on the plan's one concrete face (`plan.py::PlanFace.holes`).
@@ -364,7 +365,7 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
     (Errata 7), whose message starts `<template>: <param>:`.
     1. *Shape faults.* These are checked in this order, each naming the parameter shown.
        The first row is step 2 of 13.2; the caps (16.2) come next, as step 3; the rows up to
-       the ring's vertices are step 4, hole by hole; the two "after placement" rows are
+       the ring's vertices are step 4, hole by hole; the three "after placement" rows are
        step 6, after the v1 function has run:
        - `holes` is not a list, `null` included (`holes`);
        - an entry is not an object (`holes[k]`);
@@ -376,16 +377,26 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
          holds a vertex that is not two finite numbers (`holes[k].ring_mm[i]`);
        - after placement, a point lies outside the ADR 0032 extent (`holes[k]`, as
          `plan.py::require_extent` words it);
-       - after placement, a ring is not simple or has zero area (`holes[k].ring_mm`).
+       - after placement, a ring is not simple or has zero area (`holes[k].ring_mm`);
+       - after placement, the sign of a ring's float `section/geometry.py::signed_area`
+         differs from its exact sign (`holes[k].ring_mm`). This is the owner's ruling on
+         apeSection#203: "Yes, option (b) (Recommended)".
 
        The simplicity, the zero area and the orientation of a placed ring are decided
        **exactly**, like the rules (17.5). They use an orientation predicate on the stored
        floats: the sign of twice the shoelace area, and the signs of the cross products in
        the crossing tests, computed in `fractions.Fraction`. `section/geometry.py::is_simple`
-       and `::signed_area` sum in floats, so they are not the verdict. `signed_area` can
-       get the sign wrong on a thin ring far from the origin (18.4). A ring the step accepts
-       is stored clockwise by that exact sign, so `plan.py::_check_plan` passes it. A bad
-       ring is therefore never left to the `DocumentError` of `_check_plan`.
+       and `::signed_area` sum in floats, so they are not the verdict.
+
+       `signed_area` can get the sign wrong on a thin ring far from the origin (18.4). The
+       float consumers of orientation do not change:
+       - `plan.py::_check_plan`, through `_check_boundary`;
+       - `draft/section.py`;
+       - `draft/transform.py`.
+
+       So the step refuses, by name, every ring on which the float and the exact
+       orientation could disagree. That keeps those consumers consistent with the exact
+       verdict, and a ring the step accepts is stored clockwise by both signs.
     2. *Caps.* This is the owner's ruling, comment 4844: "32 / 256 (Recommended)". A
        template takes at most 32 holes, and at most 256 ring vertices across all its rings.
        Both caps name `holes`, and both are counted (13.2 step 3) before any other hole
@@ -530,9 +541,11 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
          (40527.11796644146, 39511.13291895272)]`, given as section coordinates on
          `polygon_column` so that the stored floats are the given ones. `is_simple`
          accepts it, and the float `signed_area` returns +1.19e-07, but its exact sign is
-         negative (twice the area is about −4.66e-09 mm²). So it is already clockwise. The
-         step must store it unreversed, or refuse it by name if it fails the exact rules;
-         it must never store it reversed into a counter-clockwise hole;
+         negative (twice the area is about −4.66e-09 mm²). The float and exact signs
+         disagree, so the step must refuse it by name at `holes[0].ring_mm` (16.1). It must
+         never store it, reversed or not. Stored unreversed, it would fail
+         `plan.py::_check_plan` ("the ring must be CW"); stored reversed, it would be an
+         exactly counter-clockwise hole;
        - `rect_hollow`'s first user hole is at `hole_index` 1, after its void at 0 (13.5).
     5. *Op oracles.*
        - Editing `b` keeps the holes.
@@ -654,4 +667,9 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
     - `rect_hollow` v1 drawing its inner hoop on the wall side of its bars, which squeezes
       wall ducts: a version 3 matter;
     - a ring vertex within 1 mm of another point does not survive a seed replay (Errata
-      12.4). This is recorded, not refused.
+      12.4). This is recorded, not refused;
+    - a C9-2b follow-up, beside the float-predicate note of apeSection#54 (Errata 11.1).
+      A mirror transform re-orients holes by the float sign
+      (`draft/transform.py::_oriented`, through `signed_area`). After an explode, a mirror
+      that computes new floats could produce a hole whose float and exact orientations
+      disagree. The step's refusal (16.1) covers only what a template stores.
