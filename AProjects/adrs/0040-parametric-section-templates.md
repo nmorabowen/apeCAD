@@ -272,20 +272,25 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
        version, and an accepted one stays for ever (Errata 11.3).
     2. *One shared step after expansion.* A new `section/templates/holes.py` wraps each v1
        function: `section/templates/__init__.py::TEMPLATES[t][2]` is the step around
-       `TEMPLATES[t][1]`. No v1 module is edited. The step runs in this order:
-       1. It checks the keys with `section/templates/plan.py::Params` against the
-          template's v1 `FIELDS` plus `holes`. So a v2 unknown-parameter refusal lists
-          `holes` among the known ones, and v1's refusal text is unchanged.
-       2. It counts the caps (16.2).
-       3. It checks each hole's shape (16.1).
-       4. It runs the v1 function on the params without `holes`. Every v1 refusal and every
+       `TEMPLATES[t][1]`. No v1 module is edited. The step runs in this order, and the
+       first check that fails is the refusal:
+       1. It checks that the params are an object and checks their keys with
+          `section/templates/plan.py::Params` against the template's v1 `FIELDS` plus
+          `holes`. So a v2 unknown-parameter refusal lists `holes` among the known ones, and
+          v1's refusal text is unchanged.
+       2. It checks that `holes` is a list (16.1, first row).
+       3. It counts the caps (16.2).
+       4. It checks each hole's shape faults that need no placement, hole by hole in index
+          order (16.1, the rows before "after placement").
+       5. It runs the v1 function on the params without `holes`. Every v1 refusal and every
           v1 drawing is therefore unchanged.
-       5. It places each hole once, in floats. On a template centred at `(cx, cy)`, the
+       6. It places each hole once, in floats. On a template centred at `(cx, cy)`, the
           offset `(x, y)` becomes the point `(cx + x, cy + y)`; on `polygon_column` the point
           is taken as given. These placed floats are the ones the materialiser writes and the
-          ones the rules decide on.
-       6. It decides the seven rules (17) on the placed floats.
-       7. It appends the holes, in index order and with rings stored clockwise, after the
+          ones the rules decide on. Then, hole by hole in index order, it checks the extent
+          and the ring's simplicity (16.1, the "after placement" rows).
+       7. It decides the seven rules R1 to R7 (17) on the placed floats.
+       8. It appends the holes, in index order and with rings stored clockwise, after the
           face's own holes on the plan's one concrete face (`plan.py::PlanFace.holes`).
     3. *Children, not a second editor.* Hole points are children, made by
        `draft/templates.py::materialise`, which already builds `PlanFace.holes`. So edit,
@@ -330,8 +335,12 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
     replay a log.
     1. *Version 1 stays byte-identical:* its seven functions, its refusals and its seven
        frozen logs. `section/templates/__init__.py::latest_version` becomes 2, so an
-       `AddSectionTemplate` that names no version records 2. The fixture generators pin
-       version 1 (`tests/_section_fixtures_v2.py`), so the 11 fixtures in
+       `AddSectionTemplate` that names no version records 2. At 131c340 the three template
+       fixture builders in `tests/_section_fixtures_v2.py` (`rect_column_template`,
+       `t_beam_template`, `cft_rect_template`) call `add_section_template` without a
+       version, so they would record 2. Pinning them to version 1 is a duty of the slice
+       that registers each v2: C9-2b pins `rect_column_template`, and C9-2c pins
+       `t_beam_template` and `cft_rect_template` (21). With those pins the 11 fixtures in
        `tests/fixtures/section_draft_v2/` stay byte-identical.
     2. *What version 2 is.* Version 2 is version 1 composed with the step (13.2), its shape
        refusals and caps (16) and its rules (17). A later change to any of them that moves a
@@ -349,7 +358,10 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
 
 16. **Shape faults and caps are refused by name.** A refusal is a `TemplateParamError`
     (Errata 7), whose message starts `<template>: <param>:`.
-    1. *Shape faults.* These are checked in this order, each naming the parameter shown:
+    1. *Shape faults.* These are checked in this order, each naming the parameter shown.
+       The first row is step 2 of 13.2; the caps (16.2) come next, as step 3; the rows up to
+       the ring's vertices are step 4, hole by hole; the two "after placement" rows are
+       step 6, after the v1 function has run:
        - `holes` is not a list, `null` included (`holes`);
        - an entry is not an object (`holes[k]`);
        - an entry has an unknown key (`holes[k].<key>`);
@@ -366,7 +378,8 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
        A bad ring is therefore never left to the `DocumentError` of `plan.py::_check_plan`.
     2. *Caps.* This is the owner's ruling, comment 4844: "32 / 256 (Recommended)". A
        template takes at most 32 holes, and at most 256 ring vertices across all its rings.
-       Both caps name `holes`, and both are counted before any other hole work.
+       Both caps name `holes`, and both are counted (13.2 step 3) before any other hole
+       work.
        - The largest params any version 2 accepts are a `polygon_column` ring of
          `plan.py::MAX_TEMPLATE_BARS` (1000) vertices plus holes at the caps. They hold
          3,935 values as `ops/templates.py::freeze_params` counts them, which is within
@@ -471,15 +484,36 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
        - `rect_hollow`: a wall duct between two bars and between the two hoops is accepted.
          The same duct, moved until its clearance from the void is no more than the cover,
          is refused by R3.
-       - `t_beam`: a duct centred on a stirrup leg is refused, by R6 where no earlier rule
-         fails.
+       - `t_beam`: the params of `tests/_section_fixtures_v2.py::T_BEAM_PARAMS` with `hf`
+         200, and a Ø50 circle (r = 25). It is centred on the centreline of the right
+         stirrup leg, 15 mm (r_max + t / 2) outside the hull edge, 110 mm below the top,
+         at about (116.75, 490). It sits in the flange, so it clears R3: it is about
+         70.9 mm from the outline, against a 30 mm cover. It clears R4: the nearest bar, a
+         top bar, is about 30.7 mm clear. It is refused by R6: its distance from the hull
+         runs from 0 to about 40 mm, so it is neither within r_min = 8 mm of the hull nor
+         beyond r_max + t = 20 mm. A duct on a leg lower in the web always fails R3 first,
+         so it is not this case.
        - `cft_round` and `cft_rect`:
          - a hole tangent to the core's outline is refused by R1;
          - two holes that touch are refused by R2, at the later index;
          - holes 0.01 mm clear of the core's outline and of each other are accepted.
        - `circular_column`: a hole whose closure touches the spiral's inner face (ρ − t / 2)
          is refused by R7, and the same hole 0.01 mm inside that face is accepted.
-    4. *Op oracles.*
+    4. *Placement oracles.* The truth of 18.1 works on the stored floats, so it cannot tell
+       where a hole lands: if step 6 of 13.2 placed `(x, y)` instead of `(cx + x, cy + y)`,
+       18.1 to 18.3 would still pass. These oracles pin placement, at a non-zero,
+       non-dyadic `center_mm` (for example `[1234.5, -40000.3]`):
+       - every stored hole point (a circle's centre, each ring vertex, read from the draft's
+         `faces[].holes[]`) equals the test's own `(cx + x, cy + y)`, computed in the test;
+       - editing `center_mm` moves the holes with it: each stored point is the new
+         `(cx + x, cy + y)`;
+       - editing `b` leaves each hole at its offsets from `center_mm`, so the hole survives
+         at its template coordinates (apeSection#204);
+       - `polygon_column` holes stay in section coordinates: the stored points equal the
+         given ones;
+       - every stored ring hole is clockwise, whichever orientation it was given in;
+       - `rect_hollow`'s first user hole is at `hole_index` 1, after its void at 0 (13.5).
+    5. *Op oracles.*
        - Editing `b` keeps the holes.
        - Undo is one step.
        - Each v2 log replays.
@@ -492,6 +526,12 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
     - `rect_hollow`'s void stays derived from `t_x` and `t_y`, and is never a `holes`
       entry.
     - Explode stays for anything `holes` cannot say (13.5).
+
+    **A known limit, for the owner to accept at merge.** R5 and R6 model a crosstie as the
+    segment between its bars' centres and a hoop as the band around its bar-centre hull.
+    They ignore the 135° hook tails that are drawn. So an accepted hole may overlap a drawn
+    hook tail, short of the "contact is a clash" ruling (comment 4844). Modelling the tails
+    would be a later version.
 
     Not built:
     - no change to the lock, `AddFaceHole`, the lint, `section/regions.py`, the draft
@@ -531,23 +571,41 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
       - their catalog rows in `catalog/template_params.py::_ROWS`, and
         `catalog/schema.py::_field_schema` for the union of the two hole records, which
         it refuses today (`no JSON schema for union`);
-      - `tests/test_section_template_holes.py`;
-      - the seams;
+      - `tests/test_section_template_holes.py`, with the placement and op oracles
+        (18.4, 18.5) for its three templates;
+      - the seams, including the version 1 pin on `rect_column_template` in
+        `tests/_section_fixtures_v2.py` (15.1);
       - three v2 logs.
     - *C9-2c* does the same for `circular_column`, `t_beam`, `cft_round` and `cft_rect`,
-      with four v2 logs.
+      with four v2 logs. It pins version 1 on `t_beam_template` and `cft_rect_template`
+      (15.1).
     - *C9-3* adds:
       - the word `holes` (version 2) in `draft/templates.py::_WAYS_OUT` and
         `catalog/template_entries.py::_PARAMS`, keeping their old text (the lock test pins
         `_WAYS_OUT`);
       - the lint-parity test of 17.6;
+      - one section-draft v2 fixture with a parametric hole and its render golden, for
+        consumers to vendor: `tests/fixtures/section_draft_v2/rect_column_template_hole.json`
+        and `tests/fixtures/render/section_v2_rect_column_template_hole_top.svg`. They are
+        built by a new builder in `tests/_section_fixtures_v2.py` that names version 2, and
+        the fixture lists in `tests/test_section_draft_v2_fixtures.py` grow to include them;
       - the section-draft v2 spec prose, so that its template-log paragraph names the v2
-        logs.
-    - *C9-4* (apeSection#206) stands: apeSection moves its pin, and its template-hole route
-      becomes parametric.
+        logs and its fixture table names the new fixture.
+    - *C9-4* (apeSection#206) stands: apeSection moves its pin, re-vendors the C9-3 fixture,
+      and makes its template-hole route parametric.
 
-    This re-scopes apeSection#204 and #205, which were carded per group of templates before
-    these rulings.
+    *Order.* The slices run one after another: C9-2a, then C9-2b, then C9-2c, then C9-3,
+    then C9-4. C9-2b and C9-2c share `section/templates/__init__.py`,
+    `catalog/template_params.py`, `tests/test_section_template_holes.py` and the seam tests,
+    so they cannot run in parallel. C9-3 needs every v2 merged, and C9-4 needs C9-3.
+
+    *Mapping to the ledger.* This re-scopes the slice issues carded per group of templates
+    before these rulings:
+    - apeSection#204 (titled C9-2) becomes C9-2a and C9-2b;
+    - apeSection#205 (titled C9-3) becomes C9-2c. Its template-hole fixture and render
+      golden move to C9-3;
+    - this record's C9-3 needs its own slice issue, which the orchestrator cards;
+    - apeSection#206 stays C9-4.
 
     **The seams.** These are the tests that assume version 1 is the latest, or that 2 is
     unknown. They are found by a search, not from a list:
@@ -558,8 +616,9 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
 
     At 131c340 this finds five files: `test_atomic_ops.py`, `test_section_draft_v2.py`,
     `test_section_template_ops.py`, `test_section_template_projection.py` and
-    `test_section_templates.py`. `tests/_section_fixtures_v2.py` is also a seam, because it
-    must pin version 1.
+    `test_section_templates.py`. `tests/_section_fixtures_v2.py` is also a seam. Its three
+    template builders name no version at 131c340, so C9-2b and C9-2c must each pin
+    version 1 on theirs (15.1).
 
     These are ruled out, because they already handle holes or never re-expand:
     `materialise`, `draft/dispatch.py`, `draft/section.py`, `draft/topology.py`,
