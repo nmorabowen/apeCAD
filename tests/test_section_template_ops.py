@@ -119,7 +119,8 @@ def _bar_xy(doc: Document) -> list[tuple[float, float]]:
 
 def test_add_draws_the_plan_as_plain_v2_entities() -> None:
     doc, template = _doc()
-    assert (template.template, template.template_version) == ("rect_column", 1)
+    # No version named: the latest, 2 (ADR 0040 Errata 15.1). Without holes it draws v1's plan.
+    assert (template.template, template.template_version) == ("rect_column", 2)
     assert dict(template.params) == {**RECT, "center_mm": (200, 300)}  # stored read-only
     # 4 ring points, the face, 8 x (point, bar), the hoop, 2 crossties, the cover guide.
     assert _kinds(doc, template.child_ids) == [
@@ -146,9 +147,9 @@ def test_the_committed_op_records_version_entity_and_child_ids() -> None:
     doc, template = _doc()
     (op,) = doc.ops()
     assert isinstance(op, AddSectionTemplate)
-    assert (op.template_version, op.entity_id, op.child_ids) == (1, 1, template.child_ids)
+    assert (op.template_version, op.entity_id, op.child_ids) == (2, 1, template.child_ids)
     payload = op_to_dict(op)
-    assert payload["template_params"] == RECT and payload["template_version"] == 1
+    assert payload["template_params"] == RECT and payload["template_version"] == 2
     assert op_from_dict(json.loads(json.dumps(payload))) == op
 
 
@@ -173,8 +174,8 @@ def test_bad_params_are_invalid_argument_and_change_nothing() -> None:
         assert caught.value.code == INVALID_ARGUMENT and f": {param}: " in str(caught.value)
     with pytest.raises(OpArgumentError, match="box_column: template: unknown template"):
         doc.add_section_template("box_column", RECT)
-    with pytest.raises(OpArgumentError, match="template_version: unknown version 2"):
-        doc.add_section_template("rect_column", RECT, template_version=2)
+    with pytest.raises(OpArgumentError, match="template_version: unknown version 3"):
+        doc.add_section_template("rect_column", RECT, template_version=3)
     assert doc.ops() == () and doc.entity_ids() == frozenset()
 
 
@@ -185,7 +186,7 @@ def test_edit_keeps_the_template_id_and_redraws_with_fresh_ids() -> None:
     doc, template = _doc()
     old = template.child_ids
     edited = doc.edit_section_template(template.entity_id, {**RECT, "center_mm": [1200, 300]})
-    assert edited.entity_id == template.entity_id and edited.template_version == 1
+    assert edited.entity_id == template.entity_id and edited.template_version == 2
     assert min(edited.child_ids) > max(old) and len(edited.child_ids) == len(old)
     assert not set(old) & doc.entity_ids()
     # Moving a template is an edit of its centre: every bar moves by (1000, 0).
@@ -270,7 +271,7 @@ def test_a_frozen_log_replays_to_the_same_drawing() -> None:
     [
         (0, {"child_ids": list(range(2, 16))}, "records 14 child ids, but .* draws more"),
         (0, {"child_ids": list(range(2, 18))}, "records 16 child ids, but .* draws fewer"),
-        (0, {"template_version": 2}, "template_version: unknown version 2"),
+        (0, {"template_version": 3}, "template_version: unknown version 3"),
         (0, {"template_version": 1.0}, "template_version must be a whole number"),
         (0, {"template_params": [1]}, "template_params must be an object"),
         # Review of #57, finding 1: a child cannot take the template's own id.
@@ -280,7 +281,7 @@ def test_a_frozen_log_replays_to_the_same_drawing() -> None:
         (0, {"child_ids": list(range(3, 18))}, "child id 3 where .* allocates 2"),
         (1, {"child_ids": list(range(2, 17))}, "child id 2 where .* allocates 17"),
     ],
-    ids=["fewer", "more", "version-2", "version-float", "params-list", "own-id", "reversed",
+    ids=["fewer", "more", "version-3", "version-float", "params-list", "own-id", "reversed",
          "shifted", "edit-reuses-old-ids"],
 )  # fmt: skip
 def test_replay_refuses_a_log_that_no_longer_matches(

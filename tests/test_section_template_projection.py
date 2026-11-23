@@ -89,6 +89,10 @@ SECTION_SHA256 = {
     "cft_round@v1": "c10d6182b321ee813f49e6c894bbb0e422d405ac7ef913f2baa663e0763de1de",
     "polygon_column@v1": "b55388e7fc6f89609884e72f2aa99549ede4e02e76a525fa775d1baefa4f72cc",
     "rect_hollow@v1": "dc43d3fa41ad050a63a866ea5b1bfbbd2ec8a281db5df9ab4b81eb2ace09be3a",
+    # C9-2b (ADR 0040 Errata 15.3): each v2 log, a circle hole and a ring hole, recorded once.
+    "rect_column@v2": "41b3c49399ef469b94740361134bb06e984dfe60e35f16861dd450062f1d2f3e",
+    "rect_hollow@v2": "438f7934ad3986c8478a28ab9f4a052b87efe4db100b2aafffa324cff46d4252",
+    "polygon_column@v2": "c7d18478fe94900f943b2c57cc23aa49977c6bd17de14cf48b3538bfe6b0cd6f",
 }
 
 
@@ -148,7 +152,7 @@ def test_templates_lists_the_four_declared_fields_with_the_params_as_given() -> 
         {
             "id": template.entity_id,
             "template": "rect_column",
-            "template_version": 1,
+            "template_version": 2,  # no version named: the latest (ADR 0040 Errata 15.1)
             "params": RECT_COLUMN_PARAMS,  # lists stay lists; the label is not in the contract
         }
     ]
@@ -768,7 +772,9 @@ def test_a_frozen_log_replays_to_itself(stem: str) -> None:
     log = _log(stem)
     assert _replay(stem).to_dict() == log
     (op,) = cast(list[Json], log["ops"])
-    assert op["op"] == "AddSectionTemplate" and op["template_version"] == 1
+    version = int(stem.rpartition("@v")[2])  # the log of `<template>@v<version>`
+    assert op["op"] == "AddSectionTemplate" and op["template_version"] == version
+    assert op["template"] == stem.rpartition("@v")[0]
     assert cast(list[int], op["child_ids"]), "the log records its child ids"
 
 
@@ -1071,7 +1077,7 @@ def test_the_http_surfaces_list_the_templates() -> None:
 
 def test_the_transport_writes_a_templated_draft() -> None:
     doc = Document()
-    doc.add_section_template("rect_column", RECT_COLUMN_PARAMS)
+    doc.add_section_template("rect_column", RECT_COLUMN_PARAMS, template_version=1)  # as fixtured
     request: Json = {
         "transport_version": TRANSPORT_VERSION,
         "action": "draft",
