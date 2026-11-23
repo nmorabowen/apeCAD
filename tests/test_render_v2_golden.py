@@ -68,6 +68,37 @@ def test_every_v2_golden_has_a_fixture() -> None:
     assert found == {golden_path(name).name for name in BUILDERS_V2}
 
 
+def test_the_template_hole_golden_draws_both_holes_where_the_hand_puts_them() -> None:
+    """C9-3 (ADR 0040 Errata 21): the concrete face of `rect_column_template_hole` is one
+    even-odd path of three runs, the 400 x 600 outline, the Ø100 duct and the 80 x 40 ring.
+    The mm-to-px map is read off the outline's corners (0, 0) and (400, 600); each hole is then
+    checked against the hand's section coordinates (see `test_section_draft_v2_fixtures`)."""
+    root = ET.fromstring(_golden("rect_column_template_hole"))
+    (concrete,) = [g for g in root if g.get("class") == "concrete"]
+    (path,) = concrete.iter(f"{SVG_NS}path")
+    assert path.get("fill-rule") == "evenodd"
+    runs = [
+        [(float(x), float(y)) for x, y in re.findall(r"(-?[\d.]+) (-?[\d.]+)", run)]
+        for run in re.findall(r"M[^M]*", path.get("d", ""))
+    ]
+    outline, duct, ring = runs
+    (x0, y0), (x1, y1) = outline[0], outline[2]  # (0, 0) and (400, 600), y up in mm, down in px
+    sx, sy = (x1 - x0) / 400, (y1 - y0) / 600
+    assert sx > 0 and math.isclose(sy, -sx, rel_tol=1e-3)
+
+    def px(x: float, y: float) -> tuple[float, float]:
+        return (x0 + sx * x, y0 + sy * y)
+
+    assert len(outline) == 4
+    corners = [(0, 0), (400, 0), (400, 600), (0, 600)]
+    hand = [[160, 460], [240, 460], [240, 420], [160, 420]]  # stored clockwise
+    for got, (x, y) in zip([*outline, *ring], [*corners, *hand], strict=True):
+        assert math.dist(got, px(x, y)) <= PX_TOL, (got, px(x, y))
+    centre, radius = px(200, 300), 50 * sx
+    assert len(duct) >= 8
+    assert all(abs(math.dist(p, centre) - radius) <= PX_TOL for p in duct), (centre, radius)
+
+
 # ---- the comparator's own oracle --------------------------------------------------------
 
 

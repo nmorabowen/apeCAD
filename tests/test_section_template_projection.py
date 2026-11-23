@@ -79,6 +79,7 @@ LOG_OF_FIXTURE = {
     "rect_column@v1": "rect_column_template",
     "t_beam@v1": "t_beam_template",
     "cft_rect@v1": "cft_rect_template",  # C4-S3: a ring core in a ring hole
+    "rect_column@v2": "rect_column_template_hole",  # C9-3: the v2 log's holes, as a fixture
 }
 # Replayed drafts without a committed fixture of their own (the card names two new fixtures):
 # the SHA-256 of `fixture_text(section)`, recorded with the logs. Only the `section` block: the
@@ -657,6 +658,14 @@ def test_a_frozen_log_replays_to_its_fixture_byte_for_byte(stem: str) -> None:
 
 def _section_sha256(draft: Json) -> str:
     return hashlib.sha256(fixture_text(_section(draft)).encode("utf-8")).hexdigest()
+
+
+def test_the_template_hole_fixture_is_the_section_c9_2b_recorded() -> None:
+    """C9-3's fixture is the `rect_column@v2` log's section that C9-2b recorded by hash
+    (ADR 0040 Errata 15.3, 21): the fixture adds the bytes, not a new drawing."""
+    assert _section_sha256(_committed("rect_column_template_hole")) == SECTION_SHA256[
+        "rect_column@v2"
+    ]
 
 
 @pytest.mark.parametrize("stem", sorted(SECTION_SHA256))

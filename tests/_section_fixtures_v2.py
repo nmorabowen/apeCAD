@@ -192,6 +192,29 @@ def cft_rect_template() -> Document:
     return doc
 
 
+# The template-hole fixture (ADR 0040 Errata 21, C9-3): the params of the frozen log
+# `section_templates/rect_column@v2.json`, which replays to it byte for byte. Errata 18.3's
+# worked column (crossties "none", the default) with its centred Ø100 duct, plus a ring hole
+# given counter-clockwise, so that a consumer meets both forms and a ring stored clockwise.
+RECT_COLUMN_HOLE_PARAMS: dict[str, object] = {
+    **{k: v for k, v in RECT_COLUMN_PARAMS.items() if k != "crossties"},
+    "holes": [
+        {"center_mm": [0, 0], "radius_mm": 50},
+        {"ring_mm": [[-40, 120], [40, 120], [40, 160], [-40, 160]]},
+    ],
+}
+
+
+def rect_column_template_hole() -> Document:
+    """`rect_column` v2 with two parametric holes, given as offsets from its centre (200, 300).
+
+    Version 2 is named, not left to the latest, so that a later version cannot move it.
+    """
+    doc = Document()
+    doc.add_section_template("rect_column", RECT_COLUMN_HOLE_PARAMS, template_version=2)
+    return doc
+
+
 BUILDERS_V2: dict[str, Callable[[], Document]] = {
     "rect_column_ties": rect_column_ties,
     "circular_column_spiral": circular_column_spiral,
@@ -204,6 +227,7 @@ BUILDERS_V2: dict[str, Callable[[], Document]] = {
     "rect_column_template": rect_column_template,
     "t_beam_template": t_beam_template,
     "cft_rect_template": cft_rect_template,
+    "rect_column_template_hole": rect_column_template_hole,  # C9-3: parametric holes
 }
 
 

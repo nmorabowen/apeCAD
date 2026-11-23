@@ -1,5 +1,5 @@
 {
-  "about": "section_sha256 vectors (spec section-overlay-v2.md, \"The hash\"): each committed draft fixture (and each stored draft of stored_drafts/) with canonical_section_hash of its stored text. Both definitions gave every value, on Windows: apeSection 8620629 src/apeSection/project/draft_header.py::canonical_section_hash and apeConcrete 9fac3bd src/apeConcrete/io/apecad.py::_canonical_section_sha256. apeCAD src never computes it; tests/test_render_overlay.py recomputes the literals with a reference copy of the formula.",
+  "about": "section_sha256 vectors (spec section-overlay-v2.md, \"The hash\"): each committed draft fixture (and each stored draft of stored_drafts/) with canonical_section_hash of its stored text. Both definitions gave every value, on Windows: apeSection 8620629 src/apeSection/project/draft_header.py::canonical_section_hash and apeConcrete 9fac3bd src/apeConcrete/io/apecad.py::_canonical_section_sha256; the C9-3 vector (rect_column_template_hole) came from apeSection 568f531 and apeConcrete 3d30e19, the same two definitions, agreeing. apeCAD src never computes it; tests/test_render_overlay.py recomputes the literals with a reference copy of the formula.",
   "formula": "hashlib.sha256(json.dumps(draft[\"section\"], sort_keys=True, separators=(\",\", \":\"), ensure_ascii=False, allow_nan=False).encode(\"utf-8\")).hexdigest()",
   "vectors": [
     {
@@ -45,6 +45,10 @@
     {
       "draft": "tests/fixtures/section_draft_v2/rect_column_template.json",
       "section_sha256": "281d5a26a3ac387d9a5ceb49a368fdc10c58f186c90f39b52012b5f4642ab470"
+    },
+    {
+      "draft": "tests/fixtures/section_draft_v2/rect_column_template_hole.json",
+      "section_sha256": "c2cbf10973c73e77ab773ec8292cad26c792860ba288f5fe0349806149b49873"
     },
     {
       "draft": "tests/fixtures/section_draft_v2/rect_column_ties.json",

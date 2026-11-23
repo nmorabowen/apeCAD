@@ -535,7 +535,7 @@ function byCodePoint(a, b) {
 }
 
 test("a JSON.parse round trip changes every vector's hash: the client never computes it", () => {
-  assert.equal(VECTORS.vectors.length, 15);
+  assert.equal(VECTORS.vectors.length, 16); // C9-3 added rect_column_template_hole
   const sha = (text) => crypto.createHash("sha256").update(text, "utf8").digest("hex");
   for (const { draft, section_sha256: stored } of VECTORS.vectors) {
     const parsed = JSON.parse(fs.readFileSync(path.join(ROOT, draft), "utf8"));

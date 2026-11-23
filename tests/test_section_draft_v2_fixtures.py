@@ -2,7 +2,8 @@
 
 Oracles: the spec's field table (`validate_v2`), areas and centroids worked out by hand for
 every fixture (the numbers below, not the code), and v1's `rect_boundary_hoops` read entity
-for entity against its v2 copy.
+for entity against its v2 copy. C9-3 adds `rect_column_template_hole` (ADR 0040 Errata 21):
+its holes' coordinates worked out by hand, and its round trip.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ import json
 import math
 import os
 import re
+from fractions import Fraction
 from pathlib import Path
 from typing import cast
 
@@ -21,11 +23,13 @@ from _section_fixtures import fixture_path as v1_fixture_path
 from _section_fixtures_v2 import (
     BUILDERS_V2,
     FIXTURE_DIR,
+    RECT_COLUMN_HOLE_PARAMS,
     fixture_draft_v2,
     fixture_path_v2,
     fixture_text,
     write_fixtures_v2,
 )
+from apeCAD.section_draft import document_from_draft, section_draft
 from test_section_draft_v2 import validate_v2
 
 SPEC_V2 = Path(__file__).resolve().parents[1] / "AProjects" / "specs" / "section-draft-v2.md"
@@ -61,13 +65,14 @@ def test_the_fixtures_pin_the_v2_contract_hash() -> None:
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == CONTRACT_SHA256_V2
 
 
-def test_the_fixture_set_is_decision_8s_and_the_three_template_fixtures() -> None:
+def test_the_fixture_set_is_decision_8s_and_the_four_template_fixtures() -> None:
     assert sorted(path.stem for path in FIXTURE_DIR.glob("*.json")) == NAMES == sorted(
         [
             "rect_column_ties", "circular_column_spiral", "box_with_void", "t_beam",
             "src_w_in_rect", "cft_round", "bare_w_shape", "rect_boundary_hoops",
             "rect_column_template", "t_beam_template",  # additive (C3 record, ruling Q3)
             "cft_rect_template",  # additive (C4 record §5, C4-S3)
+            "rect_column_template_hole",  # additive (ADR 0040 Errata 21, C9-3)
         ]
     )  # fmt: skip
 
@@ -111,7 +116,7 @@ def test_fixture_matches_its_builder(name: str) -> None:
 def test_fixture_validates_against_the_v2_field_table(name: str) -> None:
     draft = _load(name)
     validate_v2(draft)
-    assert bool(_section(draft)["templates"]) == name.endswith("_template")
+    assert bool(_section(draft)["templates"]) == ("_template" in name)
 
 
 @pytest.mark.parametrize("name", NAMES)
@@ -135,6 +140,11 @@ _PI = math.pi
 _T_AREA = 300 * 450 + 800 * 150  # web + flange = 255 000
 _T_CY = (300 * 450 * 225 + 800 * 150 * 525) / _T_AREA  # 93 375 000 / 255 000
 _W = 2 * 254 * 16.3 + (310 - 2 * 16.3) * 9.1  # W310x86 without fillets: 10 804.74
+# rect_column_template_hole: 400 x 600 centred on (200, 300), less the Ø100 duct at its centre
+# and the 80 x 40 ring from x 160 to 240, y 420 to 460 (centroid y 440). Both are symmetric
+# about x = 200. 240 000 - 2 500π - 3 200 = 228 946.0 mm² (Errata 18.3's 232 146.0 less 3 200).
+_HOLED = 400 * 600 - _PI * 50**2 - 80 * 40
+_HOLED_CY = (400 * 600 * 300 - _PI * 50**2 * 300 - 80 * 40 * 440) / _HOLED
 
 EXPECTED: dict[str, dict[str, tuple[float, float, float]]] = {
     # role: (area mm², centroid x, centroid y)
@@ -155,6 +165,7 @@ EXPECTED: dict[str, dict[str, tuple[float, float, float]]] = {
         "concrete": (276 * 476, 100.0, 200.0),
         "steel": (300 * 500 - 276 * 476, 100.0, 200.0),
     },
+    "rect_column_template_hole": {"concrete": (_HOLED, 200.0, _HOLED_CY)},  # C9-3
 }
 MINUS = {"box_with_void": ("void",), "src_w_in_rect": ("steel",)}
 
@@ -226,6 +237,51 @@ def test_t_beam_is_non_convex_and_its_stirrup_hull_is_strict() -> None:
     assert len(cast(list[object], _obj(face["boundary"])["ring_mm"])) == 8
     (stirrup,) = _items(section["hoops"])
     assert stirrup["label"] == "stirrup" and len(cast(list[int], stirrup["bar_ids"])) == 4
+
+
+# --- rect_column_template_hole: parametric holes, by hand (ADR 0040 Errata 21, C9-3) --------
+
+HOLE_FIXTURE = "rect_column_template_hole"
+
+
+def test_template_hole_fixture_holds_its_holes_where_the_hand_puts_them() -> None:
+    """The params' offsets plus the centre (200, 300), added here by hand: the Ø100 duct
+    at (0, 0) lands on (200, 300); the ring given counter-clockwise, (-40, 120), (40, 120),
+    (40, 160), (-40, 160), lands on x 160 to 240, y 420 to 460, and is stored clockwise, from
+    its last vertex (Errata 13.1, 13.2 steps 6 and 8). The column is 400 x 600 from (0, 0)."""
+    draft = _load(HOLE_FIXTURE)
+    section = _section(draft)
+    (face,) = _items(section["faces"])
+    assert face["role"] == "concrete" and face["material"] == "C30" and face["template_id"] == 1
+    assert face["boundary"] == {
+        "kind": "ring", "ring_mm": [[0.0, 0.0], [400.0, 0.0], [400.0, 600.0], [0.0, 600.0]]
+    }  # fmt: skip
+    duct = {"kind": "circle", "center_mm": [200.0, 300.0], "radius_mm": 50.0}
+    ring = [[160.0, 460.0], [240.0, 460.0], [240.0, 420.0], [160.0, 420.0]]
+    assert face["holes"] == [duct, {"kind": "ring", "ring_mm": ring}]
+    twice = sum(
+        (Fraction(a[0]) - Fraction(b[0])) * (Fraction(a[1]) + Fraction(b[1]))
+        for a, b in zip(ring, [*ring[1:], ring[0]], strict=True)
+    )
+    assert twice == -2 * 80 * 40  # clockwise, exactly: twice the 3 200 mm² of the ring
+    (template,) = _items(section["templates"])
+    assert template == {
+        "id": 1, "template": "rect_column", "template_version": 2,
+        "params": json.loads(json.dumps(RECT_COLUMN_HOLE_PARAMS)),  # as the op recorded it
+    }  # fmt: skip
+    assert "crossties" not in cast(Json, template["params"])  # "none": 18.3's accepted column
+    assert section["crossties"] == [] and draft["warnings"] == []  # no lint (17.6)
+
+
+def test_template_hole_fixture_reopens_to_itself_byte_for_byte() -> None:
+    """The committed text, read back by `document_from_draft` and written again, is the same
+    bytes: the holes survive the round trip as children of the template."""
+    committed = fixture_path_v2(HOLE_FIXTURE).read_bytes().decode("utf-8").replace("\r\n", "\n")
+    reopened, warnings = document_from_draft(cast(Json, json.loads(committed)))
+    assert warnings == []
+    assert fixture_text(section_draft(reopened, version=2, commit=None)) == committed
+    (face,) = (f for f in reopened.section_faces() if f.role == "concrete")
+    assert len(face.holes) == 2
 
 
 # --- rect_boundary_hoops: v1 and v2 describe the same wall, entity for entity ----------------

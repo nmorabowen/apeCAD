@@ -48,7 +48,11 @@ from apeCAD.section.geometry import Point2
 from apeCAD.section.templates import expand, latest_version
 from apeCAD.section.templates.plan import Plan, PlanBoundary, PlanCircle
 
-_WAYS_OUT = "edit the template's params, delete the template, or explode it (ADR 0040)"
+_WAYS_OUT = (
+    "edit the template's params, delete the template, or explode it (ADR 0040)"
+    # C9-3 (ADR 0040 Errata 21): the word `holes`, appended; the text above stays as it was.
+    "; for a hole in its face, edit its params' holes (template_version 2)"
+)
 
 
 # --- the three ops ----------------------------------------------------------------------
