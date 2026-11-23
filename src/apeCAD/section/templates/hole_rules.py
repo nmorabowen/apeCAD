@@ -16,9 +16,13 @@ checked hole by hole in index order and, per hole, in the order R1 to R7 (17.2):
 
 Every rule is a strict inequality, so contact is a clash (owner ruling, comment 4844). Every
 comparison is decided in `fractions.Fraction` on the stored floats (17.5): an orientation, or a
-squared distance against a squared sum of radii and clearances. No square root, trigonometry,
-tolerance or float filter is used, so the verdict is the exact one on the stored floats. A
-float filter could only be added under a stated error bound (17.5); none is used here.
+squared distance against a squared sum of radii and clearances. No square root, trigonometry
+or tolerance is used, so the verdict is the exact one on the stored floats.
+
+One float filter is used, under the bound 17.5 asks for: a bounding-box screen that skips a
+pair only when it is proven more than the gap apart. It compares stored floats as themselves,
+and boxes grown by a gap after rounding them outward, so it never decides a pair the exact
+test would decide otherwise (see "the screens" below).
 
 The same exact arithmetic gives a placed ring's orientation, area and simplicity
 (`exact_twice_area`, `exact_simplicity_fault`), which the hole step (Errata 13.2 step 6, 16.1)
@@ -29,7 +33,8 @@ C9-2b (Errata 21). This module registers nothing. It relies on these, by `path::
 
 - `section/templates/plan.py::Plan`, `PlanFace`, `PlanRing`, `PlanCircle`, `PlanHoop`,
   `PlanCrosstie`, `PlanCircularTie`, `PlanCoverGuide` and `TemplateParamError`;
-- `section/templates/plan.py::hull_of`, through which `PlanHoop.bars` is a strict CCW hull;
+- `section/templates/plan.py::PlanHoop.bars`, read as a set of bar indices: R6's hull is
+  rebuilt from their centres exactly (`_hull`), not taken from the float order `hull_of` gave;
 - `geometry.py::require_finite`, which refuses a non-finite coordinate by name.
 
 Paths are under `src/apeCAD/`.
