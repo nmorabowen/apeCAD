@@ -99,10 +99,14 @@ def _field_schema(name: str, hint: object) -> Schema:
         members = get_args(hint)
         concrete = tuple(member for member in members if member is not type(None))
         nullable = len(concrete) != len(members)
+        inner: Schema
         if set(concrete) == {int, PointAt}:
             inner = _VERTEX
         elif len(concrete) == 1:
             inner = _field_schema(name, concrete[0])
+        elif all(isinstance(m, type) and dataclasses.is_dataclass(m) for m in concrete):
+            # One of several records: a template hole, a circle or a ring (ADR 0040 Errata 21).
+            inner = {"anyOf": [_record_schema(cast(type, m)) for m in concrete]}
         else:
             raise TypeError(f"{name}: no JSON schema for union {hint!r}")
         return _nullable(inner) if nullable else inner

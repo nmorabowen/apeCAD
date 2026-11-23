@@ -400,7 +400,7 @@ def _template_is_its_own_child(section: Json) -> None:
         pytest.param(_set_template("id", "1"), id="id-string"),
         pytest.param(_set_template("template", "teapot"), id="unknown-template"),
         pytest.param(_set_template("template", ["rect_column"]), id="template-not-a-string"),
-        pytest.param(_set_template("template_version", 2), id="unknown-version"),
+        pytest.param(_set_template("template_version", 3), id="unknown-version"),
         pytest.param(_set_template("template_version", True), id="version-bool"),
         pytest.param(_set_template("template_version", 1.0), id="version-float"),
         pytest.param(_set_template("params", None), id="params-null"),

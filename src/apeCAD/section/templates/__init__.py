@@ -1,17 +1,21 @@
 """Parametric section templates (ADR 0040): pure functions from parameters to a `Plan`.
 
     plan             Plan and its parts, TemplateParamError, the shared parameter readers
-    rect_column      rectangular tied column, version 1
-    polygon_column   convex polygonal tied column, version 1
-    rect_hollow      rectangular hollow section without crossties, version 1
+    rect_column      rectangular tied column, versions 1 and 2
+    polygon_column   convex polygonal tied column, versions 1 and 2
+    rect_hollow      rectangular hollow section without crossties, versions 1 and 2
     t_beam           symmetric T beam, version 1
     circular_column  circular column with a spiral or a hoop, version 1
     cft_round        round concrete-filled steel tube, version 1
     cft_rect         rectangular concrete-filled steel tube, version 1
+    hole_rules       the rules R1 to R7 a user hole must clear, decided exactly (Errata 17)
+    holes            the hole step of version 2: v1 composed with user holes (Errata 13.2)
 
 `TEMPLATES[name][version]` is the expansion function of one template version. A version is
 kept for ever once released (ADR 0040 decision 4): a change to how a template expands adds a
-version beside the old one, so a log recorded years ago replays to the same drawing.
+version beside the old one, so a log recorded years ago replays to the same drawing. Version 2
+is version 1 wrapped in the hole step (`holes.version_2`, ADR 0040 Errata 13.2 and 15); no v1
+module changes.
 
 Stage C3-S1 holds only the functions. The entity, the ops, the lock and the catalog entries
 come in C3-S2. This package imports only apeCAD.section, apeCAD.geometry and apeCAD.errors
@@ -27,6 +31,7 @@ from apeCAD.section.templates import (
     cft_rect,
     cft_round,
     circular_column,
+    holes,
     polygon_column,
     rect_column,
     rect_hollow,
@@ -38,9 +43,25 @@ Expansion = Callable[[Mapping[str, object]], Plan]
 
 TEMPLATES: Mapping[str, Mapping[int, Expansion]] = MappingProxyType(
     {
-        rect_column.TEMPLATE: MappingProxyType({1: rect_column.expand_v1}),
-        polygon_column.TEMPLATE: MappingProxyType({1: polygon_column.expand_v1}),
-        rect_hollow.TEMPLATE: MappingProxyType({1: rect_hollow.expand_v1}),
+        rect_column.TEMPLATE: MappingProxyType({
+            1: rect_column.expand_v1,
+            2: holes.version_2(
+                rect_column.TEMPLATE, rect_column.FIELDS, rect_column.expand_v1, centred=True
+            ),
+        }),
+        polygon_column.TEMPLATE: MappingProxyType({
+            1: polygon_column.expand_v1,
+            2: holes.version_2(
+                polygon_column.TEMPLATE, polygon_column.FIELDS, polygon_column.expand_v1,
+                centred=False,
+            ),
+        }),
+        rect_hollow.TEMPLATE: MappingProxyType({
+            1: rect_hollow.expand_v1,
+            2: holes.version_2(
+                rect_hollow.TEMPLATE, rect_hollow.FIELDS, rect_hollow.expand_v1, centred=True
+            ),
+        }),
         t_beam.TEMPLATE: MappingProxyType({1: t_beam.expand_v1}),
         circular_column.TEMPLATE: MappingProxyType({1: circular_column.expand_v1}),
         cft_round.TEMPLATE: MappingProxyType({1: cft_round.expand_v1}),

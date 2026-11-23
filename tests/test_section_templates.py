@@ -737,10 +737,14 @@ def test_bad_params_are_refused_by_name(
 
 def test_unknown_template_and_version_are_refused_by_name() -> None:
     assert set(TEMPLATES) == set(ORACLES)
-    assert {name: latest_version(name) for name in TEMPLATES} == dict.fromkeys(ORACLES, 1)
+    # Version 2 (holes, ADR 0040 Errata 15) is registered template by template: C9-2b's three.
+    with_holes = {"rect_column", "polygon_column", "rect_hollow"}
+    assert {name: latest_version(name) for name in TEMPLATES} == {
+        name: 2 if name in with_holes else 1 for name in ORACLES
+    }
     with pytest.raises(TemplateParamError, match="^box_column: template: unknown template"):
         expand("box_column", {})
-    for version in (0, 2):
+    for version in (0, 3):
         with pytest.raises(TemplateParamError, match="template_version: unknown version"):
             expand("rect_column", RECT_COLUMN, version=version)
     for bad in (True, 1.0, "1"):  # finding 4: 1.0 == 1 but is not a version

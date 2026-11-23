@@ -546,7 +546,8 @@ def test_v2_mode_edits_through_the_live_transport(server: ScratchpadServer) -> N
         assert cast(str, steps[label]["prompt"]).startswith("Refused: "), steps[label]["prompt"]
         assert "section template" in cast(str, steps[label]["prompt"]), steps[label]["prompt"]
     props = cast(list[str], steps["select"]["props"])
-    assert props[0] == f"Template #{template_id} (rect_column v1) · locked", props
+    # The client names no version, so the server records the latest: 2 (ADR 0040 Errata 15.1).
+    assert props[0] == f"Template #{template_id} (rect_column v2) · locked", props
     assert "b = 400" in props and 'bar = "Ø20"' in props, props
     # Delete on a child took the subtree; Explode kept every child id and freed it.
     template_draft = cast(Json, steps["template"]["draft"])

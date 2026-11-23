@@ -29,6 +29,7 @@ from apeCAD.section.templates import (
     rect_hollow,
     t_beam,
 )
+from apeCAD.section.templates.holes import MAX_HOLE_VERTICES, MAX_HOLES, CircleHole, RingHole
 
 Json = dict[str, object]
 
@@ -41,6 +42,34 @@ _ROW = "A row of bars: n, at least 2, and bar, "
 _TIE = f"Tie bar, {_BARS}."
 _TIE_SPACING = "Spacing of the ties along the member, in mm."
 _SPACING_MAX = "Largest spacing of the bars along an edge, in mm."
+_HOLES = (
+    "Version 2: holes through the concrete face, each a circle {center_mm: [x, y], "
+    "radius_mm} or a simple ring {ring_mm: [[x, y], ...]} of 3 or more vertices in either "
+    f"orientation; at most {MAX_HOLES} holes and {MAX_HOLE_VERTICES} ring vertices in all. "
+    "A hole must lie inside the outline, clear the cover line, every bar and tie and every "
+    "other hole; contact is refused, by name (ADR 0040 Errata 16, 17)."
+)
+_HOLES_CENTRED = f"{_HOLES} Coordinates are mm offsets from center_mm, so holes move with it."
+_HOLES_RING = f"{_HOLES} Coordinates are in mm in the frame of ring, as ring's are."
+
+
+# The parameter dataclasses of version 2: version 1's and `holes` (ADR 0040 Errata 13.1). The
+# expansion reads the mapping, not these; they give the row its schema.
+
+
+@dataclass(frozen=True)
+class _RectColumnV2(rect_column.RectColumnParams):
+    holes: tuple[CircleHole | RingHole, ...] = ()
+
+
+@dataclass(frozen=True)
+class _PolygonColumnV2(polygon_column.PolygonColumnParams):
+    holes: tuple[CircleHole | RingHole, ...] = ()
+
+
+@dataclass(frozen=True)
+class _RectHollowV2(rect_hollow.RectHollowParams):
+    holes: tuple[CircleHole | RingHole, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -56,8 +85,8 @@ _ROWS = (
     _Row(
         rect_column.TEMPLATE,
         "A rectangular tied column: the ring, its cover guide, bars along each face, one "
-        "corner hoop and 135-135 crossties.",
-        rect_column.RectColumnParams,
+        "corner hoop and 135-135 crossties; version 2 adds holes.",
+        _RectColumnV2,
         {
             "material": _MATERIAL,
             "bar_material": _BAR_MATERIAL,
@@ -73,6 +102,7 @@ _ROWS = (
             "tie_spacing": _TIE_SPACING,
             "crossties": "Crossties between facing interior bars: none, all or alternate "
             "(the even indices, counted from the corner).",
+            "holes": _HOLES_CENTRED,
         },
         {
             "material": "C30", "b": 400, "h": 600, "center_mm": [200, 300], "cover": 40,
@@ -83,8 +113,8 @@ _ROWS = (
     _Row(
         polygon_column.TEMPLATE,
         "A strictly convex polygonal tied column: the ring, its cover guide, bars along every "
-        "edge of the inset ring and one hull hoop.",
-        polygon_column.PolygonColumnParams,
+        "edge of the inset ring and one hull hoop; version 2 adds holes.",
+        _PolygonColumnV2,
         {
             "material": _MATERIAL,
             "bar_material": _BAR_MATERIAL,
@@ -95,6 +125,7 @@ _ROWS = (
             "spacing_max": _SPACING_MAX,
             "tie": _TIE,
             "tie_spacing": _TIE_SPACING,
+            "holes": _HOLES_RING,
         },
         {
             "material": "C30", "ring": [[0, 0], [600, 0], [600, 300], [0, 500]], "cover": 40,
@@ -104,8 +135,9 @@ _ROWS = (
     _Row(
         rect_hollow.TEMPLATE,
         "A rectangular hollow section: the ring with one hole, its cover guide, an outer and "
-        "an inner bar ring and two hoops. Version 1 places no crossties.",
-        rect_hollow.RectHollowParams,
+        "an inner bar ring and two hoops. Version 1 places no crossties; version 2 adds "
+        "holes, after the void (its hole 0).",
+        _RectHollowV2,
         {
             "material": _MATERIAL,
             "bar_material": _BAR_MATERIAL,
@@ -119,6 +151,7 @@ _ROWS = (
             "spacing_max": _SPACING_MAX,
             "tie": _TIE,
             "tie_spacing": _TIE_SPACING,
+            "holes": _HOLES_CENTRED,
         },
         {
             "material": "C30", "b": 600, "h": 800, "t_x": 150, "t_y": 200, "cover": 40,

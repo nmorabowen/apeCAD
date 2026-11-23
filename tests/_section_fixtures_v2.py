@@ -160,9 +160,13 @@ CFT_RECT_PARAMS: dict[str, object] = {
 
 
 def rect_column_template() -> Document:
-    """`rect_column` v1 at the record's oracle: 400 x 600, the same bars as `rect_column_ties`."""
+    """`rect_column` v1 at the record's oracle: 400 x 600, the same bars as `rect_column_ties`.
+
+    Pinned to version 1: version 2 is now the latest, and the fixture records v1 (ADR 0040
+    Errata 15.1, C9-2b).
+    """
     doc = Document()
-    doc.add_section_template("rect_column", RECT_COLUMN_PARAMS)
+    doc.add_section_template("rect_column", RECT_COLUMN_PARAMS, template_version=1)
     return doc
 
 
