@@ -663,7 +663,16 @@ def generated(n: int, seed: int) -> list[Case]:
             extra = {"holes": [*valid_holes(base, off, rng.choice((0, 1)), rng), *holes_]}
         elif stratum == "v1":
             name, value = rng.choice([b for b in BAD_V1 if b[0] in FIELDS[template]])
-            hole = rng.choice((*valid_holes(base, off, 1, rng), rng.choice(BAD_ENTRIES)))
+            # Beside the v1 fault: a valid hole, a shape fault (step 4, named first), or a fault
+            # of step 6 or 7 (the extent, a ring that is not simple, a hole outside the face),
+            # which step 5's v1 fault must be named before.
+            spot = rng.choice(safe_spots(base, off))
+            late = (
+                circle((rng.choice((LIMIT, -LIMIT)) * 2, 0.0), 1.0),
+                ring_entry(turned([(spot[0] + x, spot[1] + y) for x, y in NOT_SIMPLE[0]], rng)),
+                circle((1e5, 0.0), 1.0),
+            )
+            hole = rng.choice((*valid_holes(base, off, 1, rng), rng.choice(BAD_ENTRIES), *late))
             extra = {name: value, "holes": [hole]}
         elif stratum == "simple":
             extra = _not_simple(rng, base, off)
@@ -972,6 +981,13 @@ ROWS: tuple[Row, ...] = (
     Row("v1_before_shape", "v1 before the shapes: a bad b named before a bad hole",
         ((STEP_4 + STEP_5, STEP_5 + STEP_4),),
         "rect_column", {**RC, "b": -1, "holes": [None]}),
+    # Review of #76, finding 1: step 6 moved before step 5, so a hole's extent is named before
+    # v1's own fault. Killed on t_beam (bw -1, a hole at 2^21) and by the generator's v1 stratum.
+    Row("place_before_v1", "the holes placed before v1 runs: a far hole named before a bad bw",
+        (("    plan = v1(v1_params)  # step 5\n    if not shapes:\n        return plan\n",
+          "    if not shapes:\n        return v1(v1_params)\n"),
+         ("    ]  # step 6\n", "    ]  # step 6\n    plan = v1(v1_params)  # step 5, moved\n")),
+        "t_beam", {**params_at("tb", 1234.5)[1], "bw": -1, "holes": [circle((LIMIT * 2, 0), 1)]}),
     Row("keys_unchecked", "no step 1: an unknown key reaches v1, which names it without holes",
         (("    Params(template, data, (*fields, \"holes\"))  # step 1", "    pass  # step 1"),),
         "rect_column", {**RC, "zz": 1, "holes": [None]}),
@@ -1177,15 +1193,26 @@ def test_t_beam_duct_by_hand() -> None:
     # r_min = 8 nor beyond r_max + t = 20 mm: R6. The offset is from center_mm (0, 300).
     duct = refusal("t_beam", {**T_BEAM, "holes": [circle((116.75, 190.0), 25.0)]})
     assert duct.param == "holes[0]" and str(duct).startswith("t_beam: holes[0]: R6: "), duct
-    # A re-entrant corner of the T is (150, 400). A Ø10 hole on its bisector, 35 mm along both
-    # faces, is exactly the 30 mm cover from the underside of the flange and the web's face:
-    # contact, R3. One millimetre further it clears every rule (the hull is 84 mm off, the
-    # nearest slab bar, (212.5, 564), about 130 mm) and lands at the corner plus its offsets.
+    # Near a re-entrant corner of the T, (150, 400): a Ø10 hole 35 mm above the flange's
+    # underside, right of the corner, is exactly the 30 mm cover from that underside: contact,
+    # R3. One millimetre further it clears every rule (the hull is 84 mm off, the nearest slab
+    # bar, (212.5, 564), about 130 mm) and lands at the centre plus its offsets.
     at = refusal("t_beam", {**T_BEAM, "holes": [circle((185.0, 135.0), 5.0)]})
     assert str(at).startswith("t_beam: holes[0]: R3: "), at
     doc, got = drafted("t_beam", {**T_BEAM, "holes": [circle((186.0, 136.0), 5.0)]})
     assert got == [{"kind": "circle", "center_mm": [186.0, 436.0], "radius_mm": 5.0}]
     assert lint_section_v2({i: doc.entity(i) for i in doc.entity_ids()}) == ()
+    # The re-entrant corner itself (review of #76, finding 2). On base `tb`, centred on (0, 0),
+    # the corner is (150, 100). A circle at (141, 140) sits above the web, left of the corner,
+    # so the outline comes nearest at that vertex: |(141, 140) - (150, 100)| = sqrt(81 + 1600)
+    # = 41 exactly. At r 11 the hole is exactly the 30 mm cover from the corner: R3. At r 11
+    # less one ulp it clears it, and every other rule (the hull ~28 mm off, beyond 20).
+    corner = dict(BASES["tb"][1])
+    probe = refusal("t_beam", {**corner, "holes": [circle((141.0, 140.0), 11.0)]})
+    assert str(probe).startswith("t_beam: holes[0]: R3: "), probe
+    inside = math.nextafter(11.0, 0.0)
+    _, got = drafted("t_beam", {**corner, "holes": [circle((141.0, 140.0), inside)]})
+    assert got == [{"kind": "circle", "center_mm": [141.0, 140.0], "radius_mm": inside}]
     # The web, inside the cage, and an overhang, outside it, between the slab bars.
     _, got = drafted("t_beam", {**T_BEAM, "holes": [circle((0, 0), 50), circle((275, 200), 20)]})
     assert [h["center_mm"] for h in got] == [[0.0, 300.0], [275.0, 500.0]]
@@ -1252,6 +1279,8 @@ def test_each_refusal_order_of_13_2_on_c9_2c_templates(name: str) -> None:
         ({key: value, "holes": [None] * 33}, "holes"),  # 3 (the cap) before 4 and 5
         ({key: value, "holes": [{"center_mm": [0, 0]}]}, "holes[0]"),  # 4 before 5
         ({key: value, "holes": [OUTSIDE]}, key),  # 5 before 7
+        ({key: value, "holes": [FAR_OUT]}, key),  # 5 before 6: the extent
+        ({key: value, "holes": [BOW_TIE]}, key),  # 5 before 6: the ring's simplicity
         ({"holes": [FAR_OUT, {"radius_mm": 1}]}, "holes[1]"),  # 4 (every hole) before 6
         ({"holes": [OUTSIDE, BOW_TIE]}, "holes[1].ring_mm"),  # 6 (every hole) before 7
         ({"holes": [OUTSIDE, FAR_OUT]}, "holes[1]"),  # the extent (6) before R1 of hole 0 (7)
