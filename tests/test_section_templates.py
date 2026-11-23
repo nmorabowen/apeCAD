@@ -381,15 +381,25 @@ def test_material_and_bar_material(template: str) -> None:
 @pytest.mark.parametrize("template", sorted(set(ORACLES) - BAR_TEMPLATES))
 @pytest.mark.parametrize("value", ["A630", None, 7])
 def test_a_template_without_bars_refuses_bar_material_by_name(template: str, value: object) -> None:
-    """Owner's ruling Q1 on `cft_*` (apeSection#2 comment 1172): refuse it, given at all."""
-    assert expand(template, ORACLES[template]).bars == ()
+    """Owner's ruling Q1 on `cft_*` (apeSection#2 comment 1172): refuse it, given at all.
+
+    Version 1's words are its own; version 1 is named, because 2 is now the latest. Version 2
+    refuses it by the same name at step 1 of ADR 0040 Errata 13.2, as a key outside v1's
+    fields and `holes`, before any hole or v1 check (C9-2c).
+    """
+    assert expand(template, ORACLES[template], 1).bars == ()
     with pytest.raises(TemplateParamError) as caught:
-        expand(template, _with(ORACLES[template], bar_material=value))
+        expand(template, _with(ORACLES[template], bar_material=value), 1)
     assert caught.value.param == "bar_material"
     assert str(caught.value) == (
         f"{template}: bar_material: {template} v1 places no bars, so it takes no bar_material "
         "(ADR 0040 Errata 11)"
     )
+    with pytest.raises(TemplateParamError) as v2:
+        expand(template, _with(ORACLES[template], bar_material=value, holes=[None]), 2)
+    assert v2.value.param == "bar_material"
+    assert str(v2.value).startswith(f"{template}: bar_material: unknown parameter; known: ")
+    assert str(v2.value).endswith(", holes")
     named = expand(template, _with(ORACLES[template], material="C40"))
     assert named.faces[0].material == "C40"
     with pytest.raises(TemplateParamError, match="material: required"):
@@ -737,11 +747,8 @@ def test_bad_params_are_refused_by_name(
 
 def test_unknown_template_and_version_are_refused_by_name() -> None:
     assert set(TEMPLATES) == set(ORACLES)
-    # Version 2 (holes, ADR 0040 Errata 15) is registered template by template: C9-2b's three.
-    with_holes = {"rect_column", "polygon_column", "rect_hollow"}
-    assert {name: latest_version(name) for name in TEMPLATES} == {
-        name: 2 if name in with_holes else 1 for name in ORACLES
-    }
+    # Version 2 (holes, ADR 0040 Errata 15) of all seven: C9-2b's three and C9-2c's four.
+    assert {name: latest_version(name) for name in TEMPLATES} == dict.fromkeys(ORACLES, 2)
     with pytest.raises(TemplateParamError, match="^box_column: template: unknown template"):
         expand("box_column", {})
     for version in (0, 3):
