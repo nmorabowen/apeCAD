@@ -37,6 +37,7 @@ Paths are under `src/apeCAD/`.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -48,7 +49,6 @@ from apeCAD.section.templates.plan import (
     Plan,
     PlanBoundary,
     PlanCircle,
-    PlanRing,
     TemplateParamError,
 )
 
@@ -94,9 +94,7 @@ def _seg_d2(p: QPoint, a: QPoint, b: QPoint) -> Fraction:
 
 
 def _within_box(p: QPoint, a: QPoint, b: QPoint) -> bool:
-    return min(a[0], b[0]) <= p[0] <= max(a[0], b[0]) and min(a[1], b[1]) <= p[1] <= max(
-        a[1], b[1]
-    )
+    return min(a[0], b[0]) <= p[0] <= max(a[0], b[0]) and min(a[1], b[1]) <= p[1] <= max(a[1], b[1])
 
 
 def _touch(a: QPoint, b: QPoint, c: QPoint, d: QPoint) -> bool:
@@ -113,7 +111,59 @@ def _touch(a: QPoint, b: QPoint, c: QPoint, d: QPoint) -> bool:
     )
 
 
-def _edges(points: Sequence[QPoint]) -> tuple[tuple[QPoint, QPoint], ...]:
+Edge = tuple[QPoint, QPoint]
+Box = tuple[Fraction, Fraction, Fraction, Fraction]
+"""(x_min, y_min, x_max, y_max), exact."""
+FBox = tuple[float, float, float, float]
+"""(x_min, y_min, x_max, y_max) in floats, for the screens below."""
+
+
+# --- the screens: exact, and in floats --------------------------------------------------
+#
+# A screen skips a pair only when the pair is already known to be more than `gap` apart along
+# x or along y, so it never changes a verdict. It compares floats, and stays exact because
+# (a) a box of stored floats is compared as those floats, which a float comparison decides
+# exactly; and (b) a box grown by a gap is computed in `Fraction` and rounded outward to
+# floats (`_down`, `_up`), so the float box contains the exact one: whatever lies outside it
+# lies outside the exact one. That is the proven bound Errata 17.5 asks of a float filter.
+
+
+def _down(value: Fraction) -> float:
+    """The greatest float at or below `value`."""
+    f = float(value)
+    return f if f <= value else math.nextafter(f, -math.inf)
+
+
+def _up(value: Fraction) -> float:
+    """The least float at or above `value`."""
+    f = float(value)
+    return f if f >= value else math.nextafter(f, math.inf)
+
+
+def _grown(box: Box, gap: Fraction) -> FBox:
+    """`box` grown by `gap` on every side, rounded outward to floats."""
+    return (_down(box[0] - gap), _down(box[1] - gap), _up(box[2] + gap), _up(box[3] + gap))
+
+
+def _overlap(a: FBox, b: FBox) -> bool:
+    """The closed boxes meet. False proves them apart."""
+    return a[0] <= b[2] and b[0] <= a[2] and a[1] <= b[3] and b[1] <= a[3]
+
+
+def _fbox(points: Sequence[QPoint]) -> FBox:
+    """The box of points that are stored floats, as those floats (exact)."""
+    xs, ys = [float(p[0]) for p in points], [float(p[1]) for p in points]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _point_box(p: QPoint) -> Box:
+    return (p[0], p[1], p[0], p[1])
+
+
+# --- regions ----------------------------------------------------------------------------
+
+
+def _edges(points: Sequence[QPoint]) -> tuple[Edge, ...]:
     n = len(points)
     return tuple((points[i], points[(i + 1) % n]) for i in range(n))
 
@@ -125,13 +175,33 @@ class _Disc:
     c: QPoint
     r: Fraction
 
+    @property
+    def box(self) -> Box:
+        (x, y), r = self.c, self.r
+        return (x - r, y - r, x + r, y + r)
+
 
 @dataclass(frozen=True, slots=True)
 class _Poly:
-    """The closed region of a simple ring, in either orientation."""
+    """The closed region of a simple ring, in either orientation, with float boxes."""
 
     pts: tuple[QPoint, ...]
-    edges: tuple[tuple[QPoint, QPoint], ...]
+    edges: tuple[Edge, ...]
+    box: Box
+    fbox: FBox
+    edge_fboxes: tuple[FBox, ...]
+
+
+def _poly(points: Sequence[QPoint]) -> _Poly:
+    edges = _edges(points)
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    return _Poly(
+        tuple(points),
+        edges,
+        (min(xs), min(ys), max(xs), max(ys)),
+        _fbox(points),
+        tuple(_fbox(e) for e in edges),
+    )
 
 
 _Region = _Disc | _Poly
@@ -143,21 +213,39 @@ def _region(boundary: PlanBoundary, what: str) -> _Region:
     pts = tuple(_qp(p, f"{what} vertex {i}") for i, p in enumerate(boundary.points_mm))
     if len(pts) < 3:
         raise DocumentError(f"{what}: a ring needs at least 3 vertices, got {len(pts)}")
-    return _Poly(pts, _edges(pts))
+    return _poly(pts)
+
+
+def _near(poly: _Poly, box: Box, gap: Fraction) -> list[int]:
+    """Indices of the edges of `poly` that the screen cannot prove more than `gap` from `box`."""
+    reach = _grown(box, gap)
+    return [i for i, b in enumerate(poly.edge_fboxes) if _overlap(b, reach)]
 
 
 def _locate(p: QPoint, poly: _Poly) -> int:
-    """1 when p is inside the ring's region, 0 on its boundary, -1 outside (exact crossings)."""
+    """1 when p is inside the ring's region, 0 on its boundary, -1 outside (exact crossings).
+
+    A ray goes from p towards +x; the parity of the edges it crosses, half-open in y, tells
+    inside from outside. Coordinates are compared as their stored floats (exact); only an
+    edge that spans p in x needs an orientation.
+    """
+    px, py = float(p[0]), float(p[1])
     inside = False
-    for a, b in poly.edges:
-        if _cross(a, b, p) == 0 and _within_box(p, a, b):
-            return 0
-        if (a[1] > p[1]) != (b[1] > p[1]):
-            # The edge straddles the horizontal line through p; it crosses that line to the
-            # right of p when p lies to the left of the upward-directed edge.
+    for (a, b), (x0, y0, x1, y1) in zip(poly.edges, poly.edge_fboxes, strict=True):
+        if (float(a[1]) > py) != (float(b[1]) > py):  # the edge straddles the ray's line
+            if x0 > px:
+                inside = not inside  # wholly to the right of p: crossed, and p is not on it
+                continue
+            if x1 < px:
+                continue  # wholly to the left
             side = _cross(a, b, p)
+            if side == 0:
+                return 0  # on the line, and within the edge's span in y: on the edge
+            # It crosses to the right of p when p lies to the left of the upward edge.
             if (side > 0) == (b[1] > a[1]):
                 inside = not inside
+        elif x0 <= px <= x1 and y0 <= py <= y1 and _cross(a, b, p) == 0:
+            return 0
     return 1 if inside else -1
 
 
@@ -168,8 +256,30 @@ def _poly_d2(p: QPoint, poly: _Poly) -> Fraction:
     return min(_seg_d2(p, a, b) for a, b in poly.edges)
 
 
-def _edges_touch(e1: Sequence[tuple[QPoint, QPoint]], e2: Sequence[tuple[QPoint, QPoint]]) -> bool:
-    return any(_touch(a, b, c, d) for a, b in e1 for c, d in e2)
+def _touches(h: _Poly, o: _Poly, edges: Sequence[int]) -> bool:
+    """Some edge of h meets one of the edges `edges` of o (screened by their float boxes)."""
+    return any(
+        _overlap(hb, o.edge_fboxes[j]) and _touch(a, b, *o.edges[j])
+        for (a, b), hb in zip(h.edges, h.edge_fboxes, strict=True)
+        for j in edges
+    )
+
+
+def _all_far(points: Sequence[QPoint], poly: _Poly, edges: Sequence[int], gap: Fraction) -> bool:
+    """Every point is more than `gap` from each of the edges `edges` of `poly`."""
+    g2 = gap * gap
+    for v in points:
+        reach = _grown(_point_box(v), gap)
+        for j in edges:
+            if _overlap(reach, poly.edge_fboxes[j]) and not _seg_d2(v, *poly.edges[j]) > g2:
+                return False
+    return True
+
+
+def _ends(poly: _Poly, edges: Sequence[int]) -> list[QPoint]:
+    """The vertices on the edges `edges` of `poly`."""
+    n = len(poly.pts)
+    return [poly.pts[k] for k in sorted({k for j in edges for k in (j, (j + 1) % n)})]
 
 
 # --- clearances: each says whether a distance is strictly greater than a gap -----------------
@@ -180,10 +290,12 @@ def _clear_point(h: _Region, p: QPoint, gap: Fraction) -> bool:
     if isinstance(h, _Disc):
         reach = h.r + gap
         return _d2(h.c, p) > reach * reach
-    if _locate(p, h) >= 0:
-        return False
-    g2 = gap * gap
-    return all(_seg_d2(p, a, b) > g2 for a, b in h.edges)
+    reach = _grown(_point_box(p), gap)
+    if not _overlap(reach, h.fbox):
+        return True  # outside h's box by more than gap
+    # No edge near p does not prove p clear: p may lie deep inside h.
+    near = [j for j, b in enumerate(h.edge_fboxes) if _overlap(b, reach)]
+    return _locate(p, h) < 0 and _all_far((p,), h, near, gap)
 
 
 def _clear_segment(h: _Region, a: QPoint, b: QPoint, gap: Fraction) -> bool:
@@ -191,12 +303,13 @@ def _clear_segment(h: _Region, a: QPoint, b: QPoint, gap: Fraction) -> bool:
     if isinstance(h, _Disc):
         reach = h.r + gap
         return _seg_d2(h.c, a, b) > reach * reach
-    if _edges_touch(h.edges, ((a, b),)) or _locate(a, h) >= 0:
+    seg = _poly((a, b))  # a two-point "ring": its edges are ab and ba
+    if not _overlap(_grown(seg.box, gap), h.fbox):
+        return True  # outside h's box by more than gap
+    near = _near(h, seg.box, gap)  # may be empty with the segment deep inside h
+    if _touches(seg, h, near) or _locate(a, h) >= 0:
         return False
-    g2 = gap * gap
-    return all(_seg_d2(v, a, b) > g2 for v in h.pts) and all(
-        _seg_d2(a, c, d) > g2 and _seg_d2(b, c, d) > g2 for c, d in h.edges
-    )
+    return _all_far(_ends(h, near), seg, (0,), gap) and _all_far((a, b), h, near, gap)
 
 
 def _clear_region(h: _Region, s: _Region, gap: Fraction) -> bool:
@@ -205,39 +318,38 @@ def _clear_region(h: _Region, s: _Region, gap: Fraction) -> bool:
         return _clear_point(h, s.c, s.r + gap)
     if isinstance(h, _Disc):
         return _clear_point(s, h.c, h.r + gap)
-    if _edges_touch(h.edges, s.edges):
+    if not _overlap(_grown(h.box, gap), s.fbox):
+        return True  # the boxes are more than gap apart
+    near = _near(s, h.box, gap)  # only these edges of s can come within `gap` of h
+    if _touches(h, s, near):
         return False
     # No boundaries meet, so the regions are disjoint unless one holds the other.
     if _locate(h.pts[0], s) >= 0 or _locate(s.pts[0], h) >= 0:
         return False
-    g2 = gap * gap
-    return all(_seg_d2(v, a, b) > g2 for v in h.pts for a, b in s.edges) and all(
-        _seg_d2(v, a, b) > g2 for v in s.pts for a, b in h.edges
-    )
+    every = range(len(h.edges))
+    return _all_far(h.pts, s, near, gap) and _all_far(_ends(s, near), h, every, gap)
 
 
 def _interior(h: _Region, o: _Region) -> bool:
     """h lies in the interior of o: h is inside o and d(h, boundary of o) > 0."""
     if isinstance(o, _Disc):
         return _within_point(h, o.c, o.r)
+    near = _near(o, h.box, Fraction(0))  # only these edges of o can meet h
     if isinstance(h, _Disc):
-        r2 = h.r * h.r
-        return _locate(h.c, o) > 0 and all(_seg_d2(h.c, a, b) > r2 for a, b in o.edges)
+        return _locate(h.c, o) > 0 and _all_far((h.c,), o, near, h.r)
     # Boundaries apart and one vertex inside: o is a simple ring, so all of h is inside.
-    return not _edges_touch(h.edges, o.edges) and _locate(h.pts[0], o) > 0
+    return not _touches(h, o, near) and _locate(h.pts[0], o) > 0
 
 
 def _clear_outline(h: _Region, o: _Region, gap: Fraction) -> bool:
     """d(h, boundary of o) > gap, for an h already in the interior of o (R1 holds)."""
     if isinstance(o, _Disc):
         return _within_point(h, o.c, o.r - gap)
+    near = _near(o, h.box, gap)  # an edge the screen proves further than `gap` is clear
     if isinstance(h, _Disc):
-        reach = h.r + gap
-        return all(_seg_d2(h.c, a, b) > reach * reach for a, b in o.edges)
-    g2 = gap * gap
-    return all(_seg_d2(v, a, b) > g2 for v in h.pts for a, b in o.edges) and all(
-        _seg_d2(v, a, b) > g2 for v in o.pts for a, b in h.edges
-    )
+        return _all_far((h.c,), o, near, h.r + gap)
+    every = range(len(h.edges))
+    return _all_far(h.pts, o, near, gap) and _all_far(_ends(o, near), h, every, gap)
 
 
 def _within_point(h: _Region, centre: QPoint, s: Fraction) -> bool:
@@ -304,7 +416,7 @@ def _hull(points: Sequence[QPoint]) -> _Poly:
     """
     ordered = sorted(set(points))
     if len(ordered) < 3:
-        return _Poly(tuple(ordered), _edges(ordered))
+        return _poly(ordered)
     chain: list[QPoint] = []
     for sweep in (ordered, ordered[::-1]):
         part: list[QPoint] = []
@@ -313,7 +425,7 @@ def _hull(points: Sequence[QPoint]) -> _Poly:
                 part.pop()
             part.append(p)
         chain.extend(part[:-1])
-    return _Poly(tuple(chain), _edges(chain))
+    return _poly(chain)
 
 
 def _read_plan(plan: Plan) -> _Exact:
@@ -344,10 +456,13 @@ def _read_plan(plan: Plan) -> _Exact:
         ),
         hoops=tuple(hoops),
         ties=tuple(
-            (_qp(t.center_mm, f"plan circular tie {i} centre"), _q(t.centerline_radius_mm),
-             _q(t.diameter_mm))
+            (
+                _qp(t.center_mm, f"plan circular tie {i} centre"),
+                _q(t.centerline_radius_mm),
+                _q(t.diameter_mm),
+            )
             for i, t in enumerate(plan.circular_ties)
-        ),  # fmt: skip
+        ),
     )
 
 
@@ -414,9 +529,7 @@ def _r6_hoops(s: _Exact, holes: Sequence[_Region], k: int) -> str | None:
 def _r7_circular_ties(s: _Exact, holes: Sequence[_Region], k: int) -> str | None:
     for i, (centre, rho, t) in enumerate(s.ties):
         inner, outer = rho - t / 2, rho + t / 2
-        if not _within_point(holes[k], centre, inner) and not _clear_point(
-            holes[k], centre, outer
-        ):
+        if not _within_point(holes[k], centre, inner) and not _clear_point(holes[k], centre, outer):
             return (
                 f"it meets circular tie {i}: it is neither closer than {float(inner):g} mm to "
                 f"its centre nor more than {float(outer):g} mm from it"
@@ -508,9 +621,10 @@ def exact_simplicity_fault(ring: Sequence[Point2]) -> str | None:
         seen[p] = i
     for i in range(n):
         a, b, c = pts[i], pts[(i + 1) % n], pts[(i + 2) % n]
-        if _cross(a, b, c) == 0 and (a[0] - b[0]) * (c[0] - b[0]) + (a[1] - b[1]) * (
-            c[1] - b[1]
-        ) > 0:
+        if (
+            _cross(a, b, c) == 0
+            and (a[0] - b[0]) * (c[0] - b[0]) + (a[1] - b[1]) * (c[1] - b[1]) > 0
+        ):
             return f"edges {i} and {(i + 1) % n} overlap"
         for j in range(i + 2, n):
             if i == 0 and j == n - 1:
