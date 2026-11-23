@@ -10,7 +10,9 @@ polygon_column: C9-2b (apeSection#204).
   R1 to R7 with the truth's `Truth`. It returns the refusal's parameter and its kind, or the
   plan the step must return: v1's plan with the stored holes appended.
 - *One seeded, stratified generator* (`generated`) deals cases round strata: every shape fault,
-  both caps either side of their limit, the malformed entries the caps must not count, the
+  alone and several in one entry (extra keys beside a form, a bad centre with a bad radius, a
+  short ring with bad vertices, a ring over the cap with an extra key), both caps either side
+  of their limit, the malformed entries the caps must not count and the keyed ones they must, the
   extent either side of its limit, the float rings, v1 and unknown-key faults beside hole
   faults, and holes aimed at every limit R1 to R6 these templates draw (C9-2a's anchors) at
   contact, inside, outside, straddling, across, the float beside contact and +-1e-12 to +-1
@@ -412,6 +414,11 @@ BAD_ENTRIES: tuple[object, ...] = (
     {"ring_mm": []}, {"ring_mm": [[0, 0]]}, {"ring_mm": [[0, 0], [1, 1]]},
     *({"ring_mm": [[0, 0], [1, 0], p]} for p in BAD_POINTS),
     {"ring_mm": [[0, 0], [NAN, 0], [1, 1], "x"]},
+    # Three refusal orders of 16.1 and 16.2 (round 2 of apeCAD #75): a ring over the vertex cap
+    # with an unknown key is counted (`holes`, not `holes[0].zz`); a circle names its centre
+    # before its radius; a ring names its count before its vertices.
+    {"ring_mm": [[0, 0]] * 300, "zz": 1}, {"center_mm": None, "radius_mm": 0},
+    {"ring_mm": [[0, 0], "x"]},
 )  # fmt: skip
 BAD_LISTS: tuple[object, ...] = (None, "abc", 5, {"center_mm": [0, 0], "radius_mm": 1}, True)
 BAD_V1 = (("b", -1), ("nx", 1), ("bar", "Ø99"), ("cover", 0), ("material", ""))
@@ -425,12 +432,44 @@ class Case:
     rule: int = 0  # an aimed case: the rule its last hole was aimed at
 
 
+EXTRA_KEYS = ("zz", "a", "Ring_mm", "radius", "q")
+GOOD_VERTICES: tuple[object, ...] = ([0, 0], [1, 0], [0, 1], [2.5, 3.0])
+
+
+def compound(rng: random.Random) -> Json:
+    """An entry whose fields are drawn apart, so several may be bad at once: a circle with its
+    centre and radius each good or bad, or a ring of 0 to 300 vertices each good or bad (short
+    rings with bad vertices, rings over the vertex cap); and, beside either form, sometimes one
+    or two unknown keys. The first fault 13.2 and 16.1 name is the refusal."""
+    entry: Json
+    if rng.random() < 0.5:
+        entry = {
+            "center_mm": rng.choice(([0.5, 0.5], *BAD_POINTS)),
+            "radius_mm": rng.choice((1.0, *BAD_RADII)),
+        }
+    else:
+        n = rng.choice((0, 1, 2, 2, 3, 4, 57, 300))
+        bad = rng.random() < 0.6
+        entry = {"ring_mm": [
+            rng.choice(BAD_POINTS) if bad and rng.random() < 0.5 else rng.choice(GOOD_VERTICES)
+            for _ in range(n)
+        ]}  # fmt: skip
+    if rng.random() < 0.4:
+        for key in rng.sample(EXTRA_KEYS, rng.choice((1, 2))):
+            entry[key] = rng.choice((1, None, [0, 0]))
+    return entry
+
+
+def bad_entry(rng: random.Random) -> object:
+    return rng.choice(BAD_ENTRIES) if rng.random() < 0.5 else compound(rng)
+
+
 def _shape(rng: random.Random, base: str, off: float) -> Json:
     good = valid_holes(base, off, rng.choice((0, 1, 2, 3)), rng)
     k = rng.randrange(len(good) + 1)
-    bad = [*good[:k], rng.choice(BAD_ENTRIES), *good[k:]]
+    bad = [*good[:k], bad_entry(rng), *good[k:]]
     if rng.random() < 0.3:  # a later fault too: the earlier one is named
-        bad.append(rng.choice(BAD_ENTRIES))
+        bad.append(bad_entry(rng))
     return {"holes": bad}
 
 
@@ -450,10 +489,12 @@ def _caps(rng: random.Random, base: str, off: float) -> Json:
                for i, n in enumerate(sizes)]  # fmt: skip
         out += [circle(p, 1.0) for p in rng.sample(spots[1::7], rng.choice((0, 5)))]
         return {"holes": out}
-    if pick == "uncounted":  # only list-valued ring_mm of object entries count
-        junk = rng.choice((
+    if pick == "uncounted":  # only list-valued ring_mm of object entries count, whatever else
+        junk = rng.choice((  # they hold: the last four are counted (or hold no ring)
             {"ring_mm": "x" * 300}, {"ring_mm": {"k": [[0, 0]] * 300}},
             [["ring_mm", [[0, 0]] * 300]], {"center_mm": [0, 0], "radius_mm": 1},
+            {"ring_mm": [[0, 0]] * 300, "zz": 1}, {"ring_mm": [[0, 0]] * 57, "zz": 1},
+            {"center_mm": None, "radius_mm": 0}, {"ring_mm": [[0, 0], "x"]},
         ))  # fmt: skip
         n = rng.choice((200, 256))
         return {"holes": [ring_entry(regular(n, spots[0], 0.6)), junk]}
@@ -723,6 +764,14 @@ RING_LIST = "\n        return None\n    return cast(Sequence[object], ring)"
 UNKNOWN_KEY = '\n        raise TemplateParamError(\n            template, f"{where}.{unknown[0]}"'
 RADIUS = 'number(p, "radius_mm", hole["radius_mm"])'
 GIVEN_SIGN = "None if is_simple(ring) and (signed_area(ring) < 0) == (twice < 0) else 'x'"
+RING_VALUES = "    if not isinstance(entry, Mapping):\n        return None"
+CENTRE_CHECK = '        center = point_value(p, "center_mm", hole["center_mm"])\n'
+RADIUS_CHECK = f'        radius = positive(p, "radius_mm", {RADIUS})\n'
+COUNT_CHECK = (
+    "    if len(ring) < 3:\n"
+    '        raise p.error("ring_mm", f"needs 3 or more vertices, got {len(ring)}")\n'
+)
+VERTICES = 'tuple(point_value(p, f"ring_mm[{i}]", v) for i, v in enumerate(ring))'
 ROW_OF_33 = [circle((x * 4.0, 0.5), 1.0) for x in range(-16, 17)]
 
 ROWS: tuple[Row, ...] = (
@@ -749,6 +798,9 @@ ROWS: tuple[Row, ...] = (
     Row("cap_after_shape", "the caps after the shapes: a malformed entry among 33 is named",
         ((STEP_3 + STEP_4, STEP_4 + STEP_3),),
         "rect_column", {**RC, "holes": [None] * 33}),
+    Row("cap_sole_ring_key", "ring_mm counted only where it is the sole key (16.2 carry-over 1)",
+        ((RING_VALUES, RING_VALUES.replace("):", ") or len(entry) != 1:", 1)),),
+        "rect_column", {**RC, "holes": [{"ring_mm": [[0, 0]] * 300, "zz": 1}]}),
     # --- the order of the steps (13.2) -------------------------------------------------------
     Row("v1_before_shape", "v1 before the shapes: a bad b named before a bad hole",
         ((STEP_4 + STEP_5, STEP_5 + STEP_4),),
@@ -783,6 +835,13 @@ ROWS: tuple[Row, ...] = (
     Row("ring_two", "a two-vertex ring reaches placement",
         (("    if len(ring) < 3:\n", "    if len(ring) < 2:\n"),),
         "rect_column", {**RC, "holes": [{"ring_mm": [[0, 0], [1, 1]]}]}),
+    Row("radius_before_centre", "a circle's radius checked before its centre (16.1's row order)",
+        ((CENTRE_CHECK + RADIUS_CHECK, RADIUS_CHECK + CENTRE_CHECK),),
+        "rect_column", {**RC, "holes": [{"center_mm": None, "radius_mm": 0}]}),
+    Row("vertices_before_count", "a ring's vertices checked before its count (16.1's ring row)",
+        ((COUNT_CHECK + f"    return RingHole({VERTICES})",
+          f"    points = {VERTICES}\n" + COUNT_CHECK + "    return RingHole(points)"),),
+        "rect_column", {**RC, "holes": [{"ring_mm": [[0, 0], "x"]}]}),
     Row("vertex_name", "a bad vertex named as the whole ring",
         (("point_value(p, f\"ring_mm[{i}]\", v)", "point_value(p, \"ring_mm\", v)"),),
         "rect_column", {**RC, "holes": [{"ring_mm": [[0, 0], [1, 0], "x"]}]}),
