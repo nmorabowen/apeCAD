@@ -16,6 +16,33 @@ from apeCAD.scratchpad.server import STATIC_DIR, ScratchpadServer
 
 CSS = STATIC_DIR / "css" / "app.css"
 _HEX = re.compile(r"#[0-9a-fA-F]{3,8}\b|0x[0-9a-fA-F]{6}\b")
+
+
+def _strip_js_comments(src: str) -> str:
+    """Drop ``//`` and ``/* */`` comments; leave string contents (``'http://x'``) intact."""
+    out: list[str] = []
+    i, n = 0, len(src)
+    while i < n:
+        c = src[i]
+        if c in "'\"`":
+            j = i + 1
+            while j < n and src[j] != c:
+                j += 2 if src[j] == "\\" else 1
+            out.append(src[i : j + 1])
+            i = j + 1
+        elif src.startswith("//", i):
+            j = src.find("\n", i)
+            i = n if j < 0 else j
+        elif src.startswith("/*", i):
+            j = src.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+            out.append(" ")
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
 # Retired values from specs/ape-design.md §1.1 "Retired raw values".
 _RETIRED = {
     "#1d2229", "#252b33", "#10141a", "#0d1014", "#4a90d9", "0x4a90d9", "0x6aa8e8",
@@ -116,11 +143,27 @@ def test_client_keeps_no_retired_colour() -> None:
     ]
     for path in files:
         assert "vendor" not in path.parts
-        found = set(_HEX.findall(path.read_text(encoding="utf-8")))
+        found = set(_HEX.findall(_strip_js_comments(path.read_text(encoding="utf-8"))))
         assert not found & _RETIRED, (path.name, sorted(found & _RETIRED))
         if path.suffix == ".js" and path.name not in _ALLOWED_HEX:
             assert not found, (path.name, sorted(found))
     assert "<style>" not in (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+
+def test_strip_js_comments_selftest() -> None:
+    def hexes(src: str) -> list[str]:
+        return _HEX.findall(_strip_js_comments(src))
+
+    assert hexes("const a = 1; // see #250 for the epoch\n") == []
+    assert hexes("/* #abc and #250 */ const a = 1;") == []
+    assert hexes("/*\n * #abc\n */\nconst a = 1;") == []
+    assert hexes("const c = '#abc';") == ["#abc"]
+    assert hexes('const c = "#aabbcc"; // #250') == ["#aabbcc"]
+    assert hexes("const c = 0xaabbcc; /* x */") == ["0xaabbcc"]
+    # `//` inside a string or URL is not a comment: the colour after it is still seen.
+    assert hexes("const u = 'http://x/#abc';") == ["#abc"]
+    assert hexes("const u = 'http://x'; const c = '#abc';") == ["#abc"]
+    assert hexes("const s = 'it\\'s // #abc';") == ["#abc"]
 
 
 def _srgb_to_linear(u8: int) -> float:
