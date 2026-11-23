@@ -8,10 +8,12 @@ drops it by `opEpoch`) but the next `sync()` or edit ran against the empty docum
 faces went from 1 to 0 with `stale` false.
 
 The server here is `transport.handle` behind a gate: `/hold` arms the next request of one action
-to wait until `/release` opens it. The scripts release a reply only after the change it must lose
-to has landed, so the order of replies is fixed by awaited events, never by a wall-clock wait
-(the fixed 80 ms wait of apeSection#92 was a flake). The server also logs the document and the
-redo stack each request carried, which is the transport's state as it sent them."""
+to wait until `/release` opens it, and `/arrived` answers once that held request has reached the
+server, so a script can send the next request only after it. The scripts release a reply only
+after the change it must lose to has landed, so the order of replies is fixed by awaited events,
+never by a wall-clock wait (the fixed 80 ms wait of apeSection#92 was a flake). The server also
+logs the document and the redo stack each request carried, which is the transport's state as it
+sent them."""
 
 from __future__ import annotations
 
@@ -38,8 +40,9 @@ class _GatedServer(ThreadingHTTPServer):
     def __init__(self) -> None:
         super().__init__(("127.0.0.1", 0), _Handler)
         self.lock = threading.Lock()
-        self.armed: dict[str, list[threading.Event]] = {}
-        self.gates: dict[int, threading.Event] = {}
+        self.armed: dict[str, list[int]] = {}  # action -> gates for its next requests
+        self.released: dict[int, threading.Event] = {}
+        self.reached: dict[int, threading.Event] = {}  # the held request reached the server
         self.log: list[tuple[str, int, int]] = []  # action, ops in the document sent, redo sent
 
 
@@ -63,24 +66,28 @@ class _Handler(BaseHTTPRequestHandler):
         gated = self.server
         if self.path == "/hold":
             with gated.lock:
-                gate = threading.Event()
-                gid = len(gated.gates) + 1
-                gated.gates[gid] = gate
-                gated.armed.setdefault(str(body["action"]), []).append(gate)
+                gid = len(gated.released) + 1
+                gated.released[gid] = threading.Event()
+                gated.reached[gid] = threading.Event()
+                gated.armed.setdefault(str(body["action"]), []).append(gid)
             self._reply(200, {"gate": gid})
         elif self.path == "/release":
-            with gated.lock:
-                gated.gates[cast(int, body["gate"])].set()
+            gated.released[cast(int, body["gate"])].set()
             self._reply(200, {"released": body["gate"]})
+        elif self.path == "/arrived":
+            arrived = gated.reached[cast(int, body["gate"])].wait(HOLD_LIMIT_S)
+            self._reply(200 if arrived else 500, {"arrived": arrived})
         else:
             action = str(body.get("action"))
             document = cast(dict[str, list[object]] | None, body.get("document"))
             redo = cast(list[object] | None, body.get("redo"))
             with gated.lock:
                 queue = gated.armed.get(action) or []
-                gate = queue.pop(0) if queue else None
+                gid = queue.pop(0) if queue else None
                 gated.log.append((action, len((document or {}).get("ops") or []), len(redo or [])))
-            if gate is not None and not gate.wait(HOLD_LIMIT_S):
+            if gid is not None:
+                gated.reached[gid].set()
+            if gid is not None and not gated.released[gid].wait(HOLD_LIMIT_S):
                 self._reply(500, {"ok": False, "error": f"held {action} never released"})
                 return
             response = handle(body)
@@ -112,6 +119,7 @@ def _run(gated: _GatedServer, body: str) -> None:
       body: JSON.stringify(body) }})).json();
     const hold = async (action) => (await post("/hold", {{ action }})).gate;
     const release = (gate) => post("/release", {{ gate }});
+    const arrived = async (gate) => assert.ok((await post("/arrived", {{ gate }})).arrived);
     const http = () => httpTransport(BASE + "/transport");
     // The editor fires the opening scene and drops its promise: count what is in flight.
     const tracked = (inner) => {{
@@ -151,6 +159,7 @@ def test_late_scene_reply_does_not_reset_the_transport_document(gated: _GatedSer
     const t = http();
     const gate = await hold("scene");
     const late = t({ action: "scene" });
+    await arrived(gate); // the server reads the scene first: the log order below is fixed
     const applied = await t({ action: "apply", op: OUTLINE });
     assert.equal(faces(applied.scene), 1);
     await release(gate);
@@ -263,4 +272,61 @@ def test_in_order_sequence_is_unchanged(gated: _GatedServer) -> None:
         ("scene", 1, 1),
         ("redo", 1, 1),
         ("scene", 2, 0),
+    ]
+
+
+def test_two_changes_in_flight_apply_in_arrival_order(gated: _GatedServer) -> None:
+    """A change reply moves the state as before, even when an older one lands after a newer
+    one: both were built on the same document, and the v1 editor paints them in arrival order,
+    so the transport keeps the last to land (`[faces, bars] = [1, 0]`) and matches the screen.
+    One op is lost either way (PR #78 "Deliberately unchanged"); a guard that also held change
+    replies to `landedChanges` would keep the bar and leave the screen out of step."""
+    _run(gated, """
+    const t = tracked(http());
+    const ed = create({}, { transport: t });
+    await t.settled();
+    const gate = await hold("apply");
+    const first = ed.applyOp(OUTLINE);
+    await arrived(gate); // OUTLINE is the held apply, never BAR
+    await ed.applyOp(BAR);
+    assert.deepEqual([faces(ed.getScene()), ed.getScene().bars.length], [0, 1]);
+    await release(gate);
+    await first;
+    const screen = [faces(ed.getScene()), ed.getScene().bars.length];
+    assert.deepEqual(screen, [1, 0], "the editor paints the last change to land");
+    const synced = await ed.sync();
+    assert.ok(!synced.stale);
+    assert.deepEqual([faces(ed.getScene()), ed.getScene().bars.length], screen,
+      "the transport did not keep the last change to land, which is on screen");
+    ed.dispose();
+    """)
+    assert [entry[:2] for entry in gated.log] == [
+        ("scene", 0), ("apply", 0), ("apply", 0), ("scene", 1),
+    ]
+
+
+def test_late_scene_reply_does_not_undo_an_undo(gated: _GatedServer) -> None:
+    """A scene sent before an undo and answered after it: the transport keeps the undone
+    document and its redo stack, so the next scene and the redo see them."""
+    _run(gated, """
+    const t = http();
+    await t({ action: "apply", op: OUTLINE });
+    await t({ action: "apply", op: BAR });
+    const gate = await hold("scene");
+    const late = t({ action: "scene" });
+    await arrived(gate);
+    const undone = await t({ action: "undo" });
+    assert.equal(undone.scene.bars.length, 0);
+    await release(gate);
+    const stale = await late;
+    assert.equal(stale.scene.bars.length, 1, "the late reply is the document it read");
+    const next = await t({ action: "scene" });
+    assert.equal(next.scene.bars.length, 0, "the late scene reply undid the undo");
+    assert.equal(next.redo.length, 1, "the late scene reply dropped the redo stack");
+    const redone = await t({ action: "redo" });
+    assert.equal(redone.scene.bars.length, 1);
+    """)
+    assert gated.log == [
+        ("apply", 0, 0), ("apply", 1, 0), ("scene", 2, 0), ("undo", 2, 0),
+        ("scene", 1, 1), ("redo", 1, 1),
     ]
