@@ -257,9 +257,10 @@ FAMILIES: tuple[Family, ...] = (
     Family("rc-tie-horizontal", 5, "rc_all", 1, 1, bar_plus(3, 1, Q(5)), Q(70), ALL),
     # R6 hoops: inside the cage (r_min), outside it (r_max + t).
     Family("rc-hoop-inside", 6, "rc", 0, -1, bar_plus(3, 0, Q(10)), Q(120),
-           (*ALL, ("circle", 25.0))),
+           (*ALL, ("circle", 25.0), ("circle", 10.5), ("circle", 10.25))),
     Family("rh-inner-hoop-outside", 6, "rh", 0, 1, bar_plus(19, 0, Q(18)), Q(171, 2), SMALL),
-    Family("rh-outer-hoop-inside", 6, "rh", 0, -1, bar_plus(5, 0, Q(8)), Q(171, 2), SMALL),
+    Family("rh-outer-hoop-inside", 6, "rh", 0, -1, bar_plus(5, 0, Q(8)), Q(171, 2),
+           (*SMALL, ("circle", 8.5), ("circle", 8.25))),
     # R7 circular ties: the spiral's inner face, and its outer face without the cover guide.
     Family("cc-spiral-inside", 7, "cc", 1, -1, tie_face(1, -1), Q(0), ROUND),
     Family("cc-spiral-outside", 7, "cc", 1, 1, tie_face(1, 1), Q(0),
@@ -309,12 +310,67 @@ NORMAL_FAMILIES: tuple[NormalFamily, ...] = (
     NormalFamily("pc-inclined-hoop-out", 6, "pc", hoop_edge(2), 0.625, 20.0, 1,
                  (("circle", 2.5), ("diamond", 2.5)), strip=("cover_guides",)),
     NormalFamily("pc-inclined-hoop-in", 6, "pc", hoop_edge(2), 0.625, 10.0, -1,
-                 (("circle", 12.5), ("diamond", 12.5))),
+                 (("circle", 12.5), ("circle", 10.5), ("diamond", 12.5))),
     # t_beam's right stirrup leg, 110 mm below the top (the hand case's place): both bands.
     NormalFamily("tb-leg-out", 6, "tb", hoop_edge(2), 440 / 502, 20.0, 1,
                  (("circle", 12.5), ("circle", 25.0), ("diamond", 12.5))),
     NormalFamily("tb-leg-in", 6, "tb", hoop_edge(2), 440 / 502, 8.0, -1,
-                 (("circle", 12.5), ("circle", 25.0), ("diamond", 12.5))),
+                 (("circle", 12.5), ("circle", 25.0), ("circle", 8.5), ("diamond", 12.5))),
+)  # fmt: skip
+
+
+Corner = Callable[[Plan], tuple[float, float]]
+
+
+@dataclass(frozen=True)
+class CornerFamily:
+    """Holes that approach a convex corner along its diagonal, a tilted ring's edge facing it.
+
+    The corner is a point of the plan; `out` gives the signs of the diagonal (all in floats).
+    The limit is `offset` from the corner along the diagonal, and the rule holds on its
+    `side`. A "tilted" ring is a square turned 45 degrees from the axes, so its near edge is
+    square to the diagonal: the corner, not one of the ring's vertices, is the nearest point.
+    """
+
+    name: str
+    rule: int
+    base: str
+    corner: Corner
+    out: tuple[int, int]
+    offset: float
+    side: int
+    shapes: tuple[tuple[str, float], ...]
+    strip: tuple[str, ...] = ()
+
+
+def bar_at(i: int) -> Corner:
+    return lambda plan: plan.bars[i].xy
+
+
+def ring_at(vertex: int, hole: bool = False) -> Corner:
+    def corner(plan: Plan) -> tuple[float, float]:
+        ring = plan.faces[0].holes[0] if hole else plan.faces[0].boundary
+        assert isinstance(ring, PlanRing)
+        return ring.points_mm[vertex]
+
+    return corner
+
+
+TILTED = (("tilted", 2.5), ("tilted", 12.5), ("circle", 5.0))
+CORNER_FAMILIES: tuple[CornerFamily, ...] = (
+    # t_beam's re-entrant corner (150, 100) of the web and flange: the cover from a vertex.
+    CornerFamily("tb-reentrant-corner", 3, "tb", ring_at(2), (-1, 1), 30.0, 1,
+                 (("tilted", 2.5), ("tilted", 40.0), ("circle", 2.5))),
+    # rect_hollow's inner hoop hull corner (208, 258), outside it; rect_column's, outside it.
+    CornerFamily("rh-inner-hull-corner", 6, "rh", bar_at(20), (1, 1), 18.0, 1,
+                 (("tilted", 2.5), ("tilted", 12.0), ("circle", 5.0))),
+    CornerFamily("rc-hull-corner", 6, "rc", bar_at(4), (1, 1), 20.0, 1, TILTED,
+                 strip=("cover_guides",)),
+    # rect_hollow's void corner (150, 200): R2 without steel or cover, R3 with the cover.
+    CornerFamily("rh-void-corner", 2, "rh", ring_at(2, hole=True), (1, 1), 0.0, 1, TILTED,
+                 strip=("cover_guides", *NO_STEEL)),
+    CornerFamily("rh-void-corner-cover", 3, "rh", ring_at(2, hole=True), (1, 1), 40.0, 1,
+                 TILTED, strip=NO_STEEL),
 )  # fmt: skip
 
 
@@ -323,7 +379,8 @@ class Case:
     family: str
     rule: int
     how: str  # "grid" (a gap on a grid and path), "ulp" (a float beside contact),
-    # "normal" (along an inclined edge's normal), "equal" (a hole equal to a void or a core)
+    # "normal" (along an inclined edge's normal), "equal" (a hole equal to a void or a core),
+    # "corner" (along a convex corner's diagonal)
     gap: Q | None
     plan: Plan
     holes: tuple[PlanBoundary, ...]
@@ -396,6 +453,55 @@ def normal_cases() -> list[Case]:
     return out
 
 
+def corner_cases() -> list[Case]:
+    """Every tilted ring in all its start vertices and both orientations."""
+    out: list[Case] = []
+    r2 = 1 / math.sqrt(2)
+    for f in CORNER_FAMILIES:
+        nx, ny = f.out[0] * r2, f.out[1] * r2
+        tx, ty = -ny, nx
+        for off in OFFSETS:
+            plan = plan_at(f.base, off, f.strip)
+            cx, cy = f.corner(plan)
+
+            def at(s: float, w: float) -> tuple[float, float]:
+                return (cx + s * nx + w * tx, cy + s * ny + w * ty)  # noqa: B023
+
+            for kind, size in f.shapes:
+                for gap in (*GAPS, None):
+                    d = f.offset + f.side * (0.0 if gap is None else float(gap))
+                    if kind == "circle":
+                        hole: PlanBoundary = PlanCircle(at(d + f.side * size, 0.0), size)
+                        out.append(Case(f.name, f.rule, "corner", gap, plan, (hole,)))
+                        continue
+                    far = d + f.side * 2 * size
+                    ring = PlanRing((at(d, -size), at(d, size), at(far, size), at(far, -size)))
+                    out.extend(
+                        Case(f.name, f.rule, "corner", gap, plan, (turned(ring, k),))
+                        for k in range(8)
+                    )
+    return out
+
+
+def turned(hole: PlanBoundary, k: int) -> PlanBoundary:
+    """A ring started at vertex k mod n, reversed when (k div n) is odd; a circle as it is."""
+    if isinstance(hole, PlanCircle):
+        return hole
+    pts = hole.points_mm
+    n = len(pts)
+    pts = pts[k % n :] + pts[: k % n]
+    return PlanRing(pts[::-1] if (k // n) % 2 else pts)
+
+
+def turn_every_ring(cases: Sequence[Case]) -> list[Case]:
+    """Each case's rings started at a different vertex and in either orientation (case i takes
+    turn i), so no rule can lean on the controlling vertex coming first."""
+    return [
+        replace(c, holes=tuple(turned(h, i + j) for j, h in enumerate(c.holes)))
+        for i, c in enumerate(cases)
+    ]
+
+
 @dataclass(frozen=True)
 class Judged:
     """A case and the truth about it: its verdict, and whether its hole passes the family's
@@ -422,15 +528,23 @@ def equal_cases() -> list[Case]:
 @cache
 def fuzz() -> tuple[Judged, ...]:
     """Every case once, judged by the truth."""
-    cases = axis_cases(random.Random(SEED)) + normal_cases() + equal_cases()
-    seen: set[tuple[str, int, tuple[PlanBoundary, ...]]] = set()
+
+    def once(cases: list[Case]) -> list[Case]:
+        seen: set[tuple[str, int, tuple[PlanBoundary, ...]]] = set()
+        kept: list[Case] = []
+        for c in cases:
+            key = (c.family, id(c.plan), c.holes)
+            if key not in seen:
+                seen.add(key)
+                kept.append(c)
+        return kept
+
+    # Duplicates go before the turn, so a grid that maps two gaps to one hole counts it once.
+    cases = turn_every_ring(once(axis_cases(random.Random(SEED)) + normal_cases() + equal_cases()))
+    cases += once(corner_cases())
     truths: dict[int, Truth] = {}
     out: list[Judged] = []
     for case in cases:
-        key = (case.family, id(case.plan), case.holes)
-        if key in seen:
-            continue
-        seen.add(key)
         truth = truths.setdefault(id(case.plan), Truth(case.plan))
         cores = [shape(h) for h in case.holes]
         # Every rule on every hole, so the verdict and the clearances come from one pass.
@@ -482,7 +596,7 @@ def test_the_fuzz_agrees_with_the_truth_and_shows_both_verdicts_of_every_rule() 
             refused[(rule, j.case.how)] += 1
         elif j.truth is None:
             accepted[(rule, j.case.how)] += 1
-    hows = ("grid", "ulp", "normal", "equal")
+    hows = ("grid", "ulp", "normal", "equal", "corner")
     report = "\n".join(
         f"R{r}: refused {sum(refused[(r, h)] for h in hows)}, "
         f"accepted {sum(accepted[(r, h)] for h in hows)}; "
@@ -639,6 +753,10 @@ def test_exact_simplicity_faults_are_named() -> None:
     assert "repeat" in (exact_simplicity_fault([(0.0, 0.0), (1.0, 0.0), (0.0, 0.0)]) or "")
     bow = [(0.0, 0.0), (1.0, 1.0), (1.0, 0.0), (0.0, 1.0)]
     assert exact_simplicity_fault(bow) == "edges 0 and 2 cross or touch"
+    # A T-touch: vertex 3 lies on edge 0 without crossing it (only the collinear clauses see it).
+    tee = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (2.0, 0.0), (0.0, 4.0)]
+    assert exact_simplicity_fault(tee) == "edges 0 and 2 cross or touch"
+    assert not exact_is_simple(tee)
     spike = [(0.0, 0.0), (2.0, 0.0), (1.0, 0.0), (1.0, 1.0)]
     assert exact_simplicity_fault(spike) == "edges 0 and 1 overlap"
     assert exact_twice_area([(0.0, 0.0), (1.0, 0.0), (0.0, 1.0)]) == 1
