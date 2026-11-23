@@ -291,10 +291,12 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
        6. It places each hole once, in floats. On a template centred at `(cx, cy)`, the
           offset `(x, y)` becomes the point `(cx + x, cy + y)`; on `polygon_column` the point
           is taken as given. These placed floats are the ones the materialiser writes and the
-          ones the rules decide on. Then, hole by hole in index order, it checks the extent,
-          the ring's exact simplicity and zero area, and that the float and exact
-          orientations agree in both vertex orders, as given and reversed (16.1, the "after
-          placement" rows).
+          ones the rules decide on. Then it checks each hole, in index order (16.1, the
+          "after placement" rows):
+          - the extent;
+          - the ring's exact simplicity, zero area and orientation;
+          - the downstream consumers' own float checks, run on the ring in the vertex
+            order in which it will be stored.
        7. It decides the seven rules R1 to R7 (17) on the placed floats.
        8. It appends the holes, in index order and with rings stored clockwise, after the
           face's own holes on the plan's one concrete face (`plan.py::PlanFace.holes`).
@@ -378,37 +380,51 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
          holds a vertex that is not two finite numbers (`holes[k].ring_mm[i]`);
        - after placement, a point lies outside the ADR 0032 extent (`holes[k]`, as
          `plan.py::require_extent` words it);
-       - after placement, a ring is not simple or has zero area (`holes[k].ring_mm`);
-       - after placement, the sign of a ring's float `section/geometry.py::signed_area`
-         differs from its exact sign in **either** vertex order (`holes[k].ring_mm`). The
-         two orders are the ring as given, and the ring reversed, as step 8 stores a
-         counter-clockwise ring. `signed_area` sums in vertex order, so for 4 or more
-         vertices the float sign of the reversed ring need not be the negation of the
-         given one. The owner ruled on apeSection#203: "Yes, option (b) (Recommended)", then
-         "Check both orientations (Recommended)".
+       - after placement, a ring is not simple, or has zero area, decided exactly
+         (`holes[k].ring_mm`);
+       - after placement, a ring fails a downstream consumer's own float check, or that
+         check disagrees with the exact verdict (`holes[k].ring_mm`). This is one general
+         rule, by the owner's ruling on apeSection#203: "One general rule (Recommended)".
 
-       The simplicity, the zero area and the orientation of a placed ring are decided
-       **exactly**, like the rules (17.5). They use an orientation predicate on the stored
-       floats: the sign of twice the shoelace area, and the signs of the cross products in
-       the crossing tests, computed in `fractions.Fraction`. `section/geometry.py::is_simple`
-       and `::signed_area` sum in floats, so they are not the verdict.
+       *The exact verdict.* The simplicity, the zero area and the orientation of a placed
+       ring are decided **exactly**, like the rules (17.5). They use an orientation
+       predicate on the stored floats: the sign of twice the shoelace area, and the signs
+       of the cross products in the crossing tests, computed in `fractions.Fraction`. The
+       exact rows are the verdict.
 
-       `signed_area` can get the sign wrong on a thin ring far from the origin (18.4). The
-       float consumers of orientation do not change:
-       - `plan.py::_check_plan`, through `_check_boundary`;
-       - `draft/section.py`;
-       - `draft/transform.py`.
+       *The general rule.* The step first fixes the vertex order in which a ring will be
+       stored: the ring as given if its exact area is negative, otherwise reversed. On
+       that stored order it then runs each downstream consumer's own float checks, exactly
+       as the consumer calls them:
+       - `section/templates/plan.py::_check_boundary`, through `_check_plan`:
+         `section/geometry.py::is_simple`, and the orientation `signed_area(ring) > 0.0`,
+         which must be false for a hole;
+       - `draft/section.py::_boundary`: `require_simple`, and the orientation
+         `signed_area(ring) < 0.0`, which must be true for a hole, so that the ring is not
+         reversed.
 
-       So the step refuses, by name, every ring whose float and exact orientations disagree
-       in either vertex order. The consequence is that every accepted ring, in the vertex
-       order it is stored, has a float `signed_area` that is negative, as its exact area is.
-       So each consumer agrees with the exact verdict:
-       - `plan.py::_check_plan` (`_check_boundary`) accepts it as clockwise;
-       - `draft/section.py::_boundary` orients a hole ring by the float sign, for example
-         when a seed replays the hole as `AddFaceHole`. It keeps the ring in its stored,
-         clockwise order;
-       - `draft/transform.py::_oriented` sees it as clockwise until a transform writes new
+       If any of these fails, or disagrees with the exact verdict, the step refuses at
+       `holes[k].ring_mm`. This one rule replaces the earlier per-predicate float rows. It
+       already covers a reversed ring of 4 or more vertices, whose float sign need not be
+       the negation of the given one's: the checks run on the order that will be stored.
+
+       *The guarantee.* Every ring the step accepts, in its stored vertex order:
+       - passes `plan.py::_check_boundary`;
+       - passes `draft/section.py::_boundary`, which keeps the ring in its stored order;
+       - has a float `signed_area` that is negative, like its exact area, so
+         `draft/transform.py::_oriented` sees it as clockwise until a transform writes new
          floats (see the follow-up in 21).
+
+       Its orientation therefore agrees with the exact one. Each listed check is a float
+       predicate on fixed floats, so it is deterministic, and running it in the step on
+       the same floats gives the same answer the consumer later gets.
+
+       *The seed caveat.* A seed replays rings through `PointAt`, which reuses a point
+       within 1 mm (ADR 0030, Errata 12.4; recorded in 21). The guarantee holds on the
+       template path: expansion, materialisation, edit, undo, replay and explode. For a
+       seed it holds only when no vertex of the ring lies within 1 mm of another point.
+       Closer than that, the replay may merge vertices, and the replayed ring is not the
+       one the step checked.
     2. *Caps.* This is the owner's ruling, comment 4844: "32 / 256 (Recommended)". A
        template takes at most 32 holes, and at most 256 ring vertices across all its rings.
        Both caps name `holes`, and both are counted (13.2 step 3) before any other hole
@@ -548,28 +564,35 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
          given ones;
        - every stored ring hole is clockwise, whichever orientation it was given in.
          "Clockwise" means that the exact twice-shoelace area of the stored floats, summed
-         in `fractions.Fraction`, is negative. The oracle includes the ring
-         `[(39999.56872848823, 40000.99486747388), (40260.93513113888, 39758.30007034527),
-         (40527.11796644146, 39511.13291895272)]`, given as section coordinates on
-         `polygon_column` so that the stored floats are the given ones. `is_simple`
-         accepts it, and the float `signed_area` returns +1.19e-07, but its exact sign is
-         negative (twice the area is about −4.66e-09 mm²). The float and exact signs
-         disagree, so the step must refuse it by name at `holes[0].ring_mm` (16.1). It must
-         never store it, reversed or not. Stored unreversed, it would fail
-         `plan.py::_check_plan` ("the ring must be CW"); stored reversed, it would be an
-         exactly counter-clockwise hole;
-       - the oracle also includes the ring `[(-0.003034104320175181, -0.14196400488515),
-         (-39578.90871125873, -28092.58529687345), (-0.00039359544240611885,
-         -0.14008981597695389), (-0.000311942809276937, -0.14003186030764175)]`, on
-         `polygon_column` as above. `is_simple` accepts it in both orders.
-         - As given, the float `signed_area` is +5.23e-14 and the exact area +9.46e-14
-           (twice the area about +1.89e-13): the signs agree.
-         - Reversed, as step 8 would store it, the float is +3.13e-14 and the exact area
-           −9.46e-14: the signs disagree.
+         in `fractions.Fraction`, is negative;
+       - every accepted ring passes `plan.py::_check_boundary` and
+         `draft/section.py::_boundary` unchanged (16.1, the guarantee). Three rings, each
+         given as section coordinates on `polygon_column` so that the stored floats are the
+         given ones, must each be refused by name at `holes[0].ring_mm`, and never stored:
 
-         The step must refuse it by name at `holes[0].ring_mm` (16.1). A check in the
-         given order alone would accept it and then store a ring that `_check_plan`
-         refuses;
+         1. *Float orientation wrong.* `[(39999.56872848823, 40000.99486747388),
+            (40260.93513113888, 39758.30007034527), (40527.11796644146, 39511.13291895272)]`.
+            Its exact area is about −2.33e-09 mm² (twice-area −4.66e-09), so it is stored
+            as given. On that order `is_simple` accepts it, but the float `signed_area` is
+            +1.19e-07, so `_check_boundary` would refuse it as "the ring must be CW".
+         2. *Float orientation wrong only once reversed.*
+            `[(-0.003034104320175181, -0.14196400488515), (-39578.90871125873,
+            -28092.58529687345), (-0.00039359544240611885, -0.14008981597695389),
+            (-0.000311942809276937, -0.14003186030764175)]`. As given, its exact area is
+            about +9.46e-14 mm² (twice-area +1.89e-13) and its float `signed_area` is
+            +5.23e-14. So it is stored reversed. Reversed, the exact area is −9.46e-14 but
+            the float is +3.13e-14, and `_check_boundary` would refuse it. `is_simple`
+            accepts both orders.
+         3. *Float simplicity wrong.* `[(0.005211328185895844, -0.061594004755554),
+            (1329.183505433143, 219.15109444252522), (3091.0945986391544,
+            509.73157507462827)]`. It is exactly simple: a triangle with exact area about
+            −6.64e-12 mm², so it is stored as given. The float `signed_area` agrees, at
+            −2.39e-12. But the float `is_simple` is false in both orders, so
+            `_check_boundary` and `require_simple` would raise an unnamed
+            `DocumentError`.
+
+         A check of orientation alone, or in the given order alone, misses at least one of
+         them;
        - `rect_hollow`'s first user hole is at `hole_index` 1, after its void at 0 (13.5).
     5. *Op oracles.*
        - Editing `b` keeps the holes.
