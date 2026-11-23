@@ -605,21 +605,22 @@ def test_v2_group_carries_the_hash_and_a_revision_only_when_stamped() -> None:
 
 def test_hash_vectors_cover_every_draft_fixture_and_recompute() -> None:
     """The card's oracle: the literals came from apeSection 8620629 and apeConcrete 9fac3bd,
-    agreeing; recomputing them here makes every CI platform check the same values."""
+    agreeing (C9-3's `rect_column_template_hole` from apeSection 568f531 and apeConcrete
+    3d30e19); recomputing them here makes every CI platform check the same values."""
     drafts = sorted(
         f"tests/fixtures/{d}/{p.name}"
         for d in ("section_draft", "section_draft_v2")
         for p in (ROOT / "tests" / "fixtures" / d).glob("*.json")
     )
     vectors = cast(list[Json], VECTORS["vectors"])
-    assert sorted(v["draft"] for v in vectors) == drafts and len(drafts) == 15
+    assert sorted(v["draft"] for v in vectors) == drafts and len(drafts) == 16
     for vector in vectors:
         draft = cast(Json, _json(ROOT / vector["draft"]))
         assert _reference_hash(draft) == vector["section_sha256"], vector["draft"]
         assert re.fullmatch(r"[0-9a-f]{64}", vector["section_sha256"])
     by_name = {v["draft"]: v["section_sha256"] for v in vectors}
     assert by_name[SPIRAL] == SPIRAL_SHA256  # the spec's worked value
-    assert len(set(by_name.values())) == 15
+    assert len(set(by_name.values())) == 16
     (js,) = cast(list[Json], VECTORS["js_round_trip"])  # checked by the node test
     assert (js["draft"], js["section_sha256"]) == (SPIRAL, SPIRAL_JS_SHA256)
 

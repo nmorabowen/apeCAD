@@ -20,6 +20,17 @@ _PARAMS = (
     "closed vocabulary, `material` (required) and, on a template that places bars, "
     "`bar_material` (optional) as names. A missing, unknown or out-of-range one is refused "
     "by name (INVALID_ARGUMENT)."
+    # C9-3 (ADR 0040 Errata 13, 16, 17, 21): the word `holes`, appended; the text above stays.
+    " Version 2 of every template also takes `holes` (optional): a list of at most 32 holes, "
+    "each a circle {center_mm: [x, y], radius_mm} or a simple ring {ring_mm: [[x, y], ...]} "
+    "of 3 or more vertices, at most 256 vertices across the rings. Coordinates are mm offsets "
+    "from center_mm (on polygon_column, section coordinates). Each hole must lie inside the "
+    "concrete face and clear the face's own holes, the other holes, the cover, the bars, "
+    "crossties, hoops and circular ties; contact is a clash, refused by name (R1 to R7)."
+)
+_EDIT_HOLES = (
+    " An edit without `holes` removes them; a version 1 template takes them only by an edit "
+    "that names template_version 2."
 )
 _VERSION = (
     "The template version to expand, a whole number; null means the latest. The committed "
@@ -58,7 +69,7 @@ TEMPLATE_ENTRIES: tuple[OpSpec, ...] = (
         "entities",
         {
             "template_id": _TEMPLATE_ID,
-            "template_params": _PARAMS + " They replace the old params whole.",
+            "template_params": _PARAMS + " They replace the old params whole." + _EDIT_HOLES,
             "template_version": _VERSION.replace("the latest", "keep the template's version"),
             "child_ids": _CHILDREN,
         },

@@ -1,6 +1,6 @@
 # Spec — `apeCAD.section-draft` v2
 
-**Status:** Implemented (2026-11-01): the writer and reader in C1-S3 (apeCAD #51), the fixtures in C1-S4 (#52), the templates in C3-S3
+**Status:** Implemented (2026-11-01): the writer and reader in C1-S3 (apeCAD #51), the fixtures in C1-S4 (#52), the templates in C3-S3, the template-hole fixture in C9-3
 **ADRs:** 0006, 0023, 0024, 0025, 0026, 0039, 0040
 
 The one text of the v2 section-draft contract (ADR 0039 decision 1, under ADR 0025's rules).
@@ -281,11 +281,26 @@ eight above stay byte-identical.
 | `t_beam_template` | one `t_beam` v1: the `T_RING` outline, bottom, top and slab bars |
 | `cft_rect_template` | one `cft_rect` v1: a concrete ring core under a steel ring whose clockwise hole is the core's own corners; no cover guide and no warning |
 
+One more is additive (C9-3, ADR 0040 Errata 21), with its render golden
+`tests/fixtures/render/section_v2_rect_column_template_hole_top.svg`: the eleven above stay
+byte-identical.
+
+| Fixture | Checks |
+|---|---|
+| `rect_column_template_hole` | one `rect_column` v2 with parametric holes: `templates[].params.holes` as the op recorded them, offsets from `center_mm` (200, 300); the concrete face's `holes[]` as placed, a circle at (200, 300) of radius 50 and an 80 x 40 ring given counter-clockwise and stored clockwise; no crosstie and no warning |
+
 `tests/fixtures/section_templates/<template>@v<version>.json` holds one frozen op log per
 template version (ADR 0040 decision 4), recorded once and never regenerated: `REGENERATE`
 does not touch them. `rect_column@v1`, `t_beam@v1` and `cft_rect@v1` replay to the three
-fixtures above, byte for byte. The logs without a fixture are `polygon_column@v1`,
-`rect_hollow@v1`, `circular_column@v1` and `cft_round@v1`: all but `circular_column@v1`
-replay to a recorded SHA-256 of their draft's `section` block, and `circular_column@v1`, whose
-bars are placed by sine and cosine, to a recorded section compared at rel 1e-12. A consumer
-gets the new fixtures only by a new vendoring at a pinned apeCAD sha.
+template fixtures above, and `rect_column@v2` to `rect_column_template_hole`, byte for byte.
+The logs without a fixture are `polygon_column@v1`, `rect_hollow@v1`, `circular_column@v1`
+and `cft_round@v1`: all but `circular_column@v1` replay to a recorded SHA-256 of their draft's
+`section` block, and `circular_column@v1`, whose bars are placed by sine and cosine, to a
+recorded section compared at rel 1e-12.
+
+The v2 logs (ADR 0040 Errata 15.3) are `rect_column@v2`, `rect_hollow@v2`,
+`polygon_column@v2`, `t_beam@v2`, `circular_column@v2`, `cft_round@v2` and `cft_rect@v2`.
+Each holds one template at `template_version` 2 with a circle hole and a ring hole, every
+clearance at least 1 mm. All but `circular_column@v2` also replay to a recorded SHA-256 of their
+`section` block, `rect_column@v2` included; `circular_column@v2` is compared at rel 1e-12. A
+consumer gets the new fixtures only by a new vendoring at a pinned apeCAD sha.

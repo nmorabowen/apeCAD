@@ -59,6 +59,12 @@ RECT: dict[str, object] = {
     "material": "C30", "b": 400, "h": 600, "center_mm": [200, 300], "cover": 40, "nx": 3,
     "ny": 3, "bar": "Ø20", "tie": "Ø10", "tie_spacing": 150, "crossties": "all",
 }  # fmt: skip
+# The ways out a locked refusal names (`draft/templates.py::_WAYS_OUT`). The pin moves only by
+# appending: C3-S2's words, then C9-3's word `holes` (ADR 0040 Errata 21).
+WAYS_OUT = (
+    "edit the template's params, delete the template, or explode it (ADR 0040)"
+    "; for a hole in its face, edit its params' holes (template_version 2)"
+)
 
 
 class Ids:
@@ -144,9 +150,7 @@ def test_each_op_family_on_a_child_and_on_the_template(
         with pytest.raises(TemplateLockedError) as caught:
             doc.apply(op)
         assert caught.value.code == TEMPLATE_LOCKED
-        assert "edit the template's params, delete the template, or explode it" in str(
-            caught.value
-        )
+        assert WAYS_OUT in str(caught.value)
         assert doc.to_json() == json_before and _snapshot(doc) == live_before  # atomic
         return
     try:
