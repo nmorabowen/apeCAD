@@ -150,10 +150,10 @@ def test_js_client_against_live_python_http_transport(server: ScratchpadServer) 
     budget. A fixed 80 ms wait stood here and failed on the CI runner when a reply took longer
     (apeSection#244).
 
-    A late opening `scene` reply leaves the screen right (`opEpoch` drops it), but it resets the
-    transport's `docState` (`docState = data.document || docState` in `transport.js`), tracked
-    in apeSection#250. This test asserts the screen and the draft only; it does not cover a
-    later `sync()` or edit over that reset state."""
+    A late opening `scene` reply leaves the screen right (`opEpoch` drops it), and since
+    apeSection#250 it no longer resets the transport's `docState` either. This test asserts the
+    screen and the draft only; `test_section_transport_order.py` orders the replies on purpose
+    and covers a later `sync()` and edit."""
     import shutil
 
     node = shutil.which("node")
