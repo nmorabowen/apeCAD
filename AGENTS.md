@@ -21,7 +21,7 @@ kernel or Qt viewer without an ADR). Cursor gets the English rule from
 ## Install and test
 
 ```bash
-pip install -e ".[dev,mcp]"      # the clone path from README.md, plus the MCP SDK
+pip install -e ".[dev,mcp,dxf]"  # the clone path from README.md, plus the MCP and DXF extras
 python -m pytest -q              # 139 tests, ~18 s
 python -m ruff check src tests   # rules E, F, I, UP; line length 100
 pyright                          # strict, over src/ only
@@ -47,13 +47,13 @@ Traps (each verified 2026-09-25):
    pyright on Python 3.11 and 3.12, on every PR and on push to `main`. It
    does not run `ruff format --check` (trap 3), does not drive a browser,
    and tool versions float with the `dev` extra. The gate legs install
-   `.[dev,mcp]`; a `core` job runs pytest with `.[dev]` only, so the MCP
+   `.[dev,mcp,dxf]` (`ci.yml:33`: `run: python -m pip install -e ".[dev,mcp,dxf]"`); a `core` job runs pytest with `.[dev]` only, so the MCP
    tests skip there and the stdlib-only core is proven. The PR "Test plan"
    checklist still records what *you* ran locally: tick only what you ran.
 5. **pyright needs the `mcp` extra.** `src/apeCAD/agent/mcp.py` imports the
    SDK, so without `.[mcp]` local pyright reports about 33 errors there
    (`reportMissingImports` and the unknown types that follow), seen while
-   merging PR #27 on 2026-10-14. Install `pip install -e ".[dev,mcp]"` into a
+   merging PR #27 on 2026-10-14. Install `pip install -e ".[dev,mcp,dxf]"` into a
    venv (trap 1); CI installs it. pyright resolves imports with the `python`
    on `PATH`, not your venv, unless you pass
    `pyright --pythonpath <venv>/Scripts/python.exe`; an `mcp` 1.x there gives
