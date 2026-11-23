@@ -245,7 +245,7 @@ export function seedToOps(doc, applyOpToScene) {
 export function httpTransport(url = "/api/section/transport") {
   let docState = null;
   let redoState = [];
-  // apeSection#250: a `scene` reply reads the document it was sent with. When a change (an ok
+  // apeSection issue 250: a `scene` reply reads the document it was sent with. When a change (an ok
   // apply, undo, redo, load or seed) landed after it was sent, the reply is older than the
   // state and must not reset `docState`, or the next request runs against the old document.
   // `landedChanges` counts the changes that landed; a `scene` reply moves the state only when
