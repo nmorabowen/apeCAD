@@ -85,8 +85,17 @@ def winding(p: QP, ring: Sequence[QP]) -> int:
     return w
 
 
+def reaches(p: QP, a: QP, b: QP, reach: Q) -> bool:
+    """p lies within `reach` of the box of segment ab (exact): a pair that fails this is
+    more than `reach` apart, so the prunes below skip it without measuring it."""
+    return (
+        min(a[0], b[0]) - reach <= p[0] <= max(a[0], b[0]) + reach
+        and min(a[1], b[1]) - reach <= p[1] <= max(a[1], b[1]) + reach
+    )
+
+
 def on_ring(p: QP, ring: Sequence[QP]) -> bool:
-    return any(foot_dist2(p, a, b) == 0 for a, b in closed(ring))
+    return any(reaches(p, a, b, ZERO) and foot_dist2(p, a, b) == 0 for a, b in closed(ring))
 
 
 def inside_or_on(p: QP, ring: Sequence[QP]) -> bool:
@@ -146,10 +155,34 @@ def core_dist2(a: Core, b: Core) -> Q:
     return min(found)
 
 
+def box_gap(a: Core, b: Core) -> Q:
+    """How far apart the cores' boxes are along x or y (<= 0 when they overlap): a lower bound
+    of d(core a, core b), exact. It only saves time; it never decides a pair the distance does
+    not."""
+    gaps = [ZERO]
+    for axis in (0, 1):
+        lo_a, hi_a = min(p[axis] for p in a.pts), max(p[axis] for p in a.pts)
+        lo_b, hi_b = min(p[axis] for p in b.pts), max(p[axis] for p in b.pts)
+        gaps += [lo_b - hi_a, lo_a - hi_b]
+    return max(gaps)
+
+
 def apart(a: Core, b: Core, gap: Q) -> bool:
-    """d(a, b) > gap."""
+    """d(a, b) > gap: `core_dist2` > reach squared, with the pairs proven further than `reach`
+    by their boxes left unmeasured."""
     reach = a.grow + b.grow + gap
-    return core_dist2(a, b) > reach * reach
+    if box_gap(a, b) > reach:
+        return True
+    for x, y in ((a, b), (b, a)):
+        if x.ring is not None and any(inside_or_on(p, x.ring) for p in y.pts):
+            return False
+    if any(segments_meet(*s, *t) for s in a.segs for t in b.segs):
+        return False
+    pairs = [(p, s) for p in a.pts for s in b.segs] + [(p, s) for p in b.pts for s in a.segs]
+    r2 = reach * reach
+    if pairs:
+        return not any(reaches(p, *s, reach) and foot_dist2(p, *s) <= r2 for p, s in pairs)
+    return all(dist2(p, q) > r2 for p in a.pts for q in b.pts)
 
 
 def all_closer(h: Core, centre: QP, s: Q) -> bool:
@@ -268,3 +301,42 @@ class Truth:
                 if not self.passes(rule, cores, k):
                     return (k, rule)
         return None
+
+
+# --- a ring's simplicity and area (16.1), for the exact ring predicates of the hole step ------
+
+
+def fault(ring: Sequence[tuple[float, float]]) -> str | None:
+    """The first reason `ring` is not simple, in the order `exact_simplicity_fault` names it;
+    None when it is simple.
+
+    Too few vertices; else the first vertex that repeats an earlier one; else, edge by edge,
+    edge i and its next neighbour sharing more than their common vertex (one's far end lies
+    on the other), then edge i meeting a later edge that is not its neighbour.
+    """
+    n = len(ring)
+    if n < 3:
+        return f"a ring needs at least 3 vertices, got {n}"
+    pts = [qp(p) for p in ring]
+    for i in range(n):
+        if pts[i] in pts[:i]:
+            return f"vertices {pts.index(pts[i])} and {i} repeat the point {ring[i]}"
+    edges = closed(pts)
+    for i in range(n):
+        (a, b), (_, c) = edges[i], edges[(i + 1) % n]
+        if foot_dist2(c, a, b) == 0 or foot_dist2(a, b, c) == 0:
+            return f"edges {i} and {(i + 1) % n} overlap"
+        for j in range(i + 2, n - 1 if i == 0 else n):
+            if segments_meet(*edges[i], *edges[j]):
+                return f"edges {i} and {j} cross or touch"
+    return None
+
+
+def simple(ring: Sequence[tuple[float, float]]) -> bool:
+    return fault(ring) is None
+
+
+def twice_area(ring: Sequence[tuple[float, float]]) -> Q:
+    """Twice the signed area, by the trapezoid sum: > 0 when counter-clockwise."""
+    pts = [qp(p) for p in ring]
+    return sum(((a[0] - b[0]) * (a[1] + b[1]) for a, b in closed(pts)), ZERO)
