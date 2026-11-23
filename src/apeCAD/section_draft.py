@@ -479,11 +479,17 @@ def _resolve_idx(raw: object, pool: Sequence[EntityId], where: str) -> EntityId:
 @functools.cache
 def _git_commit() -> str | None:
     """HEAD of the checkout this package was imported from, when it is one (an editable
-    install or a source tree); None for an installed wheel or without git."""
+    install or a source tree); None for an installed wheel or without git.
+
+    git gets no stdin (apeSection#265). Under a stdio server another thread has a read
+    pending on this process's stdin, and Git for Windows handed that pipe blocks until the
+    read ends. The timeout then kills only the `cmd/git.exe` wrapper; the real git keeps
+    the output pipes open, so the call never returns."""
     package = Path(__file__).resolve().parent
     try:
         top = subprocess.run(
             ["git", "-C", str(package), "rev-parse", "--show-toplevel", "HEAD"],
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=5,
