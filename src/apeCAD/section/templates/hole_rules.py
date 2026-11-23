@@ -1,43 +1,31 @@
 """The seven rules a template hole must pass, decided exactly (ADR 0040 Errata 17).
 
-A version 2 template takes user holes (Errata 13). After the v1 function has drawn the
-`Plan` and the holes are placed in floats, each hole must clear what the plan draws. The rules,
-checked hole by hole in index order and, per hole, in the order R1 to R7 (17.2):
-
-    R1 face          the hole lies in the interior of the outline of the plan's one concrete face
-    R2 holes         it does not meet the face's own holes, nor an earlier user hole
-    R3 cover         it stays more than `cover_mm` from the outline and from the face's own holes
-    R4 bars          it stays more than d_b / 2 from each bar centre
-    R5 crossties     it stays more than t / 2 from the segment between a crosstie's bar centres
-    R6 hoops         every point lies closer than r_min to the hoop's bar-centre hull (inside
-                     the cage), or the hole lies more than r_max + t from that hull (outside it)
-    R7 circular ties every point lies closer than rho - t / 2 to the tie's centre, or the hole
-                     lies more than rho + t / 2 from that centre
+A version 2 template takes user holes (Errata 13). Once the v1 function has drawn the `Plan`
+and the holes are placed in floats, each hole must clear what the plan draws. Holes are checked
+in index order and, per hole, R1 to R7 in order (17.2): R1 inside the concrete face's outline;
+R2 clear of its own holes and of earlier user holes; R3 more than the cover from its outline
+and own holes; R4 more than d_b / 2 from each bar centre; R5 more than t / 2 from each
+crosstie's bar-to-bar segment; R6 within r_min of a hoop's bar-centre hull, or more than
+r_max + t outside it; R7 closer than rho - t / 2 to a circular tie's centre, or further than
+rho + t / 2 from it.
 
 Every rule is a strict inequality, so contact is a clash (owner ruling, comment 4844). Every
 comparison is decided in `fractions.Fraction` on the stored floats (17.5): an orientation, or a
-squared distance against a squared sum of radii and clearances. No square root, trigonometry
-or tolerance is used, so the verdict is the exact one on the stored floats.
+squared distance against a squared sum of radii and clearances; no square root, trigonometry or
+tolerance. One float filter is used, under the bound 17.5 asks for: a bounding-box screen that
+skips a pair only once it is proven more than the gap apart ("the screens" below), so the
+verdict is the exact one on the stored floats.
 
-One float filter is used, under the bound 17.5 asks for: a bounding-box screen that skips a
-pair only when it is proven more than the gap apart. It compares stored floats as themselves,
-and boxes grown by a gap after rounding them outward, so it never decides a pair the exact
-test would decide otherwise (see "the screens" below).
+`exact_twice_area` and `exact_simplicity_fault` decide a placed ring's orientation, area and
+simplicity the same way, for the hole step (13.2 step 6, 16.1), instead of the float
+`section/geometry.py::signed_area` and `is_simple`. The step (`holes.py`), the refusals of 16
+and the registration of version 2 are C9-2b (Errata 21): this module registers nothing.
 
-The same exact arithmetic gives a placed ring's orientation, area and simplicity
-(`exact_twice_area`, `exact_simplicity_fault`), which the hole step (Errata 13.2 step 6, 16.1)
-decides exactly instead of with the float `section/geometry.py::signed_area` and `is_simple`.
-
-The hole step itself (`holes.py`), the refusals of 16 and the registration of version 2 come in
-C9-2b (Errata 21). This module registers nothing. It relies on these, by `path::symbol`:
-
-- `section/templates/plan.py::Plan`, `PlanFace`, `PlanRing`, `PlanCircle`, `PlanHoop`,
-  `PlanCrosstie`, `PlanCircularTie`, `PlanCoverGuide` and `TemplateParamError`;
-- `section/templates/plan.py::PlanHoop.bars`, read as a set of bar indices: R6's hull is
-  rebuilt from their centres exactly (`_hull`), not taken from the float order `hull_of` gave;
-- `geometry.py::require_finite`, which refuses a non-finite coordinate by name.
-
-Paths are under `src/apeCAD/`.
+It relies on `section/templates/plan.py::Plan`, `PlanFace`, `PlanRing`, `PlanCircle`,
+`PlanCrosstie`, `PlanCircularTie`, `PlanCoverGuide` and `TemplateParamError`; on
+`PlanHoop.bars` as a set of bar indices (R6's hull is rebuilt from their centres exactly by
+`_hull`, not taken from the float order `plan.py::hull_of` gave); and on
+`geometry.py::require_finite` (paths under `src/apeCAD/`).
 """
 
 from __future__ import annotations
@@ -117,30 +105,24 @@ def _touch(a: QPoint, b: QPoint, c: QPoint, d: QPoint) -> bool:
 
 
 Edge = tuple[QPoint, QPoint]
-Box = tuple[Fraction, Fraction, Fraction, Fraction]
-"""(x_min, y_min, x_max, y_max), exact."""
-FBox = tuple[float, float, float, float]
-"""(x_min, y_min, x_max, y_max) in floats, for the screens below."""
+Box = tuple[Fraction, Fraction, Fraction, Fraction]  # (x_min, y_min, x_max, y_max), exact
+FBox = tuple[float, float, float, float]  # the same in floats, for the screens below
 
 
 # --- the screens: exact, and in floats --------------------------------------------------
-#
-# A screen skips a pair only when the pair is already known to be more than `gap` apart along
-# x or along y, so it never changes a verdict. It compares floats, and stays exact because
-# (a) a box of stored floats is compared as those floats, which a float comparison decides
-# exactly; and (b) a box grown by a gap is computed in `Fraction` and rounded outward to
-# floats (`_down`, `_up`), so the float box contains the exact one: whatever lies outside it
-# lies outside the exact one. That is the proven bound Errata 17.5 asks of a float filter.
+# A screen skips a pair only once it is proven more than `gap` apart along x or along y, so it
+# never changes a verdict. It compares floats and stays exact: (a) a box of stored floats is
+# compared as those floats, which a float comparison decides exactly; (b) a box grown by a gap
+# is computed in `Fraction` and rounded outward (`_down`, `_up`), so the float box holds the
+# exact one. That is the proven bound Errata 17.5 asks of a float filter.
 
 
 def _down(value: Fraction) -> float:
-    """The greatest float at or below `value`."""
-    f = float(value)
+    f = float(value)  # the nearest float; step down if it lies above
     return f if f <= value else math.nextafter(f, -math.inf)
 
 
 def _up(value: Fraction) -> float:
-    """The least float at or above `value`."""
     f = float(value)
     return f if f >= value else math.nextafter(f, math.inf)
 
@@ -161,22 +143,11 @@ def _fbox(points: Sequence[QPoint]) -> FBox:
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _point_box(p: QPoint) -> Box:
-    return (p[0], p[1], p[0], p[1])
-
-
 # --- regions ----------------------------------------------------------------------------
-
-
-def _edges(points: Sequence[QPoint]) -> tuple[Edge, ...]:
-    n = len(points)
-    return tuple((points[i], points[(i + 1) % n]) for i in range(n))
 
 
 @dataclass(frozen=True, slots=True)
 class _Disc:
-    """A closed disc."""
-
     c: QPoint
     r: Fraction
 
@@ -198,15 +169,10 @@ class _Poly:
 
 
 def _poly(points: Sequence[QPoint]) -> _Poly:
-    edges = _edges(points)
-    xs, ys = [p[0] for p in points], [p[1] for p in points]
-    return _Poly(
-        tuple(points),
-        edges,
-        (min(xs), min(ys), max(xs), max(ys)),
-        _fbox(points),
-        tuple(_fbox(e) for e in edges),
-    )
+    n, xs, ys = len(points), [p[0] for p in points], [p[1] for p in points]
+    edges = tuple((points[i], points[(i + 1) % n]) for i in range(n))
+    box = (min(xs), min(ys), max(xs), max(ys))
+    return _Poly(tuple(points), edges, box, _fbox(points), tuple(_fbox(e) for e in edges))
 
 
 _Region = _Disc | _Poly
@@ -228,11 +194,10 @@ def _near(poly: _Poly, box: Box, gap: Fraction) -> list[int]:
 
 
 def _locate(p: QPoint, poly: _Poly) -> int:
-    """1 when p is inside the ring's region, 0 on its boundary, -1 outside (exact crossings).
+    """1 when p is inside the ring's region, 0 on its boundary, -1 outside.
 
-    A ray goes from p towards +x; the parity of the edges it crosses, half-open in y, tells
-    inside from outside. Coordinates are compared as their stored floats (exact); only an
-    edge that spans p in x needs an orientation.
+    The parity of the edges a ray from p towards +x crosses (half-open in y). Coordinates are
+    compared as their stored floats (exact); only an edge spanning p in x needs an orientation.
     """
     px, py = float(p[0]), float(p[1])
     inside = False
@@ -274,7 +239,7 @@ def _all_far(points: Sequence[QPoint], poly: _Poly, edges: Sequence[int], gap: F
     """Every point is more than `gap` from each of the edges `edges` of `poly`."""
     g2 = gap * gap
     for v in points:
-        reach = _grown(_point_box(v), gap)
+        reach = _grown((v[0], v[1], v[0], v[1]), gap)
         for j in edges:
             if _overlap(reach, poly.edge_fboxes[j]) and not _seg_d2(v, *poly.edges[j]) > g2:
                 return False
@@ -283,8 +248,7 @@ def _all_far(points: Sequence[QPoint], poly: _Poly, edges: Sequence[int], gap: F
 
 def _ends(poly: _Poly, edges: Sequence[int]) -> list[QPoint]:
     """The vertices on the edges `edges` of `poly`."""
-    n = len(poly.pts)
-    return [poly.pts[k] for k in sorted({k for j in edges for k in (j, (j + 1) % n)})]
+    return [poly.pts[k] for k in sorted({k % len(poly.pts) for j in edges for k in (j, j + 1)})]
 
 
 # --- clearances: each says whether a distance is strictly greater than a gap -----------------
@@ -295,7 +259,7 @@ def _clear_point(h: _Region, p: QPoint, gap: Fraction) -> bool:
     if isinstance(h, _Disc):
         reach = h.r + gap
         return _d2(h.c, p) > reach * reach
-    reach = _grown(_point_box(p), gap)
+    reach = _grown((p[0], p[1], p[0], p[1]), gap)
     if not _overlap(reach, h.fbox):
         return True  # outside h's box by more than gap
     # No edge near p does not prove p clear: p may lie deep inside h.
@@ -391,12 +355,8 @@ def _within_convex(h: _Region, hull: _Poly, s: Fraction) -> bool:
 # --- the rules ----------------------------------------------------------------------------
 
 
-@dataclass(frozen=True, slots=True)
-class _Hoop:
-    hull: _Poly
-    r_min: Fraction
-    r_max: Fraction
-    t: Fraction
+_Hoop = tuple[_Poly, Fraction, Fraction, Fraction]
+"""A hoop: its bar-centre hull, r_min, r_max and its diameter t."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -450,7 +410,11 @@ def _read_plan(plan: Plan) -> _Exact:
         if len(hull.pts) < 3:
             raise DocumentError(f"plan hoop {i}: its bar centres span no area")
         radii = [bars[j][1] for j in hoop.bars]
-        hoops.append(_Hoop(hull, min(radii), max(radii), _q(hoop.diameter_mm)))
+        hoops.append((hull, min(radii), max(radii), _q(hoop.diameter_mm)))
+    ties = [
+        (_qp(t.center_mm, f"plan circular tie {i}"), _q(t.centerline_radius_mm), _q(t.diameter_mm))
+        for i, t in enumerate(plan.circular_ties)
+    ]
     return _Exact(
         outline=_region(face.boundary, f"plan face {k} boundary"),
         own=tuple(_region(v, f"plan face {k} hole {j}") for j, v in enumerate(face.holes)),
@@ -460,14 +424,7 @@ def _read_plan(plan: Plan) -> _Exact:
             (bars[x.bar_a][0], bars[x.bar_b][0], _q(x.diameter_mm) / 2) for x in plan.crossties
         ),
         hoops=tuple(hoops),
-        ties=tuple(
-            (
-                _qp(t.center_mm, f"plan circular tie {i} centre"),
-                _q(t.centerline_radius_mm),
-                _q(t.diameter_mm),
-            )
-            for i, t in enumerate(plan.circular_ties)
-        ),
+        ties=tuple(ties),
     )
 
 
@@ -499,10 +456,7 @@ def _r3_cover(s: _Exact, holes: Sequence[_Region], k: int) -> str | None:
             return f"it is not more than the {float(cover):g} mm cover from the face's outline"
         for j, own in enumerate(s.own):
             if not _clear_region(holes[k], own, cover):
-                return (
-                    f"it is not more than the {float(cover):g} mm cover from the face's own "
-                    f"hole {j}"
-                )
+                return f"it is not more than the {float(cover):g} mm cover from own hole {j}"
     return None
 
 
@@ -521,12 +475,13 @@ def _r5_crossties(s: _Exact, holes: Sequence[_Region], k: int) -> str | None:
 
 
 def _r6_hoops(s: _Exact, holes: Sequence[_Region], k: int) -> str | None:
-    for i, hoop in enumerate(s.hoops):
-        inside = _within_convex(holes[k], hoop.hull, hoop.r_min)
-        if not inside and not _clear_region(holes[k], hoop.hull, hoop.r_max + hoop.t):
+    for i, (hull, r_min, r_max, t) in enumerate(s.hoops):
+        if not _within_convex(holes[k], hull, r_min) and not _clear_region(
+            holes[k], hull, r_max + t
+        ):
             return (
-                f"it meets hoop {i}: it is neither within {float(hoop.r_min):g} mm of the hoop's "
-                f"bar-centre hull nor more than {float(hoop.r_max + hoop.t):g} mm outside it"
+                f"it meets hoop {i}: it is neither within {float(r_min):g} mm of the hoop's "
+                f"bar-centre hull nor more than {float(r_max + t):g} mm outside it"
             )
     return None
 
@@ -543,15 +498,10 @@ def _r7_circular_ties(s: _Exact, holes: Sequence[_Region], k: int) -> str | None
 
 
 _RULES: tuple[tuple[int, Rule], ...] = (
-    (1, _r1_face),
-    (2, _r2_holes),
-    (3, _r3_cover),
-    (4, _r4_bars),
-    (5, _r5_crossties),
-    (6, _r6_hoops),
-    (7, _r7_circular_ties),
-)
-"""The rules in the order they are checked (17.2)."""
+    (1, _r1_face), (2, _r2_holes), (3, _r3_cover), (4, _r4_bars),
+    (5, _r5_crossties), (6, _r6_hoops), (7, _r7_circular_ties),
+)  # fmt: skip
+"""The rules, numbered, in the order they are checked (17.2)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -613,12 +563,13 @@ def exact_simplicity_fault(ring: Sequence[Point2]) -> str | None:
 
     The same rule as `section/geometry.py::is_simple` (at least 3 vertices, none repeated, no
     two edges meeting except neighbours at their shared vertex), with every orientation in
-    `Fraction` instead of floats.
+    `Fraction` instead of floats, and pairs of edges screened by their float boxes.
     """
     n = len(ring)
     if n < 3:
         return f"a ring needs at least 3 vertices, got {n}"
     pts = [_qp(p, f"ring vertex {i}") for i, p in enumerate(ring)]
+    boxes = _poly(pts).edge_fboxes
     seen: dict[QPoint, int] = {}
     for i, p in enumerate(pts):
         if p in seen:
@@ -634,7 +585,7 @@ def exact_simplicity_fault(ring: Sequence[Point2]) -> str | None:
         for j in range(i + 2, n):
             if i == 0 and j == n - 1:
                 continue  # the closing edge is adjacent to edge 0, handled above
-            if _touch(a, b, pts[j], pts[(j + 1) % n]):
+            if _overlap(boxes[i], boxes[j]) and _touch(a, b, pts[j], pts[(j + 1) % n]):
                 return f"edges {i} and {j} cross or touch"
     return None
 
@@ -642,13 +593,3 @@ def exact_simplicity_fault(ring: Sequence[Point2]) -> str | None:
 def exact_is_simple(ring: Sequence[Point2]) -> bool:
     """`ring` is simple, decided exactly on its stored floats."""
     return exact_simplicity_fault(ring) is None
-
-
-__all__ = [
-    "HoleClash",
-    "exact_is_simple",
-    "exact_simplicity_fault",
-    "exact_twice_area",
-    "first_clash",
-    "require_holes_clear",
-]
