@@ -20,6 +20,7 @@ from typing import Any, cast
 
 import pytest
 
+from _client_wait import SETTLED_JS
 from _section_fixtures import BUILDERS
 from _section_fixtures_v2 import BUILDERS_V2, fixture_path_v2
 from apeCAD import catalog
@@ -251,12 +252,13 @@ def test_http_transport_never_writes_a_lossy_v1_draft(
     import assert from "node:assert/strict";
     import fs from "node:fs";
     import {{ create, httpTransport }} from {_module("apecad-section.js")!r};
+    {SETTLED_JS}
     const {{ drafts, says }} = JSON.parse(fs.readFileSync({str(data)!r}, "utf8"));
     for (const [name, draft] of Object.entries(drafts)) {{
       const changes = [];
       const onChange = (d) => changes.push(d);
-      const ed = create({{}}, {{ transport: httpTransport({url!r}), onChange }});
-      await new Promise((r) => setTimeout(r, 20));
+      const ed = create({{}}, {{ transport: track(httpTransport({url!r})), onChange }});
+      await settled();
       const res = await ed.loadDraft(draft);
       assert.equal(res.ok, true, name);
       const nV2 = ed.getScene().section_faces.length + ed.getScene().circular_ties.length;
@@ -288,8 +290,9 @@ def test_a_too_deep_body_is_refused_and_the_client_keeps_working(
     script = f"""
     import assert from "node:assert/strict";
     import {{ create, httpTransport }} from {_module("apecad-section.js")!r};
-    const ed = create({{}}, {{ transport: httpTransport({url!r}) }});
-    await new Promise((r) => setTimeout(r, 20));
+    {SETTLED_JS}
+    const ed = create({{}}, {{ transport: track(httpTransport({url!r})) }});
+    await settled();
     const nested = (depth) => {{ let v = []; for (let i = 0; i < depth; i++) v = [v]; return v; }};
     // 1500 levels: node sends it and the server refuses it by name (too deep to parse, or, where
     // the Python parses that deep, not an op); 10^5: the client cannot even write it as JSON,
@@ -576,6 +579,7 @@ def test_a_late_v2_draft_never_wins_and_never_rewinds_the_state(
     script = f"""
     import assert from "node:assert/strict";
     import {{ create, httpTransport }} from {_module("apecad-section.js")!r};
+    {SETTLED_JS}
     const realFetch = globalThis.fetch;
     let hold = null;
     globalThis.fetch = async (u, init) => {{
@@ -589,9 +593,9 @@ def test_a_late_v2_draft_never_wins_and_never_rewinds_the_state(
     }};
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const changes = [];
-    const ed = create({{}}, {{ transport: httpTransport({url!r}), version: 2,
+    const ed = create({{}}, {{ transport: track(httpTransport({url!r})), version: 2,
       onChange: (d) => changes.push(d) }});
-    await sleep(100);
+    await settled();
     const bar = (x) => ({{ op: "AddBar", x_mm: x, y_mm: x, designation: "Ø16" }});
     let release;
     hold = new Promise((r) => (release = r));
@@ -631,10 +635,12 @@ def test_sync_reads_an_outside_writers_edits_as_section_draft_v2(
     bar: Json = {"op": "AddBar", "x_mm": 60, "y_mm": 60, "designation": "Ø16"}
     script = f"""
     import {{ create, httpTransport }} from {_module("apecad-section.js")!r};
-    const shared = httpTransport({url!r});
+    {SETTLED_JS}
+    const shared =httpTransport({url!r});
     const changes = [];
-    const ed = create({{}}, {{ transport: shared, version: 2, onChange: (d) => changes.push(d) }});
-    await new Promise((r) => setTimeout(r, 100));
+    const ed = create({{}}, {{ transport: track(shared), version: 2,
+      onChange: (d) => changes.push(d) }});
+    await settled();
     const before = ed.getOverlayState().revision;
     for (const op of [{json.dumps(face)}, {json.dumps(bar)}]) {{
       const res = await shared({{ action: "apply", op }});
