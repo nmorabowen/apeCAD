@@ -245,8 +245,15 @@ export function seedToOps(doc, applyOpToScene) {
 export function httpTransport(url = "/api/section/transport") {
   let docState = null;
   let redoState = [];
+  // apeSection issue 250: a `scene` reply reads the document it was sent with. When a change (an ok
+  // apply, undo, redo, load or seed) landed after it was sent, the reply is older than the
+  // state and must not reset `docState`, or the next request runs against the old document.
+  // `landedChanges` counts the changes that landed; a `scene` reply moves the state only when
+  // the count did not move while it was in flight (the editor's `landedSeq` rule for `sync()`).
+  let landedChanges = 0;
   return async function send(request) {
     const action = request?.action || "scene";
+    const landedAtSend = landedChanges;
     const body = { transport_version: TRANSPORT_VERSION, action };
     if (action === "load" || action === "seed") {
       body.payload = request.payload ?? request.document ?? request.seed;
@@ -267,15 +274,19 @@ export function httpTransport(url = "/api/section/transport") {
     }
     const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
     const data = await res.json();
-    if (data && data.ok && action !== "draft") { // a draft is a read: it never moves the state
+    // A draft is a read: it never moves the state. A scene reply does only when it is current.
+    const current = action !== "scene" || landedChanges === landedAtSend;
+    if (data && data.ok && action !== "draft" && current) {
       docState = data.document || docState;
       redoState = Array.isArray(data.redo) ? data.redo : [];
+      if (action !== "scene") landedChanges += 1;
     }
     if (data && data.ok) {
       if (data.scene) data.scene = normalizeScene(data.scene);
       // A v1 draft only when v1 can say the document; else `draft: null`, never a v1 draft
       // that drops a v2 entity (ADR 0039 D1; v2 mode asks for v2 drafts with `draft`, C5-S4).
-      if (!data.draft && data.scene) data.draft = v1DraftOrNull(data.scene, docState);
+      // It is this reply's document, which a late scene reply did not adopt.
+      if (!data.draft && data.scene) data.draft = v1DraftOrNull(data.scene, data.document || docState);
     }
     return data;
   };
