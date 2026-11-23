@@ -171,16 +171,24 @@ def rect_column_template() -> Document:
 
 
 def t_beam_template() -> Document:
-    """`t_beam` v1 at the record's oracle: the ring is `T_RING`, plus four slab bars."""
+    """`t_beam` v1 at the record's oracle: the ring is `T_RING`, plus four slab bars.
+
+    Pinned to version 1: version 2 is now the latest, and the fixture records v1 (ADR 0040
+    Errata 15.1, C9-2c).
+    """
     doc = Document()
-    doc.add_section_template("t_beam", T_BEAM_PARAMS)
+    doc.add_section_template("t_beam", T_BEAM_PARAMS, template_version=1)
     return doc
 
 
 def cft_rect_template() -> Document:
-    """`cft_rect` v1 at the record's row 4: a 300 x 500 tube, t 12, centred on (100, 200)."""
+    """`cft_rect` v1 at the record's row 4: a 300 x 500 tube, t 12, centred on (100, 200).
+
+    Pinned to version 1: version 2 is now the latest, and the fixture records v1 (ADR 0040
+    Errata 15.1, C9-2c).
+    """
     doc = Document()
-    doc.add_section_template("cft_rect", CFT_RECT_PARAMS)
+    doc.add_section_template("cft_rect", CFT_RECT_PARAMS, template_version=1)
     return doc
 
 

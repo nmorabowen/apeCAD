@@ -4,10 +4,10 @@
     rect_column      rectangular tied column, versions 1 and 2
     polygon_column   convex polygonal tied column, versions 1 and 2
     rect_hollow      rectangular hollow section without crossties, versions 1 and 2
-    t_beam           symmetric T beam, version 1
-    circular_column  circular column with a spiral or a hoop, version 1
-    cft_round        round concrete-filled steel tube, version 1
-    cft_rect         rectangular concrete-filled steel tube, version 1
+    t_beam           symmetric T beam, versions 1 and 2
+    circular_column  circular column with a spiral or a hoop, versions 1 and 2
+    cft_round        round concrete-filled steel tube, versions 1 and 2
+    cft_rect         rectangular concrete-filled steel tube, versions 1 and 2
     hole_rules       the rules R1 to R7 a user hole must clear, decided exactly (Errata 17)
     holes            the hole step of version 2: v1 composed with user holes (Errata 13.2)
 
@@ -62,10 +62,29 @@ TEMPLATES: Mapping[str, Mapping[int, Expansion]] = MappingProxyType(
                 rect_hollow.TEMPLATE, rect_hollow.FIELDS, rect_hollow.expand_v1, centred=True
             ),
         }),
-        t_beam.TEMPLATE: MappingProxyType({1: t_beam.expand_v1}),
-        circular_column.TEMPLATE: MappingProxyType({1: circular_column.expand_v1}),
-        cft_round.TEMPLATE: MappingProxyType({1: cft_round.expand_v1}),
-        cft_rect.TEMPLATE: MappingProxyType({1: cft_rect.expand_v1}),
+        t_beam.TEMPLATE: MappingProxyType({
+            1: t_beam.expand_v1,
+            2: holes.version_2(t_beam.TEMPLATE, t_beam.FIELDS, t_beam.expand_v1, centred=True),
+        }),
+        circular_column.TEMPLATE: MappingProxyType({
+            1: circular_column.expand_v1,
+            2: holes.version_2(
+                circular_column.TEMPLATE, circular_column.FIELDS, circular_column.expand_v1,
+                centred=True,
+            ),
+        }),
+        cft_round.TEMPLATE: MappingProxyType({
+            1: cft_round.expand_v1,
+            2: holes.version_2(
+                cft_round.TEMPLATE, cft_round.FIELDS, cft_round.expand_v1, centred=True
+            ),
+        }),
+        cft_rect.TEMPLATE: MappingProxyType({
+            1: cft_rect.expand_v1,
+            2: holes.version_2(
+                cft_rect.TEMPLATE, cft_rect.FIELDS, cft_rect.expand_v1, centred=True
+            ),
+        }),
     }
 )
 

@@ -1,5 +1,6 @@
-"""Template holes, version 2 (ADR 0040 Errata 13 to 18), for rect_column, rect_hollow and
-polygon_column: C9-2b (apeSection#204).
+"""Template holes, version 2 (ADR 0040 Errata 13 to 18), on all seven templates: rect_column,
+rect_hollow and polygon_column from C9-2b (apeSection#204); t_beam, circular_column, cft_round
+and cft_rect from C9-2c (apeSection#205).
 
 `section/templates/holes.py` is the step of Errata 13.2 around each v1 function. The oracles:
 
@@ -17,13 +18,18 @@ polygon_column: C9-2b (apeSection#204).
   faults, and holes aimed at every limit R1 to R6 these templates draw (C9-2a's anchors) at
   contact, inside, outside, straddling, across, the float beside contact and +-1e-12 to +-1
   mm; each ring in a random start vertex and orientation, on every template, at `center_mm`
-  offsets 0, 0.1, 1234.5 and 40000.3. Every outcome must equal the reference, through the
-  expansion and, for every seventh case, through the op.
+  offsets 0, 0.1, 1234.5 and 40000.3. On C9-2c's templates the holes are also aimed at the
+  two faces of the circular tie (R7), at a CFT core's outline, and at t_beam's re-entrant
+  corners and stirrup hull. Every outcome must equal the reference, through the expansion
+  and, for every seventh case, through the op; a refusal must also carry its own template's
+  name.
 - *The break-once table* (`ROWS`): each mutant of the step (caps, order, refusal codes,
-  placement, storage) is a named row with a case that kills it, built in-process from the
-  module's source; a row marked `fuzz` must also die under the generator.
-- The hand cases of 18.3, the placement oracles of 18.4 and the op oracles of 18.5 for these
-  three templates, with the work-unit bound of 16.2.
+  placement, storage) and of each C9-2c template's wiring in `TEMPLATES` (its centring, its
+  fields, its name, a v2 slot without the step) is a named row with a case that kills it,
+  built in-process from the module's source; a row marked `fuzz` must also die under the
+  generator.
+- The hand cases of 18.3, the placement oracles of 18.4 and the op oracles of 18.5 for the
+  templates, a v1 / v2 round trip, and the work-unit bound of 16.2.
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import re
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
@@ -43,11 +50,15 @@ from typing import cast
 
 import pytest
 
+import apeCAD.section.templates as templates_package
 from _hole_rules_truth import (
+    Core,
     Truth,
+    all_closer,
     apart,
     jarvis,
     outline,
+    point,
     qp,
     region,
     shape,
@@ -56,6 +67,7 @@ from _hole_rules_truth import (
     within_hull,
 )
 from _hole_rules_truth import fault as ring_fault
+from _section_fixtures_v2 import T_BEAM_PARAMS
 from apeCAD import Document
 from apeCAD.entities import SectionFace
 from apeCAD.errors import OpArgumentError, TemplateLockedError
@@ -65,12 +77,16 @@ from apeCAD.section.geometry import is_simple, signed_area
 from apeCAD.section.lint import lint_section_v2
 from apeCAD.section.templates import (
     TEMPLATES,
+    cft_rect,
+    cft_round,
+    circular_column,
     expand,
     hole_rules,
     holes,
     polygon_column,
     rect_column,
     rect_hollow,
+    t_beam,
 )
 from apeCAD.section.templates.plan import (
     Plan,
@@ -90,9 +106,14 @@ FIELDS = {
     rect_column.TEMPLATE: rect_column.FIELDS,
     rect_hollow.TEMPLATE: rect_hollow.FIELDS,
     polygon_column.TEMPLATE: polygon_column.FIELDS,
+    t_beam.TEMPLATE: t_beam.FIELDS,  # C9-2c's four
+    circular_column.TEMPLATE: circular_column.FIELDS,
+    cft_round.TEMPLATE: cft_round.FIELDS,
+    cft_rect.TEMPLATE: cft_rect.FIELDS,
 }
-CENTRED = {rect_column.TEMPLATE: True, rect_hollow.TEMPLATE: True, polygon_column.TEMPLATE: False}
-BASES = {k: v for k, v in RULE_BASES.items() if v[0] in FIELDS}  # rc, rc_all, rc_thin, pc, rh
+CENTRED = {name: name != polygon_column.TEMPLATE for name in FIELDS}
+C9_2C = (t_beam.TEMPLATE, circular_column.TEMPLATE, cft_round.TEMPLATE, cft_rect.TEMPLATE)
+BASES = dict(RULE_BASES)  # rc, rc_all, rc_thin, pc, rh, and C9-2c's tb, cc, cr, ct
 OFFSETS = (0.0, 0.1, 1234.5, 40000.3)
 LIMIT = 2.0**20  # the ADR 0032 extent
 SEED = 20261123
@@ -331,6 +352,8 @@ def run(step: Step, template: str, params: object) -> Outcome | tuple[str, str]:
     try:
         return step(template, params)
     except TemplateParamError as exc:
+        if exc.template != template or not str(exc).startswith(f"{template}: {exc.param}: "):
+            return ("misnamed", str(exc))  # 16: the message starts `<template>: <param>:`
         return kind_of(exc)
     except Exception as exc:  # an unnamed refusal or a crash: never what the reference says
         return ("unnamed", f"{type(exc).__name__}: {exc}")
@@ -371,6 +394,14 @@ def regular(n: int, centre: XY, radius: float) -> list[XY]:
     ]
 
 
+def box_of(boundary: PlanBoundary) -> list[XY]:
+    """A ring's vertices, or the two far corners of a circle's box."""
+    if isinstance(boundary, PlanCircle):
+        (x, y), r = boundary.center_mm, boundary.radius_mm
+        return [(x - r, y - r), (x + r, y + r)]
+    return list(boundary.points_mm)
+
+
 @cache
 def safe_spots(base: str, off: float) -> tuple[XY, ...]:
     """Offsets (on pc: section points) where a 1 mm circle clears every rule, by the truth."""
@@ -378,8 +409,8 @@ def safe_spots(base: str, off: float) -> tuple[XY, ...]:
     plan = expand(template, params, 1)
     centre = centre_of(template, params)
     truth = Truth(plan)
-    xs = [p[0] for f in plan.faces for p in cast(PlanRing, f.boundary).points_mm]
-    ys = [p[1] for f in plan.faces for p in cast(PlanRing, f.boundary).points_mm]
+    corners = [p for f in plan.faces for p in box_of(f.boundary)]
+    xs, ys = [p[0] for p in corners], [p[1] for p in corners]
     out: list[XY] = []
     for i in range(1, 40):
         for j in range(1, 40):
@@ -421,7 +452,11 @@ BAD_ENTRIES: tuple[object, ...] = (
     {"ring_mm": [[0, 0], "x"]},
 )  # fmt: skip
 BAD_LISTS: tuple[object, ...] = (None, "abc", 5, {"center_mm": [0, 0], "radius_mm": 1}, True)
-BAD_V1 = (("b", -1), ("nx", 1), ("bar", "Ø99"), ("cover", 0), ("material", ""))
+BAD_V1 = (
+    ("b", -1), ("nx", 1), ("bar", "Ø99"), ("cover", 0), ("material", ""), ("bw", -1),
+    ("hf", 900), ("diameter", 0), ("n_bars", 2), ("tie_kind", "coil"), ("t", 300),
+    ("steel_material", ""),
+)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -430,6 +465,7 @@ class Case:
     template: str
     params: Json
     rule: int = 0  # an aimed case: the rule its last hole was aimed at
+    family: str = ""  # and the family of C9-2a's anchors it was aimed by
 
 
 EXTRA_KEYS = ("zz", "a", "Ring_mm", "radius", "q")
@@ -557,8 +593,11 @@ def _not_simple(rng: random.Random, base: str, off: float) -> Json:
     }
 
 
-def _aimed(rng: random.Random, base: str, off: float, mode: str) -> tuple[Json, int] | None:
-    """Holes aimed at one limit of one rule (C9-2a's anchors), earlier holes that pass first."""
+def _aimed(
+    rng: random.Random, base: str, off: float, mode: str, only: Sequence[str] = ()
+) -> tuple[Json, int, str] | None:
+    """Holes aimed at one limit of one rule (C9-2a's anchors), earlier holes that pass first;
+    the last hole's family drawn from `only` when it is given."""
     template, params = params_at(base, off)
     plan = expand(template, params, 1)
     centre = centre_of(template, params)
@@ -576,17 +615,21 @@ def _aimed(rng: random.Random, base: str, off: float, mode: str) -> tuple[Json, 
             if hole is not None and truth.verdict([*priors, hole]) is None:
                 priors.append(hole)
                 break
-    family = rng.choice([f for f in families if priors or not f.startswith("prior")])
+    pool = [f for f in families if priors or not f.startswith("prior")]
+    family = rng.choice([f for f in pool if f in only] if only else pool)
     last = one_hole(plan, family, mode, rng, priors)
     if last is None:
         return None
     entries = [entry_of(h, centre, CENTRED[template]) for h in (*priors, last)]
-    return {"holes": entries}, FAMILIES[family][0]
+    return {"holes": entries}, FAMILIES[family][0], family
 
 
+# C9-2c: t_beam's two re-entrant corners, where the flange meets the web. The outline's
+# "@corner" and "@line" families seen from the concrete aim at its reflex corners (`spot`).
+RE_ENTRANT = ("outline-in@corner", "outline-cover@corner", "outline-in@line", "outline-cover@line")
 STRATA = (
     "aimed", "aimed", "aimed", "aimed", "shape", "shape", "list", "caps", "caps", "extent",
-    "float", "float", "v1", "unknown", "far", "simple",
+    "float", "float", "v1", "unknown", "far", "simple", "corner",
 )  # fmt: skip
 
 
@@ -597,15 +640,16 @@ def generated(n: int, seed: int) -> list[Case]:
     while len(out) < n:
         stratum = STRATA[i % len(STRATA)]
         mode = MODES[(i // len(STRATA)) % len(MODES)]
-        base = sorted(BASES)[(i // 3) % len(BASES)] if stratum != "float" else "pc"
+        base = {"float": "pc", "corner": "tb"}.get(stratum, sorted(BASES)[(i // 3) % len(BASES)])
         i += 1
         off = rng.choice(OFFSETS)
         template, params = params_at(base, off)
         extra: Json | None
-        rule = 0
-        if stratum == "aimed":
-            aimed = _aimed(rng, base, off, mode)
-            extra, rule = (None, 0) if aimed is None else aimed
+        rule, family = 0, ""
+        if stratum in ("aimed", "corner"):
+            only = RE_ENTRANT if stratum == "corner" else ()
+            aimed = _aimed(rng, base, off, mode, only)
+            extra, rule, family = (None, 0, "") if aimed is None else aimed
         elif stratum == "shape":
             extra = _shape(rng, base, off)
         elif stratum == "list":
@@ -619,17 +663,60 @@ def generated(n: int, seed: int) -> list[Case]:
             extra = {"holes": [*valid_holes(base, off, rng.choice((0, 1)), rng), *holes_]}
         elif stratum == "v1":
             name, value = rng.choice([b for b in BAD_V1 if b[0] in FIELDS[template]])
-            hole = rng.choice((*valid_holes(base, off, 1, rng), rng.choice(BAD_ENTRIES)))
+            # Beside the v1 fault: a valid hole, a shape fault (step 4, named first), or a fault
+            # of step 6 or 7 (the extent, a ring that is not simple, a hole outside the face),
+            # which step 5's v1 fault must be named before.
+            spot = rng.choice(safe_spots(base, off))
+            late = (
+                circle((rng.choice((LIMIT, -LIMIT)) * 2, 0.0), 1.0),
+                ring_entry(turned([(spot[0] + x, spot[1] + y) for x, y in NOT_SIMPLE[0]], rng)),
+                circle((1e5, 0.0), 1.0),
+            )
+            hole = rng.choice((*valid_holes(base, off, 1, rng), rng.choice(BAD_ENTRIES), *late))
             extra = {name: value, "holes": [hole]}
         elif stratum == "simple":
             extra = _not_simple(rng, base, off)
         elif stratum == "unknown":
-            extra = {"zz": 1, "holes": rng.choice(([rng.choice(BAD_ENTRIES)], None, []))}
+            # A CFT places no bars, so its v2 refuses `bar_material` at step 1, an unknown key,
+            # before any hole or v1 check (13.2; v1 names it "places no bars", Errata 11.3).
+            cft = "bar_material" not in FIELDS[template]
+            key = "bar_material" if cft and rng.random() < 0.5 else "zz"
+            some = ([rng.choice(BAD_ENTRIES)], None, [], valid_holes(base, off, 1, rng))
+            extra = {key: rng.choice((1, "A630")), "holes": rng.choice(some)}
         else:  # far: valid holes only, accepted
             extra = {"holes": valid_holes(base, off, rng.choice((1, 2, 4)), rng)}
         if extra is not None:
-            out.append(Case(stratum, template, {**params, **extra}, rule))
+            out.append(Case(stratum, template, {**params, **extra}, rule, family))
     return out
+
+
+def at_re_entrant_corner(case: Case, within: float) -> bool:
+    """The case's last hole, placed, comes within `within` mm of a reflex vertex of the outline
+    (a classification for the report, in floats)."""
+    plan = expand(case.template, {k: v for k, v in case.params.items() if k != "holes"}, 1)
+    ring = cast(PlanRing, plan.faces[0].boundary).points_mm  # counter-clockwise
+    n = len(ring)
+    reflex = [
+        b for a, b, c in ((ring[i - 1], ring[i], ring[(i + 1) % n]) for i in range(n))
+        if (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]) < 0
+    ]  # fmt: skip
+    cx, cy = centre_of(case.template, case.params)
+    last = cast(list[Json], case.params["holes"])[-1]
+    if "radius_mm" in last:
+        x, y = cast(list[float], last["center_mm"])
+        r = float(cast(float, last["radius_mm"]))
+        return any(math.dist((cx + x, cy + y), v) - r <= within for v in reflex)
+    pts = [(cx + x, cy + y) for x, y in cast(list[list[float]], last["ring_mm"])]
+    return any(
+        _seg_dist(v, pts[i - 1], pts[i]) <= within for v in reflex for i in range(len(pts))
+    )
+
+
+def _seg_dist(p: XY, a: XY, b: XY) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    t = 0.0 if dx == dy == 0 else ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy)
+    t = min(1.0, max(0.0, t))
+    return math.dist(p, (a[0] + t * dx, a[1] + t * dy))
 
 
 @cache
@@ -655,19 +742,47 @@ def test_the_fuzz_agrees_with_the_reference_and_reaches_every_kind() -> None:
                           for c, o in judged)  # fmt: skip
     print(f"\n{len(judged)} cases: {dict(sorted(kinds.items()))}")
     print("\n".join(f"  {s}: {k} {n}" for (s, k), n in sorted(per_stratum.items())))
-    # Every refusal of 16 is reached, R1 to R6 (no circular tie here), and acceptance. "zero"
-    # (an exactly simple ring has a non-zero area) and "float-require" (`require_simple` is
-    # `is_simple`'s predicate) cannot be reached; the PR body argues both.
+    # Every refusal of 16 is reached, R1 to R7, and acceptance. "zero" (an exactly simple ring
+    # has a non-zero area) and "float-require" (`require_simple` is `is_simple`'s predicate)
+    # cannot be reached; the PR body of C9-2b argues both.
     wanted = {
         "list", "cap-holes", "cap-vertices", "object", "key", "form", "point", "number",
         "ring-list", "ring-count", "extent", "simple", "float-simple", "float-ccw",
-        "float-reverse", "R1", "R2", "R3", "R4", "R5", "R6", "v1", "unknown", "accepted",
+        "float-reverse", "R1", "R2", "R3", "R4", "R5", "R6", "R7", "v1", "unknown", "accepted",
     }  # fmt: skip
     assert wanted <= set(kinds), wanted - set(kinds)
+    # C9-2c: each of its templates is reached by every stratum, and refuses what it draws.
+    per_template = Counter((c.template, o.kind if isinstance(o, Refused) else "accepted")
+                           for c, o in judged)  # fmt: skip
+    drawn = {
+        "t_beam": {"R1", "R2", "R3", "R4", "R6"}, "circular_column": {"R1", "R2", "R3", "R4", "R7"},
+        "cft_round": {"R1", "R2"}, "cft_rect": {"R1", "R2"},
+    }  # fmt: skip
+    for name, rules in drawn.items():
+        got = {k for (t, k), _ in per_template.items() if t == name}
+        need = rules | {"accepted", "v1", "unknown", "list", "cap-holes", "cap-vertices", "key",
+                        "point", "extent", "simple"}  # fmt: skip
+        assert need <= got, (name, need - got)
+        strata = {c.stratum for c, _ in judged if c.template == name}
+        assert strata >= set(STRATA) - {"float", "corner"}, (name, set(STRATA) - strata)
+    # bar_material on a CFT is an unknown key at step 1 (13.2), named before anything else.
+    assert any(c.template.startswith("cft") and "bar_material" in c.params
+               and o == Refused("bar_material", "unknown") for c, o in judged)  # fmt: skip
+    # t_beam's re-entrant corners (the "corner" stratum): at the outline (R1) and at the cover
+    # (R3), the rule refuses some holes there and lets others past it, to a later rule or in.
+    # Counted only where the hole comes within 10 mm of the limit at a re-entrant corner: of the
+    # corner itself for R1, of the 30 mm cover round it for R3.
+    for family, r, within in (("outline-in@corner", 1, 10.0), ("outline-cover@corner", 3, 40.0)):
+        corner = Counter((o.kind if isinstance(o, Refused) else "accepted") for c, o in judged
+                         if c.stratum == "corner" and c.family == family
+                         and at_re_entrant_corner(c, within))  # fmt: skip
+        print(f"  t_beam's re-entrant corners, {family}: {dict(sorted(corner.items()))}")
+        past = corner["accepted"] + sum(corner[f"R{x}"] for x in range(r + 1, 8))
+        assert corner[f"R{r}"] and past, (family, corner)
     # Each rule both refuses holes aimed at it and lets some through (18.2's two sides). On a
     # whole template a hole that clears the outline near it meets the cover (R3) next, so "let
     # through" is: accepted, or refused by a later rule.
-    for r in range(1, 7):
+    for r in range(1, 8):
         refused = passed = 0
         for c, o in judged:
             if c.stratum != "aimed" or c.rule != r:
@@ -707,17 +822,20 @@ def test_the_op_path_agrees_with_the_expansion() -> None:
 
 
 @cache
-def mutant(edits: tuple[tuple[str, str], ...]) -> ModuleType:
-    """`holes` with `edits` applied to its source, as a fresh module."""
-    source = Path(holes.__file__).read_text(encoding="utf-8")
+def mutant(edits: tuple[tuple[str, str], ...], wiring: bool = False) -> ModuleType:
+    """`holes` (or, for a wiring row, the `templates` package that registers each version)
+    with `edits` applied to its source, as a fresh module."""
+    target = templates_package if wiring else holes
+    path = cast(str, target.__file__)
+    source = Path(path).read_text(encoding="utf-8")
     for old, new in edits:
         assert source.count(old) == 1, f"the edit no longer applies; re-pin the row: {old!r}"
         source = source.replace(old, new)
-    name = f"{holes.__name__}_mutant_{len(MUTANTS)}"
+    name = f"{target.__name__}_mutant_{len(MUTANTS)}"
     module = ModuleType(name)
-    module.__file__ = holes.__file__
+    module.__file__ = path
     sys.modules[name] = module  # dataclasses look their module up while the source runs
-    exec(compile(source, holes.__file__, "exec"), module.__dict__)
+    exec(compile(source, path, "exec"), module.__dict__)
     MUTANTS.append(name)
     return module
 
@@ -725,8 +843,14 @@ def mutant(edits: tuple[tuple[str, str], ...]) -> ModuleType:
 MUTANTS: list[str] = []
 
 
-def step_of(module: ModuleType) -> Step:
+def step_of(module: ModuleType, wiring: bool = False) -> Step:
+    """The v2 step of a mutant: the mutant's own `TEMPLATES[t][2]` for a wiring row, else the
+    mutant `expand_with_holes` wired as the registry wires the real one."""
+
     def step(template: str, params: object) -> Plan:
+        if wiring:
+            versions = cast(Mapping[str, Mapping[int, Callable[[object], Plan]]], module.TEMPLATES)
+            return versions[template][2](params)
         v1 = TEMPLATES[template][1]
         return cast(Plan, module.expand_with_holes(
             template, FIELDS[template], v1, params, centred=CENTRED[template]
@@ -751,6 +875,7 @@ class Row:
     template: str
     params: Json
     fuzz: bool = True
+    wiring: bool = False  # the edits apply to `templates/__init__.py`, not to `holes.py`
 
 
 # Lines of the step, as the source spells them, for the rows that move or change one.
@@ -773,6 +898,57 @@ COUNT_CHECK = (
 )
 VERTICES = 'tuple(point_value(p, f"ring_mm[{i}]", v) for i, v in enumerate(ring))'
 ROW_OF_33 = [circle((x * 4.0, 0.5), 1.0) for x in range(-16, 17)]
+CONCRETE_FACE = '    (k,) = (i for i, face in enumerate(plan.faces) if face.role == "concrete")\n'
+CR = params_at("cr", 0.1)[1]
+
+# --- C9-2c: the wiring rows. Each template's v2 slot is one call to `holes.version_2`; a row
+# breaks one argument of it, the way a copied line goes wrong: the centring, the v1 function,
+# the fields, the name, or no step at all. On a CFT, `bar_material` among the fields would let
+# v1 name it ("places no bars") where 13.2 step 1 names it an unknown key.
+SIBLING = {"t_beam": "rect_column", "circular_column": "cft_round", "cft_round": "cft_rect",
+           "cft_rect": "cft_round"}  # fmt: skip
+BASE_OF = {"t_beam": "tb", "circular_column": "cc", "cft_round": "cr", "cft_rect": "ct"}
+
+
+def v2_call(template: str) -> str:
+    """How `templates/__init__.py` spells `template`'s v2 slot: its call to `holes.version_2`."""
+    source = Path(cast(str, templates_package.__file__)).read_text(encoding="utf-8")
+    t = re.escape(template)
+    found = re.findall(
+        rf"holes\.version_2\(\s*{t}\.TEMPLATE, {t}\.FIELDS, {t}\.expand_v1,\s*centred=True,?\s*\)",
+        source,
+    )
+    assert len(found) == 1, (template, found)
+    return cast(str, found[0])
+
+
+def wiring_rows() -> tuple[Row, ...]:
+    rows: list[Row] = []
+    for t in C9_2C:
+        call, s = v2_call(t), SIBLING[t]
+        params = params_at(BASE_OF[t], 1234.5)[1]  # centred on (1234.5, -1234.5)
+        held = {**params, "holes": [circle((0.0, 0.0), 20.0)]}  # clear at its centre
+        rows += [
+            Row(f"{t}_uncentred", f"{t} v2 wired centred=False: holes not moved by center_mm",
+                ((call, call.replace("centred=True", "centred=False")),), t, held, wiring=True),
+            Row(f"{t}_no_step", f"{t} v2 is v1 itself: holes refused as unknown",
+                ((call, f"{t}.expand_v1"),), t, held, wiring=True),
+            Row(f"{t}_other_v1", f"{t} v2 wraps {s}'s v1",
+                ((call, call.replace(f"{t}.expand_v1", f"{s}.expand_v1")),), t, held,
+                wiring=True),
+            Row(f"{t}_other_fields", f"{t} v2 checks its keys against {s}'s fields",
+                ((call, call.replace(f"{t}.FIELDS", f"{s}.FIELDS")),), t, held, wiring=True),
+            Row(f"{t}_other_name", f"{t} v2's hole refusals named {s}",
+                ((call, call.replace(f"{t}.TEMPLATE", f"{s}.TEMPLATE")),), t,
+                {**params, "holes": [None]}, wiring=True),
+        ]  # fmt: skip
+        if t.startswith("cft"):
+            rows.append(Row(
+                f"{t}_bar_material_known", f"{t} v2 takes bar_material past step 1",
+                ((call, call.replace(f"{t}.FIELDS", f'(*{t}.FIELDS, "bar_material")')),), t,
+                {**held, "bar_material": "A630"}, wiring=True,
+            ))  # fmt: skip
+    return tuple(rows)
 
 ROWS: tuple[Row, ...] = (
     # --- the caps, and what they count (16.2, 13.2 step 3) -------------------------------------
@@ -805,6 +981,13 @@ ROWS: tuple[Row, ...] = (
     Row("v1_before_shape", "v1 before the shapes: a bad b named before a bad hole",
         ((STEP_4 + STEP_5, STEP_5 + STEP_4),),
         "rect_column", {**RC, "b": -1, "holes": [None]}),
+    # Review of #76, finding 1: step 6 moved before step 5, so a hole's extent is named before
+    # v1's own fault. Killed on t_beam (bw -1, a hole at 2^21) and by the generator's v1 stratum.
+    Row("place_before_v1", "the holes placed before v1 runs: a far hole named before a bad bw",
+        (("    plan = v1(v1_params)  # step 5\n    if not shapes:\n        return plan\n",
+          "    if not shapes:\n        return v1(v1_params)\n"),
+         ("    ]  # step 6\n", "    ]  # step 6\n    plan = v1(v1_params)  # step 5, moved\n")),
+        "t_beam", {**params_at("tb", 1234.5)[1], "bw": -1, "holes": [circle((LIMIT * 2, 0), 1)]}),
     Row("keys_unchecked", "no step 1: an unknown key reaches v1, which names it without holes",
         (("    Params(template, data, (*fields, \"holes\"))  # step 1", "    pass  # step 1"),),
         "rect_column", {**RC, "zz": 1, "holes": [None]}),
@@ -894,6 +1077,12 @@ ROWS: tuple[Row, ...] = (
     Row("before_own_holes", "user holes before the void (13.5: the void stays index 0)",
         (("holes=(*face.holes, *holes)", "holes=(*holes, *face.holes)"),),
         "rect_hollow", {**RH, "holes": [ring_entry(DUCT)]}),
+    # --- C9-2c: a CFT's plan has a steel face too; holes cut the core only (Errata 19) --------
+    Row("holes_in_steel", "user holes appended to the steel tube, the plan's last face",
+        ((CONCRETE_FACE, "    k = len(plan.faces) - 1\n"),),
+        "cft_round", {**CR, "holes": [circle((0.0, 0.0), 50.0)]}),
+    # --- C9-2c: each template's wiring in TEMPLATES (`wiring_rows`) ----------------------------
+    *wiring_rows(),
 )  # fmt: skip
 
 
@@ -901,7 +1090,7 @@ ROWS: tuple[Row, ...] = (
 def test_each_row_kills_its_mutant(row: Row) -> None:
     expected = reference(row.template, row.params)
     assert run(product, row.template, row.params) == expected, f"{row.name}: product != reference"
-    got = run(step_of(mutant(row.edits)), row.template, row.params)
+    got = run(step_of(mutant(row.edits, row.wiring), row.wiring), row.template, row.params)
     assert got != expected, f"{row.name} ({row.what}) survives its case: {got}"
 
 
@@ -911,7 +1100,10 @@ def kills(step: Step, judged: Sequence[tuple[Case, Outcome]]) -> bool:
 
 def test_the_generator_kills_every_fuzz_row() -> None:
     judged = fuzz()
-    alive = [r.name for r in ROWS if r.fuzz and not kills(step_of(mutant(r.edits)), judged)]
+    alive = [
+        r.name for r in ROWS
+        if r.fuzz and not kills(step_of(mutant(r.edits, r.wiring), r.wiring), judged)
+    ]  # fmt: skip
     assert not alive, f"the generator lets these through: {alive}"
 
 
@@ -989,6 +1181,130 @@ def test_polygon_column_ring_by_hand() -> None:
     assert got == [{"kind": "ring", "ring_mm": [[190.0, 160.0], [230.0, 100.0], [150.0, 100.0]]}]
 
 
+T_BEAM: Json = {**T_BEAM_PARAMS, "hf": 200}  # centred on (0, 300): y 0 to 600, flange from 400
+
+
+def test_t_beam_duct_by_hand() -> None:
+    # Errata 18.3 on the flange placement. The stirrup's hull runs from the bottom bar (100, 50)
+    # to the top bar (102, 552); a Ø50 duct centred on the right leg's centreline, 15 mm
+    # (r_max + t / 2) outside that edge and 110 mm below the top, at about (116.75, 490), sits
+    # in the flange: about 70.9 mm from the outline (cover 30) and 30.7 mm clear of the top bar
+    # (102, 552), but its distance from the hull runs from 0 to about 40 mm, neither within
+    # r_min = 8 nor beyond r_max + t = 20 mm: R6. The offset is from center_mm (0, 300).
+    duct = refusal("t_beam", {**T_BEAM, "holes": [circle((116.75, 190.0), 25.0)]})
+    assert duct.param == "holes[0]" and str(duct).startswith("t_beam: holes[0]: R6: "), duct
+    # Near a re-entrant corner of the T, (150, 400): a Ø10 hole 35 mm above the flange's
+    # underside, right of the corner, is exactly the 30 mm cover from that underside: contact,
+    # R3. One millimetre further it clears every rule (the hull is 84 mm off, the nearest slab
+    # bar, (212.5, 564), about 130 mm) and lands at the centre plus its offsets.
+    at = refusal("t_beam", {**T_BEAM, "holes": [circle((185.0, 135.0), 5.0)]})
+    assert str(at).startswith("t_beam: holes[0]: R3: "), at
+    doc, got = drafted("t_beam", {**T_BEAM, "holes": [circle((186.0, 136.0), 5.0)]})
+    assert got == [{"kind": "circle", "center_mm": [186.0, 436.0], "radius_mm": 5.0}]
+    assert lint_section_v2({i: doc.entity(i) for i in doc.entity_ids()}) == ()
+    # The re-entrant corner itself (review of #76, finding 2). On base `tb`, centred on (0, 0),
+    # the corner is (150, 100). A circle at (141, 140) sits above the web, left of the corner,
+    # so the outline comes nearest at that vertex: |(141, 140) - (150, 100)| = sqrt(81 + 1600)
+    # = 41 exactly. At r 11 the hole is exactly the 30 mm cover from the corner: R3. At r 11
+    # less one ulp it clears it, and every other rule (the hull ~28 mm off, beyond 20).
+    corner = dict(BASES["tb"][1])
+    probe = refusal("t_beam", {**corner, "holes": [circle((141.0, 140.0), 11.0)]})
+    assert str(probe).startswith("t_beam: holes[0]: R3: "), probe
+    inside = math.nextafter(11.0, 0.0)
+    _, got = drafted("t_beam", {**corner, "holes": [circle((141.0, 140.0), inside)]})
+    assert got == [{"kind": "circle", "center_mm": [141.0, 140.0], "radius_mm": inside}]
+    # The web, inside the cage, and an overhang, outside it, between the slab bars.
+    _, got = drafted("t_beam", {**T_BEAM, "holes": [circle((0, 0), 50), circle((275, 200), 20)]})
+    assert [h["center_mm"] for h in got] == [[0.0, 300.0], [275.0, 500.0]]
+
+
+def test_circular_column_spiral_inner_face_by_hand() -> None:
+    # Errata 18.3: diameter 600, cover 40, a Ø10 spiral: rho = 255, its inner face 250 from the
+    # centre. A Ø50 hole whose far side reaches 250 touches it (R7); 0.01 mm in, it is clear:
+    # 6 Ø20 bars at r 240, the nearest (120, 207.8) about 121 from it, and 50 from the outline.
+    base = dict(BASES["cc"][1])
+    touch = refusal("circular_column", {**base, "holes": [circle((0.0, 225.0), 25.0)]})
+    assert str(touch).startswith("circular_column: holes[0]: R7: "), touch
+    doc, got = drafted("circular_column", {**base, "holes": [circle((0.0, 224.99), 25.0)]})
+    assert got == [{"kind": "circle", "center_mm": [0.0, 224.99], "radius_mm": 25.0}]
+    assert lint_section_v2({i: doc.entity(i) for i in doc.entity_ids()}) == ()
+    # Beyond the tie's outer face (260) the hole would be in the cover: R3 refuses it there.
+    out = refusal("circular_column", {**base, "holes": [circle((0.0, 270.0), 5.0)]})
+    assert str(out).startswith("circular_column: holes[0]: R3: "), out
+
+
+@pytest.mark.parametrize("base", ["cr", "ct"])
+def test_cft_core_holes_by_hand(base: str) -> None:
+    # Errata 18.3 and 19: the core is the concrete face; the tube keeps its one hole, the core.
+    template, params = BASES[base]
+    if template == "cft_round":  # core radius 400 / 2 - 10 = 190
+        tangent, clear = circle((165.0, 0.0), 25.0), circle((164.99, 0.0), 25.0)
+        a, b, b_clear = circle((-50, 0), 25), circle((0, 0), 25), circle((0.01, 0), 25)
+    else:  # core 300 - 2 x 12 by 500 - 2 x 12: x from -138 to 138
+        tangent = ring_entry([(88, -25), (138, -25), (138, 25), (88, 25)])
+        clear = ring_entry([(88, -25), (137.99, -25), (137.99, 25), (88, 25)])
+        a = ring_entry([(-60, -20), (-20, -20), (-20, 20), (-60, 20)])
+        b = ring_entry([(-20, -20), (20, -20), (20, 20), (-20, 20)])
+        b_clear = ring_entry([(-19.99, -20), (20, -20), (20, 20), (-19.99, 20)])
+    core = expand(template, params, 1).faces[0].boundary
+    as_hole = entry_of(core, (0.0, 0.0), True)  # a hole equal to the core: it touches R1
+    for refused, rule, k in ((tangent, 1, 0), (as_hole, 1, 0), ([a, b], 2, 1)):
+        given = refused if isinstance(refused, list) else [refused]
+        err = refusal(template, {**params, "holes": given})
+        assert str(err).startswith(f"{template}: holes[{k}]: R{rule}: "), err
+    doc, got = drafted(template, {**params, "holes": [clear, a, b_clear]})
+    assert len(got) == 3
+    section = cast(Json, section_draft(doc, version=2, commit=None)["section"])
+    (tube,) = (f for f in cast(list[Json], section["faces"]) if f["role"] == "steel")
+    assert tube["holes"] == [tube_hole(template, params)]  # the steel face is untouched
+    assert lint_section_v2({i: doc.entity(i) for i in doc.entity_ids()}) == ()
+
+
+V1_FAULT = {"t_beam": ("bw", -1), "circular_column": ("diameter", 0), "cft_round": ("t", 300),
+            "cft_rect": ("t", 300)}  # fmt: skip
+OUTSIDE = circle((1e5, 0.0), 1.0)  # within the extent, outside every face: R1
+BOW_TIE = ring_entry([(0, 0), (4, 4), (4, 0), (0, 4)])
+FAR_OUT = circle((LIMIT * 2, 0.0), 1.0)  # outside the ADR 0032 extent once placed
+
+
+@pytest.mark.parametrize("name", C9_2C)
+def test_each_refusal_order_of_13_2_on_c9_2c_templates(name: str) -> None:
+    """Every pair of steps 13.2 orders, pinned by params bad in two ways at once: the earlier
+    step names its fault. The reference agrees with each."""
+    params = dict(BASES[BASE_OF[name]][1])
+    key, value = V1_FAULT[name]
+    cases: list[tuple[Json, str]] = [
+        ({"zz": 1, "holes": None}, "zz"),  # step 1 before step 2
+        ({key: value, "holes": "abc"}, "holes"),  # 2 before 5
+        ({key: value, "holes": [None] * 33}, "holes"),  # 3 (the cap) before 4 and 5
+        ({key: value, "holes": [{"center_mm": [0, 0]}]}, "holes[0]"),  # 4 before 5
+        ({key: value, "holes": [OUTSIDE]}, key),  # 5 before 7
+        ({key: value, "holes": [FAR_OUT]}, key),  # 5 before 6: the extent
+        ({key: value, "holes": [BOW_TIE]}, key),  # 5 before 6: the ring's simplicity
+        ({"holes": [FAR_OUT, {"radius_mm": 1}]}, "holes[1]"),  # 4 (every hole) before 6
+        ({"holes": [OUTSIDE, BOW_TIE]}, "holes[1].ring_mm"),  # 6 (every hole) before 7
+        ({"holes": [OUTSIDE, FAR_OUT]}, "holes[1]"),  # the extent (6) before R1 of hole 0 (7)
+    ]
+    if name.startswith("cft"):  # 1 before 5: v1 would say "places no bars"
+        cases.append(({"bar_material": None, "holes": [None]}, "bar_material"))
+    for extra, param in cases:
+        given = {**params, **extra}
+        err = refusal(name, given)
+        assert err.param == param and str(err).startswith(f"{name}: {param}: "), (extra, err)
+        want = reference(name, given)
+        assert isinstance(want, Refused) and want.param == param, (extra, want)
+
+
+def tube_hole(template: str, params: Json) -> Json:
+    """The steel tube's one hole, the core, in the draft's words (v1's drawing)."""
+    doc = Document()
+    doc.add_section_template(template, params, template_version=1)
+    section = cast(Json, section_draft(doc, version=2, commit=None)["section"])
+    (tube,) = (f for f in cast(list[Json], section["faces"]) if f["role"] == "steel")
+    (hole,) = cast(list[Json], tube["holes"])
+    return hole
+
+
 # --- 18.4, placement -----------------------------------------------------------------------------
 
 FAR = [1234.5, -40000.3]  # non-zero and not dyadic
@@ -1031,19 +1347,31 @@ PLACED_HOLES: list[Json] = [
 ]
 
 
-def test_holes_land_at_the_centre_plus_their_offsets_and_move_with_it() -> None:
-    doc, got = drafted("rect_column", {**RECT, "center_mm": FAR, "holes": PLACED_HOLES})
+# Each centred template, and the edit of its size that leaves the holes at their offsets. The
+# holes of `PLACED_HOLES` clear every rule on each: they lie within 166 mm of the centre, inside
+# the stirrup's hull of the T's web, the bars' circle (r 240) and the CFT cores.
+SIZED: dict[str, tuple[Json, Json]] = {
+    "rect_column": (RECT, {"b": 500}),
+    "t_beam": (dict(T_BEAM_PARAMS), {"bw": 320}),
+    "circular_column": (dict(BASES["cc"][1]), {"diameter": 700}),
+    "cft_round": (dict(BASES["cr"][1]), {"diameter": 500}),
+    "cft_rect": (dict(BASES["ct"][1]), {"b": 340}),
+}
+
+
+@pytest.mark.parametrize("template", sorted(SIZED))
+def test_holes_land_at_the_centre_plus_their_offsets_and_move_with_it(template: str) -> None:
+    base, size = SIZED[template]
+    doc, got = drafted(template, {**base, "center_mm": FAR, "holes": PLACED_HOLES})
     assert got == [_placed(h, FAR) for h in PLACED_HOLES]
-    (template,) = doc.section_templates()
+    (entity,) = doc.section_templates()
     moved = [-777.7, 333.3]
-    doc.edit_section_template(
-        template.entity_id, {**RECT, "center_mm": moved, "holes": PLACED_HOLES}
-    )
+    doc.edit_section_template(entity.entity_id, {**base, "center_mm": moved, "holes": PLACED_HOLES})
     assert face_holes(doc) == [_placed(h, moved) for h in PLACED_HOLES]
     doc.edit_section_template(
-        template.entity_id, {**RECT, "b": 500, "center_mm": moved, "holes": PLACED_HOLES}
+        entity.entity_id, {**base, **size, "center_mm": moved, "holes": PLACED_HOLES}
     )
-    assert face_holes(doc) == [_placed(h, moved) for h in PLACED_HOLES]  # b leaves the offsets
+    assert face_holes(doc) == [_placed(h, moved) for h in PLACED_HOLES]  # size leaves offsets
     assert all(
         _exact_cw(cast(list[list[float]], h["ring_mm"]))
         for h in face_holes(doc)
@@ -1103,17 +1431,32 @@ def test_every_accepted_ring_passes_both_consumers_unchanged() -> None:
 # --- 18.5, the op oracles ------------------------------------------------------------------------
 
 
-def test_an_edit_keeps_or_drops_holes_and_a_bad_one_changes_nothing() -> None:
-    with_holes = {**RECT, "holes": [{"center_mm": [0, 0], "radius_mm": 50}]}
-    doc, before = drafted("rect_column", with_holes)
+# A size each template takes with a centred Ø100 hole, and one that brings the hole to a rule:
+# the bars of a 180 wide rect_column (R4), the cover of a 150 wide web (R3), the bars on a
+# 200 circle (r 40, R4), a CFT core narrower than the hole (R1).
+RESIZED: dict[str, tuple[Json, Json, Json]] = {
+    "rect_column": (RECT, {"b": 450}, {"b": 180}),
+    "t_beam": (dict(T_BEAM_PARAMS), {"bw": 320}, {"bw": 150}),
+    "circular_column": (dict(BASES["cc"][1]), {"diameter": 700}, {"diameter": 200}),
+    "cft_round": (dict(BASES["cr"][1]), {"diameter": 500}, {"diameter": 100}),
+    "cft_rect": (dict(BASES["ct"][1]), {"b": 340}, {"b": 100}),
+}
+
+
+@pytest.mark.parametrize("name", sorted(RESIZED))
+def test_an_edit_keeps_or_drops_holes_and_a_bad_one_changes_nothing(name: str) -> None:
+    base, ok, bad = RESIZED[name]
+    with_holes = {**base, "holes": [{"center_mm": [0, 0], "radius_mm": 50}]}
+    doc, before = drafted(name, with_holes)
+    assert len(before) == 1
     template = doc.section_templates()[0].entity_id
-    doc.edit_section_template(template, {**with_holes, "b": 450})
-    assert face_holes(doc) == before  # b moves no hole: it is centred on center_mm
+    doc.edit_section_template(template, {**with_holes, **ok})
+    assert face_holes(doc) == before  # a size moves no hole: it is centred on center_mm
     saved = doc.to_json()
-    with pytest.raises(TemplateParamError, match=r"rect_column: holes\[0\]: R"):
-        doc.edit_section_template(template, {**with_holes, "b": 180})  # the hole meets the bars
+    with pytest.raises(TemplateParamError, match=rf"{name}: holes\[0\]: R"):
+        doc.edit_section_template(template, {**with_holes, **bad})  # the hole meets a rule
     assert doc.to_json() == saved  # refused before anything changed
-    doc.edit_section_template(template, RECT)  # params replaced whole: no holes
+    doc.edit_section_template(template, base)  # params replaced whole: no holes
     assert face_holes(doc) == []
     doc.undo()
     assert face_holes(doc) == before
@@ -1122,22 +1465,56 @@ def test_an_edit_keeps_or_drops_holes_and_a_bad_one_changes_nothing() -> None:
     assert doc.ops() == ()  # one undo per op
 
 
-def test_a_v1_template_takes_holes_only_by_an_edit_to_version_2() -> None:
+def section_of(doc: Document) -> Json:
+    return cast(Json, section_draft(doc, version=2, commit=None)["section"])
+
+
+def without_ids(value: object) -> object:
+    """`value` with every entity id dropped (`id`, `*_id`, `*_ids`): an edit draws fresh ids."""
+    if isinstance(value, dict):
+        return {
+            k: without_ids(v)
+            for k, v in cast(dict[str, object], value).items()
+            if k != "id" and not k.endswith(("_id", "_ids"))
+        }
+    if isinstance(value, list):
+        return [without_ids(v) for v in cast(list[object], value)]
+    return value
+
+
+@pytest.mark.parametrize("name", sorted(RESIZED))
+def test_a_v1_template_takes_holes_by_an_edit_to_version_2_and_drops_them_back(name: str) -> None:
+    """13.4, and the round trip: v1, then v2 with a hole, then v1 again draws v1's section."""
+    base = RESIZED[name][0]
     doc = Document()
-    template = doc.add_section_template("rect_column", RECT, template_version=1)
-    holed = {**RECT, "holes": [{"center_mm": [0, 0], "radius_mm": 50}]}
-    with pytest.raises(TemplateParamError, match="rect_column: holes: unknown parameter; known: "):
+    template = doc.add_section_template(name, base, template_version=1)
+    plain = section_of(doc)
+    holed = {**base, "holes": [{"center_mm": [0, 0], "radius_mm": 50}]}
+    with pytest.raises(TemplateParamError, match=f"{name}: holes: unknown parameter; known: "):
         doc.edit_section_template(template.entity_id, holed)
     edited = doc.edit_section_template(template.entity_id, holed, template_version=2)
     assert edited.template_version == 2 and len(face_holes(doc)) == 1
+    log = doc.to_dict()
+    assert Document.from_dict(log).to_dict() == log  # the log replays across the versions
+    back = doc.edit_section_template(template.entity_id, base, template_version=1)
+    assert back.template_version == 1 and face_holes(doc) == []
+    assert without_ids(section_of(doc)) == without_ids(plain)
+    assert Document.from_dict(doc.to_dict()).to_dict() == doc.to_dict()
+    with pytest.raises(TemplateParamError, match=f"{name}: holes: unknown parameter; known: "):
+        doc.edit_section_template(template.entity_id, holed)  # v1 again: holes unknown
 
 
-def test_add_face_hole_on_a_template_face_stays_locked() -> None:
-    doc, _ = drafted("rect_column", {**RECT, "holes": [{"center_mm": [0, 0], "radius_mm": 50}]})
-    (face,) = (e for e in doc.section_faces() if isinstance(e, SectionFace))
+@pytest.mark.parametrize("name", sorted(RESIZED))
+def test_add_face_hole_on_a_template_face_stays_locked(name: str) -> None:
+    base = RESIZED[name][0]
+    doc, _ = drafted(name, {**base, "center_mm": [200, 300], "holes": [circle((0, 0), 50)]})
+    faces = [e for e in doc.section_faces() if isinstance(e, SectionFace)]
+    assert faces and len(faces) == (2 if name.startswith("cft") else 1)
     at = [PointAt(XYZ(x, y, 0.0)) for x, y in ((150, 450), (250, 450), (200, 500))]
-    with pytest.raises(TemplateLockedError):
-        doc.add_face_hole(face.entity_id, point_ids=at)
+    for face in faces:  # the core, and a CFT's steel tube
+        with pytest.raises(TemplateLockedError):
+            doc.add_face_hole(face.entity_id, point_ids=at)
+    assert len(face_holes(doc)) == 1
 
 
 @pytest.mark.parametrize("base", sorted(BASES))
@@ -1174,23 +1551,31 @@ def test_each_v1_log_replays_under_version_2_apart_from_the_version(name: str) -
 def clear_by(plan: Plan, holes: Sequence[PlanBoundary], gap: Q) -> bool:
     """Every hole clears every rule by `gap`, by the truth's primitives (Errata 15.3)."""
     t = Truth(plan)
-    assert t.ring is not None
     cores = [shape(h) for h in holes]
-    face = outline(t.ring)
+
+    def off_outline(h: Core, by: Q) -> bool:  # d(h, the outline) > by, h inside the face
+        if t.circle is not None:
+            return all_closer(h, qp(t.circle.center_mm), Q(t.circle.radius_mm) - by)
+        assert t.ring is not None
+        return apart(h, outline(t.ring), by) and strictly_inside(h.pts[0], t.ring)
+
     for k, h in enumerate(cores):
-        if not (apart(h, face, gap) and strictly_inside(h.pts[0], t.ring)):
+        if not off_outline(h, gap):
             return False
         others = [*t.own, *cores[:k]]
         if not all(apart(h, o, gap) for o in others):
             return False
         if not all(
-            apart(h, face, c + gap) and all(apart(h, v, c + gap) for v in t.own) for c in t.covers
+            off_outline(h, c + gap) and all(apart(h, v, c + gap) for v in t.own) for c in t.covers
         ):
             return False
         if not all(apart(h, s, gap) for s in (*t.bars, *t.ties)):
             return False
         for hull, r_min, r_max, d in t.hoops:
             if not (within_hull(h, hull, r_min - gap) or apart(h, region(hull), r_max + d + gap)):
+                return False
+        for c, rho, d in t.spirals:  # R7: inside the tie's inner face, or beyond its outer one
+            if not (all_closer(h, c, rho - d / 2 - gap) or apart(h, point(c), rho + d / 2 + gap)):
                 return False
     return True
 

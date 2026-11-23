@@ -1,0 +1,60 @@
+{
+  "schema": "apeCAD.document.v1",
+  "units": "mm",
+  "ops": [
+    {
+      "op": "AddSectionTemplate",
+      "template": "cft_round",
+      "template_version": 2,
+      "template_params": {
+        "material": "C50",
+        "steel_material": "S355",
+        "diameter": 400,
+        "t": 10,
+        "holes": [
+          {
+            "center_mm": [
+              0,
+              0
+            ],
+            "radius_mm": 50
+          },
+          {
+            "ring_mm": [
+              [
+                -40,
+                120
+              ],
+              [
+                40,
+                120
+              ],
+              [
+                40,
+                160
+              ],
+              [
+                -40,
+                160
+              ]
+            ]
+          }
+        ]
+      },
+      "label": null,
+      "entity_id": 1,
+      "child_ids": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    }
+  ]
+}

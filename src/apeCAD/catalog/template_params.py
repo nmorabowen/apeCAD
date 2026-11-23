@@ -51,6 +51,7 @@ _HOLES = (
 )
 _HOLES_CENTRED = f"{_HOLES} Coordinates are mm offsets from center_mm, so holes move with it."
 _HOLES_RING = f"{_HOLES} Coordinates are in mm in the frame of ring, as ring's are."
+_HOLES_CORE = f"{_HOLES_CENTRED} They cut the concrete core only, never the steel tube."
 
 
 # The parameter dataclasses of version 2: version 1's and `holes` (ADR 0040 Errata 13.1). The
@@ -69,6 +70,26 @@ class _PolygonColumnV2(polygon_column.PolygonColumnParams):
 
 @dataclass(frozen=True)
 class _RectHollowV2(rect_hollow.RectHollowParams):
+    holes: tuple[CircleHole | RingHole, ...] = ()
+
+
+@dataclass(frozen=True)
+class _TBeamV2(t_beam.TBeamParams):
+    holes: tuple[CircleHole | RingHole, ...] = ()
+
+
+@dataclass(frozen=True)
+class _CircularColumnV2(circular_column.CircularColumnParams):
+    holes: tuple[CircleHole | RingHole, ...] = ()
+
+
+@dataclass(frozen=True)
+class _CftRoundV2(cft_round.CftRoundParams):
+    holes: tuple[CircleHole | RingHole, ...] = ()
+
+
+@dataclass(frozen=True)
+class _CftRectV2(cft_rect.CftRectParams):
     holes: tuple[CircleHole | RingHole, ...] = ()
 
 
@@ -161,8 +182,9 @@ _ROWS = (
     _Row(
         t_beam.TEMPLATE,
         "A symmetric T beam: the ring, its cover guide, bottom and top rows in the web, one "
-        "stirrup on their hull and optional slab bars. Version 1 is symmetric only.",
-        t_beam.TBeamParams,
+        "stirrup on their hull and optional slab bars. Version 1 is symmetric only; version 2 "
+        "adds holes.",
+        _TBeamV2,
         {
             "material": _MATERIAL,
             "bar_material": _BAR_MATERIAL,
@@ -178,6 +200,7 @@ _ROWS = (
             "slab_bars": f"Bars per overhang, or null: n, at least 1, and bar, {_BARS}.",
             "stirrup": f"Stirrup bar, {_BARS}.",
             "stirrup_spacing": "Spacing of the stirrups along the member, in mm.",
+            "holes": _HOLES_CENTRED,
         },
         {
             "material": "C30", "bw": 300, "h": 600, "bf": 800, "hf": 150, "center_mm": [0, 300],
@@ -188,8 +211,9 @@ _ROWS = (
     _Row(
         circular_column.TEMPLATE,
         "A circular column: the exact circle, equal bars evenly on a circle from angle 0 "
-        "counter-clockwise, one spiral or circular hoop and its cover guide.",
-        circular_column.CircularColumnParams,
+        "counter-clockwise, one spiral or circular hoop and its cover guide; version 2 adds "
+        "holes.",
+        _CircularColumnV2,
         {
             "material": _MATERIAL,
             "bar_material": _BAR_MATERIAL,
@@ -203,6 +227,7 @@ _ROWS = (
             "tie": _TIE,
             "pitch": "Pitch of a spiral or spacing of the hoops along the member, in mm; at "
             "least the tie's diameter.",
+            "holes": _HOLES_CENTRED,
         },
         {
             "material": "C30", "diameter": 600, "cover": 40, "n_bars": 8, "bar": "Ø20",
@@ -212,14 +237,16 @@ _ROWS = (
     _Row(
         cft_round.TEMPLATE,
         "A round concrete-filled steel tube: the concrete core, and the steel tube holed to "
-        "the core's circle. No bars, ties or cover guides; bar_material is refused.",
-        cft_round.CftRoundParams,
+        "the core's circle. No bars, ties or cover guides; bar_material is refused. Version 2 "
+        "adds holes in the core.",
+        _CftRoundV2,
         {
             "material": "Name of the core's concrete. A name only: the host binds it.",
             "steel_material": "Name of the tube's steel. A name only: the host binds it.",
             "center_mm": "Centre of the tube, [x, y] in mm.",
             "diameter": "Outer diameter of the tube, in mm.",
             "t": "Wall thickness of the tube, in mm; the core keeps a positive radius.",
+            "holes": _HOLES_CORE,
         },
         {"material": "C50", "steel_material": "S355", "diameter": 400, "t": 10},
     ),
@@ -227,8 +254,8 @@ _ROWS = (
         cft_rect.TEMPLATE,
         "A rectangular concrete-filled steel tube: the concrete core, and the steel tube "
         "holed to the core's ring; square corners. No bars, ties or cover guides; "
-        "bar_material is refused.",
-        cft_rect.CftRectParams,
+        "bar_material is refused. Version 2 adds holes in the core.",
+        _CftRectV2,
         {
             "material": "Name of the core's concrete. A name only: the host binds it.",
             "steel_material": "Name of the tube's steel. A name only: the host binds it.",
@@ -236,6 +263,7 @@ _ROWS = (
             "b": "Outer width of the tube along x, in mm.",
             "h": "Outer depth of the tube along y, in mm.",
             "t": "Wall thickness of the tube, in mm; the core keeps a positive width and depth.",
+            "holes": _HOLES_CORE,
         },
         {"material": "C50", "steel_material": "S355", "b": 300, "h": 500, "t": 12},
     ),

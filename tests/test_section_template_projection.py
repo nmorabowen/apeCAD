@@ -13,6 +13,7 @@ import json
 import math
 import random
 from collections.abc import Callable
+from fractions import Fraction
 from importlib import import_module
 from pathlib import Path
 from threading import Thread
@@ -93,6 +94,11 @@ SECTION_SHA256 = {
     "rect_column@v2": "41b3c49399ef469b94740361134bb06e984dfe60e35f16861dd450062f1d2f3e",
     "rect_hollow@v2": "438f7934ad3986c8478a28ab9f4a052b87efe4db100b2aafffa324cff46d4252",
     "polygon_column@v2": "c7d18478fe94900f943b2c57cc23aa49977c6bd17de14cf48b3538bfe6b0cd6f",
+    # C9-2c, likewise; `circular_column@v2` is compared at rel 1e-12 (Errata 15.3), by
+    # `test_each_v2_log_is_its_v1_log_with_the_holes_appended`.
+    "t_beam@v2": "e8f608ceb9d68fb13f2070d151ae81fca752d1bbcb89d85ccfcc0f5e9d71ca16",
+    "cft_round@v2": "ff53ab84437d6e6bc51895fd408a21990bedb86561deca9b5e16dc6896f4504c",
+    "cft_rect@v2": "2e76b0d6cb6bb23c4f9e4c318000dc314eb6395fdf07083881e0915ae3d8b2b9",
 }
 
 
@@ -778,6 +784,84 @@ def test_a_frozen_log_replays_to_itself(stem: str) -> None:
     assert cast(list[int], op["child_ids"]), "the log records its child ids"
 
 
+def _shift_ids(value: object, after: int, by: int) -> object:
+    """`value` with every entity id above `after` moved up by `by` (`id`, `*_id`, `*_ids`)."""
+    if isinstance(value, dict):
+        out: Json = {}
+        for key, item in cast(Json, value).items():
+            if key == "id" or key.endswith("_id"):
+                out[key] = item + by if isinstance(item, int) and item > after else item
+            elif key.endswith("_ids"):
+                out[key] = [i + by if i > after else i for i in cast(list[int], item)]
+            else:
+                out[key] = _shift_ids(item, after, by)
+        return out
+    if isinstance(value, list):
+        return [_shift_ids(item, after, by) for item in cast(list[object], value)]
+    return value
+
+
+def _holes_placed(template: str, params: Json) -> list[Json]:
+    """The test's own placement (Errata 13.2 step 6, 18.4): (cx + x, cy + y) on a centred
+    template, as given on polygon_column; a ring stored clockwise by its exact area."""
+    centre = [0, 0] if template == "polygon_column" else params.get("center_mm", [0, 0])
+    cx, cy = (float(c) for c in cast(list[float], centre))
+    out: list[Json] = []
+    for hole in cast(list[Json], params["holes"]):
+        if "radius_mm" in hole:
+            x, y = cast(list[float], hole["center_mm"])
+            r = float(cast(float, hole["radius_mm"]))
+            out.append({"kind": "circle", "center_mm": [cx + x, cy + y], "radius_mm": r})
+            continue
+        ring = [[cx + x, cy + y] for x, y in cast(list[list[float]], hole["ring_mm"])]
+        twice = sum(
+            (Fraction(a[0]) * Fraction(b[1]) - Fraction(b[0]) * Fraction(a[1])
+             for a, b in zip(ring, ring[1:] + ring[:1], strict=True)),
+            Fraction(0),
+        )  # fmt: skip
+        out.append({"kind": "ring", "ring_mm": ring if twice < 0 else ring[::-1]})
+    return out
+
+
+def _points(boundary: Json) -> int:
+    """The point children a draft boundary or hole took: a circle's centre, a ring's vertices."""
+    return 1 if boundary["kind"] == "circle" else len(cast(list[object], boundary["ring_mm"]))
+
+
+V2_LOGS = sorted(p.stem for p in LOG_DIR.glob("*@v2.json"))
+
+
+@pytest.mark.parametrize("stem", V2_LOGS)
+def test_each_v2_log_is_its_v1_log_with_the_holes_appended(stem: str) -> None:
+    """Errata 13.2 step 8 and 15: version 2's section is version 1's for the same params, with
+    the holes placed and appended to the concrete face, after its own, their points allocated
+    after the face's own points (`materialise`), so every later id moves up by their count.
+    Numbers at rel 1e-12: `circular_column@v2` is held to the hand oracle of its v1 log."""
+    name = stem.partition("@")[0]
+    (op,) = cast(list[Json], _log(stem)["ops"])
+    params = cast(Json, op["template_params"])
+    bare = {k: v for k, v in params.items() if k != "holes"}
+    if name == "circular_column":  # the v1 log's params, and its section by hand
+        (v1_op,) = cast(list[Json], _log(f"{name}@v1")["ops"])
+        assert bare == v1_op["template_params"]
+        v1 = _recorded_circular_section()
+    else:
+        plain = Document()
+        plain.add_section_template(name, bare, template_version=1)
+        v1 = _section(_draft(plain))
+    face = _items(v1, "faces")[0]  # every template draws its concrete face first
+    assert face["role"] == "concrete"
+    own = [cast(Json, face["boundary"]), *cast(list[Json], face["holes"])]
+    assert face["id"] == 2 + sum(map(_points, own))  # template 1, the face's points, the face
+    added = _holes_placed(name, params)
+    expected = cast(Json, _shift_ids(v1, cast(int, face["id"]) - 1, sum(map(_points, added))))
+    concrete = _items(expected, "faces")[0]
+    concrete["holes"] = [*cast(list[Json], concrete["holes"]), *added]
+    (template,) = _items(expected, "templates")
+    template["template_version"], template["params"] = 2, params
+    _same(_section(_draft(_replay(stem))), expected, stem)
+
+
 # --- the seed carries no templates ------------------------------------------------------
 
 
@@ -958,7 +1042,8 @@ def test_a_reopened_template_stays_locked_and_editable() -> None:
 def test_the_transport_and_the_tools_write_a_templated_draft(tmp_path: Path) -> None:
     tools = LocalTools(root=tmp_path)
     name = cast(str, tools.new_document()["document"])
-    params: Json = {"template": "t_beam", "template_params": T_BEAM_PARAMS}
+    # Version 1, as fixtured: 2 is now the latest (ADR 0040 Errata 15.1, C9-2c).
+    params: Json = {"template": "t_beam", "template_version": 1, "template_params": T_BEAM_PARAMS}
     tools.apply_op(name, "AddSectionTemplate", params)
     envelope = tools.get_section_draft(name, 2)
     assert envelope["ok"] is True, envelope
