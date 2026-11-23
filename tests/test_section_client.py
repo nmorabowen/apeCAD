@@ -16,6 +16,7 @@ from urllib.request import urlopen
 
 import pytest
 
+from _client_wait import SETTLED_JS
 from apeCAD.document import Document
 from apeCAD.render.overlay import (
     COLOR_TOKENS,
@@ -349,8 +350,9 @@ def test_overlay_goes_stale_over_the_stateless_python_transport(
     script = f"""
     import assert from "node:assert/strict";
     import {{ create, httpTransport }} from {entry!r};
-    const ed = create({{}}, {{ transport: httpTransport({url!r}) }});
-    await new Promise((r) => setTimeout(r, 50));
+    {SETTLED_JS}
+    const ed = create({{}}, {{ transport: track(httpTransport({url!r})) }});
+    await settled();
     const rev = ed.getOverlayState().revision;
     const overlay = {{ schema: "apeCAD.section-overlay", version: 1, units: "mm", revision: rev,
       layers: [{{ id: "a", label: "A", visible: true, scale: null,
@@ -386,8 +388,9 @@ def test_stateless_transport_partial_op_list_and_load_stale_the_overlay(
     script = f"""
     import assert from "node:assert/strict";
     import {{ create, httpTransport }} from {entry!r};
-    const ed = create({{}}, {{ transport: httpTransport({url!r}) }});
-    await new Promise((r) => setTimeout(r, 50));
+    {SETTLED_JS}
+    const ed = create({{}}, {{ transport: track(httpTransport({url!r})) }});
+    await settled();
     const overlayAt = (revision) => ({{ schema: "apeCAD.section-overlay", version: 1,
       units: "mm", revision, layers: [{{ id: "a", label: "A", visible: true, scale: null,
         primitives: [{{ kind: "point", at: [0, 0], style: {{ fill: "#000" }} }}] }}] }});
