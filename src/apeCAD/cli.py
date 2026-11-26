@@ -41,6 +41,8 @@ def _json_arg(name: str, text: str) -> object:
         return json.loads(text)
     except ValueError as exc:
         raise _BadArgument(f"{name} is not JSON: {exc}") from exc
+    except RecursionError:  # the parser's own stack, at a depth that depends on the Python
+        raise _BadArgument(f"{name} is nested too deeply to parse as JSON") from None
 
 
 class _BadArgument(Exception):

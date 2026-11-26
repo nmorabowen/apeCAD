@@ -521,9 +521,10 @@ ADR 0031 "Implementation stages".
   `#id` tries spots around its anchor, nearest first: up-right (the bare drawing's spot),
   up-left, down-right, down-left, then the same four farther out, in 7 px rings. It takes
   the first spot that stays in the frame and keeps 2 px clear of the tags, the leaders, the
-  dimension lines and text, the legend, the labels already placed, the concrete outline,
-  and the reinforcement drawn inside it (hoops, crossties, legs, cover ring, bar discs).
-  When none is clear, the reinforcement gives way first; when still none is, the label
+  dimension lines and text, the legend, the labels already placed, the face outlines
+  (concrete, steel and void alike, `OUTLINE_LAYERS`; apeSection#59), and the reinforcement
+  drawn inside them (hoops, crossties, legs, cover ring, bar discs). When none is clear,
+  the reinforcement gives way first, never a face outline; when still none is, the label
   takes the bare drawing's spot. A label carries no leader, so a crowded one can sit a few
   rings from its entity. A bare drawing (`annotate=false`) places labels as before.
 - **Overall dimensions** of the concrete's box, below and left of it: 0.10 mm lines,

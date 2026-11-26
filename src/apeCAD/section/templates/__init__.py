@@ -37,7 +37,7 @@ from apeCAD.section.templates import (
     rect_hollow,
     t_beam,
 )
-from apeCAD.section.templates.plan import Plan, TemplateParamError
+from apeCAD.section.templates.plan import Plan, TemplateParamError, shown
 
 Expansion = Callable[[Mapping[str, object]], Plan]
 
@@ -104,13 +104,13 @@ def expand(template: str, params: Mapping[str, object], version: object = None) 
     chosen: object = max(versions) if version is None else version
     if isinstance(chosen, bool) or not isinstance(chosen, int):  # 1.0 == 1, but is no version
         raise TemplateParamError(
-            template, "template_version", f"must be a whole number, got {version!r}"
+            template, "template_version", f"must be a whole number, got {shown(version)}"
         )
     if chosen not in versions:
         raise TemplateParamError(
             template,
             "template_version",
-            f"unknown version {version!r}; known: {', '.join(map(str, sorted(versions)))}",
+            f"unknown version {shown(version)}; known: {', '.join(map(str, sorted(versions)))}",
         )
     return versions[chosen](params)
 

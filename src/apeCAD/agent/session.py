@@ -14,7 +14,8 @@ from apeCAD import catalog
 from apeCAD.agent.errors import ToolError
 from apeCAD.catalog import Applied
 from apeCAD.document import Document
-from apeCAD.errors import STALE, TOO_LARGE, DocumentError
+from apeCAD.errors import STALE, TOO_LARGE, DocumentError, OpArgumentError
+from apeCAD.unreadable import refusing_unreadable
 
 MAX_BATCH = 200
 """Most ops one `apply_ops` call takes (spec §4); more is `TOO_LARGE`, never truncated."""
@@ -58,7 +59,8 @@ class Session:
         self, name: str, params: Mapping[str, object], *, expect_revision: int | None = None
     ) -> Applied:
         self.check(expect_revision)
-        applied = catalog.apply(self._document, name, params)
+        with refusing_unreadable(name, lambda: params, OpArgumentError):
+            applied = catalog.apply(self._document, name, params)
         self._committed(redo_depth=0)
         return applied
 
@@ -76,7 +78,8 @@ class Session:
         results: list[Applied] = []
         for index, (name, params) in enumerate(requests):
             try:
-                results.append(catalog.apply(trial, name, params))
+                with refusing_unreadable(name, lambda: params, OpArgumentError):
+                    results.append(catalog.apply(trial, name, params))
             except DocumentError as exc:
                 raise ToolError(exc.code, f"op {index} ({name}): {exc}", index=index) from exc
         self._document = trial
