@@ -593,3 +593,8 @@ def exact_simplicity_fault(ring: Sequence[Point2]) -> str | None:
 def exact_is_simple(ring: Sequence[Point2]) -> bool:
     """`ring` is simple, decided exactly on its stored floats."""
     return exact_simplicity_fault(ring) is None
+
+
+# ADR 0042 decision 6 nests DXF rings with these same exact tests, under public names.
+Region = _Region
+region, interior, clear_region = _region, _interior, _clear_region
