@@ -42,10 +42,13 @@ from apeCAD.section.templates.plan import PlanCircle, PlanRing
 BAR_TOLERANCE_MM = 0.01
 """A circle is designation D when |d - D| <= this (decision 7), never an argument. For d in
 [D/2, 2D] the float subtraction is exact (Sterbenz): the test is exact on the scaled float."""
-MAX_MAPPED_ENTITIES = 2000
+MAX_MAPPED_ENTITIES = 500
 """Most entities on mapped layers that are not skipped, counted before any geometry."""
-MAX_VERTICES = 20000
+MAX_VERTICES = 2000
 """Most polyline vertices on mapped layers, before any geometry and as bulges tessellate."""
+MAX_RINGS = 100
+"""Most polylines on mapped face layers (concrete, steel, void), counted by type before any is
+read. Circles are not rings: they count under `MAX_MAPPED_ENTITIES` only."""
 
 SKIPPED = ("DIMENSION", "HATCH", "LEADER", "MTEXT", "POINT", "TEXT", "WIPEOUT")
 """Entity types counted and never read on a mapped layer (decision 3). Nothing else is skipped."""
@@ -105,12 +108,22 @@ class _Shape:
 # --- entities to shapes ----------------------------------------------------------------------
 
 
-def _require_caps(mapped: Sequence[RawEntity]) -> None:
+def _require_caps(mapped: Sequence[RawEntity], roles: dict[str, LayerRole]) -> None:
     if len(mapped) > MAX_MAPPED_ENTITIES:
         raise DxfTooLargeError(
             "too-large",
             f"{len(mapped)} entities on mapped layers; the import reads at most "
             f"{MAX_MAPPED_ENTITIES}",
+        )
+    rings = sum(
+        1
+        for e in mapped
+        if e.dxftype in ("LWPOLYLINE", "POLYLINE") and roles[e.layer.casefold()].role in FACE_ROLES
+    )
+    if rings > MAX_RINGS:
+        raise DxfTooLargeError(
+            "too-large",
+            f"{rings} polylines on face layers; the import reads at most {MAX_RINGS} rings",
         )
     _require_vertices(sum(len(e.points) for e in mapped))
 
@@ -455,7 +468,7 @@ def seed_from_entities(
     units_report, warnings = choose_units(chosen, insunits)
     scale = UNIT_FACTORS[cast(str, units_report["name"])]
     mapped = [e for e in entities if e.layer.casefold() in roles and e.dxftype not in SKIPPED]
-    _require_caps(mapped)
+    _require_caps(mapped, roles)
     reading = _Reading([], [], [], sum(len(e.points) for e in mapped))
     for e in mapped:
         _read(e, roles[e.layer.casefold()], scale, chord, reading)

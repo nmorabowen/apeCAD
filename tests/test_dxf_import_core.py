@@ -31,6 +31,7 @@ from apeCAD.section.dxf_options import (
 from apeCAD.section.dxf_seed import (
     BAR_TOLERANCE_MM,
     MAX_MAPPED_ENTITIES,
+    MAX_RINGS,
     MAX_VERTICES,
     RawEntity,
     bar_designation,
@@ -377,17 +378,98 @@ def test_a_file_with_no_face_or_bar_is_refused() -> None:
 # --- caps ---------------------------------------------------------------------------------------
 
 
-def test_the_caps_are_too_large_before_any_geometry() -> None:
-    bars = [circle((30.0 * k, 0.0), 8.0, handle=str(k)) for k in range(MAX_MAPPED_ENTITIES + 1)]
+def test_the_caps_are_the_erratum_numbers() -> None:
+    assert (MAX_VERTICES, MAX_MAPPED_ENTITIES, MAX_RINGS) == (2000, 500, 100)
+
+
+def _no_geometry(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Spy on every geometry step of the core; the returned list records any that ran."""
+    from apeCAD.section import dxf_seed
+
+    ran: list[str] = []
+    for name in ("_read", "_tessellate", "_xy", "_check_ring", "_check_role", "_nest"):
+        monkeypatch.setattr(
+            dxf_seed, name, lambda *a, _n=name, **k: ran.append(_n)  # noqa: B023
+        )
+    return ran
+
+
+def _too_large(entities: list[RawEntity], *needles: str) -> None:
     with pytest.raises(DxfTooLargeError) as caught:
-        seed(*bars)
+        seed(*entities)
     assert caught.value.code == TOO_LARGE and str(caught.value).startswith("dxf too-large: ")
+    for needle in needles:
+        assert needle in str(caught.value)
+
+
+def _polygon(n: int, radius: float = 1000.0, handle: str = "P") -> RawEntity:
+    return ring(
+        *((radius * math.cos(2 * math.pi * k / n), radius * math.sin(2 * math.pi * k / n))
+          for k in range(n)),
+        handle=handle,
+    )  # fmt: skip
+
+
+def _squares(n: int, layer: str = "CONCRETE-CUT", **kw: object) -> list[RawEntity]:
+    return [
+        rect(30.0 * k, 0, 30.0 * k + 20, 20, layer=layer, handle=f"Q{k}", **kw) for k in range(n)
+    ]
+
+
+def test_the_entity_cap_at_n_and_n_plus_1(monkeypatch: pytest.MonkeyPatch) -> None:
+    bars = [circle((30.0 * k, 0.0), 8.0, handle=str(k)) for k in range(MAX_MAPPED_ENTITIES + 1)]
+    seed(*bars[:MAX_MAPPED_ENTITIES])
     skipped = [RawEntity("HATCH", "BAR", str(k)) for k in range(MAX_MAPPED_ENTITIES)]
     seed(*bars[:MAX_MAPPED_ENTITIES], *skipped)  # skipped entities are not read: not counted
+    ran = _no_geometry(monkeypatch)
+    _too_large(bars, f"{MAX_MAPPED_ENTITIES + 1} entities", f"at most {MAX_MAPPED_ENTITIES}")
+    # Rings that cross, over the entity cap: too-large, not ring-contact.
+    crossing = [rect(0, 0, 10 + k, 10, handle=str(k)) for k in range(MAX_MAPPED_ENTITIES + 1)]
+    _too_large(crossing)
+    assert ran == []
+
+
+def test_circles_count_under_the_entity_cap_not_the_ring_cap() -> None:
+    squares = [rect(1000.0 * k, 0, 1000.0 * k + 900, 900, handle=f"Q{k}") for k in range(MAX_RINGS)]
+    bars = [circle((1000.0 * k + 450, 450.0), 8.0, handle=f"B{k}") for k in range(400)]
+    built = seed(*squares, *bars)  # 100 rings and 400 circles: read
+    assert len(faces(built)) == MAX_RINGS
+    face_circles = [
+        circle((30.0 * k, 5000.0), 8.0, layer="CONCRETE-CUT", handle=f"F{k}") for k in range(300)
+    ]
+    seed(*squares, *face_circles)  # face-layer circles are not rings: 400 entities, 100 rings
+
+
+def test_the_ring_cap_at_n_and_n_plus_1(monkeypatch: pytest.MonkeyPatch) -> None:
+    layers = {"V": {"role": "void"}, "S": {"role": "steel"}, "C": {"role": "concrete"}}
+    seed(*_squares(MAX_RINGS))
+    ran = _no_geometry(monkeypatch)
+    _too_large(_squares(MAX_RINGS + 1), f"{MAX_RINGS + 1} polylines", f"at most {MAX_RINGS}")
+    open_rings = _squares(MAX_RINGS + 1, closed=False)  # open: counted before the refusal
+    _too_large(open_rings)
+    crossing = [rect(0, 0, 10 + k, 10, handle=str(k)) for k in range(MAX_RINGS + 1)]
+    _too_large(crossing)  # 101 crossing polylines: too-large, not ring-contact
+    mixed = [
+        *_squares(40, layer="C"), *_squares(30, layer="S"), *_squares(31, layer="V"),
+    ]  # fmt: skip
+    with pytest.raises(DxfTooLargeError):
+        seed(*mixed, layers=layers)  # outlines, steel and voids all count
+    assert ran == []
+
+
+def test_polylines_off_the_face_layers_are_not_rings() -> None:
+    other = _squares(MAX_RINGS + 1, layer="NOTES")  # unmapped layer: not counted
+    seed(*_squares(MAX_RINGS), *other)
+
+
+def test_the_vertex_cap_at_n_and_n_plus_1(monkeypatch: pytest.MonkeyPatch) -> None:
+    seed(_polygon(MAX_VERTICES))
+    ran = _no_geometry(monkeypatch)
+    _too_large([_polygon(MAX_VERTICES + 1)], f"{MAX_VERTICES + 1} polyline vertices")
     # Out of extent and over the cap: the cap answers first, before any geometry.
     big = ring(*((float(k), 2.0**21) for k in range(MAX_VERTICES + 1)))
-    with pytest.raises(DxfTooLargeError):
-        seed(big)
+    _too_large([big])
+    assert ran == []
 
 
 def test_tessellated_vertices_count_against_the_cap() -> None:
