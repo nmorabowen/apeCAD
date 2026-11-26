@@ -9,9 +9,10 @@ these, uncaught, kills an HTTP handler thread, and the client sees a dropped con
 `refusing_unreadable` wraps each place outside input enters: `Session.apply` and
 `apply_batch`, `Document.from_dict`, `transport.handle` and the scratchpad's POST routes. It
 does not enumerate inputs or readers. When one of `UNREADABLE` escapes, it scans the input for
-the cause and raises a refusal that names the path. The scan never recurses and visits each
-container once, so it cannot fail the way the reader did. A scan that finds no cause lets
-the original error go: a real bug stays loud.
+the cause and raises a refusal that names the path. The scan never recurses, visits each
+container once and holds a few small records per container, never a string per child (a
+path is built only for what it names), so it cannot fail the way the reader did. A scan
+that finds no cause lets the original error go: a real bug stays loud.
 """
 
 from __future__ import annotations
