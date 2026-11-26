@@ -16,6 +16,7 @@ back with ezdxf.
 
 from __future__ import annotations
 
+import importlib
 import io
 import math
 from collections.abc import Callable, Sequence
@@ -107,7 +108,9 @@ def export_dxf(
     if view not in (None, "top"):
         raise RenderArgumentError(f"DXF exports the plan only: view must be top, got {view!r}")
     try:
-        from ezdxf.filemanagement import new as new_drawing
+        # importlib, not `from ezdxf...`: an unresolved import is an error under pyright strict
+        # on an install without the dxf extra; the factory crosses as an explicit Any.
+        new_drawing: Any = importlib.import_module("ezdxf.filemanagement").new
     except ImportError as exc:  # pragma: no cover - exercised by the core CI job
         raise DxfUnavailableError(
             "DXF export needs the dxf extra: pip install apeCAD[dxf]"
