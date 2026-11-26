@@ -24,7 +24,7 @@ from apeCAD.render.annotate import (
     dimension_text_boxes,
     leaders,
 )
-from apeCAD.render.drawable import Drawable
+from apeCAD.render.drawable import CUT_LAYERS, Drawable, Layer
 from apeCAD.render.style import MIN_BAR_RADIUS_PX, TEXT_PX
 from apeCAD.render.views import View
 
@@ -34,6 +34,8 @@ STEP_PX = 7.0  # each further ring of spots is this much farther from the anchor
 RINGS = 8
 CLEAR_PX = 2.0  # air between a label and what it clears; outline strokes are 1.5 px wide
 ToPx = Callable[[Vec2], Vec2]
+OUTLINE_LAYERS: tuple[Layer, ...] = (*CUT_LAYERS, "void")
+"""Face outlines, whatever the role: a label never gives way to one (apeSection#59 item 1)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +66,8 @@ def text_box(x: float, y: float, end: bool, chars: int) -> Box:
 @dataclass(frozen=True, slots=True)
 class Obstacles:
     """What a label must clear, in px. `geometry` (the reinforcement drawn inside the
-    concrete) gives way first when a label has no other spot; `lines` never do."""
+    faces) gives way first when a label has no other spot; `lines`, which hold every face
+    outline (concrete, steel and void, `OUTLINE_LAYERS`), never do."""
 
     boxes: list[Box]
     lines: list[tuple[Vec2, Vec2]]
@@ -91,7 +94,7 @@ def obstacles(
                 geometry_boxes.extend((x - r, y - r, x + r, y + r) for x, y in pts)
                 continue
             ring = _segments([pts + pts[:1] if closed else pts])
-            (segs if d.layer == "concrete" else geometry_lines).extend(ring)
+            (segs if d.layer in OUTLINE_LAYERS else geometry_lines).extend(ring)
     return Obstacles(boxes, segs, geometry_boxes, geometry_lines)
 
 
