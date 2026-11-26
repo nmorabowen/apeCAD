@@ -265,3 +265,92 @@ in apeSection#9, comment 6417:
    blocked on the owner; the DXF slices proceed.
 4. *A `sections[].source` provenance key, additive in project v1, accepted with this gate?*
    — **"Accept, additive (Recommended)".**
+
+## Errata (2026-11-26): the import caps are lowered
+
+Recorded after review round 1 of IMP-1a (apeCAD PR #87; apeSection#373, comment 6501), which
+found the import's time quadratic in the counts decision 11 caps. The Decision text above is
+kept as accepted; this erratum replaces decision 11's two geometry caps and nothing else.
+Code is cited at apeCAD d4d93d4 by `path::symbol`, with paths under `src/apeCAD/`.
+
+1. **The geometry caps are 2,000 vertices and 500 mapped entities (owner's ruling, quoted
+   under "Ruling" below).** Decision 11 now reads: 8 MiB of input before parsing (unchanged);
+   **500** mapped entities and **2,000** vertices before any geometry.
+   1. *The names stay.* `section/dxf_seed.py::MAX_MAPPED_ENTITIES` becomes 500 (was 2000)
+      and `MAX_VERTICES` 2000 (was 20000). `section/dxf_options.py::MAX_BYTES` is unchanged.
+   2. *What they count is unchanged.* Mapped entities are the entities on mapped layers that
+      decision 3 does not skip: face rings and circles, which are the shapes nesting
+      (decision 6) relates pairwise, and bar circles. The ruling's "nested entities" is this
+      count; bars are in it, as before, so it bounds the input of `_nest` from above.
+      Vertices are polyline vertices on mapped layers, and the chords that `arc_chord_mm`
+      adds count as each bulge is flattened (`_tessellate`), before any ring is checked.
+   3. *Refused by name, as before.* A larger drawing is refused `TOO_LARGE`, its message
+      starting `dxf too-large:` and naming the count found and the cap. No reason and no
+      code is added (decision 14).
+   4. *Counted before any geometry, as before.* Both counts are checked before any ring is
+      checked for simplicity, any pair is nested and any seed is replayed, so a refused file
+      costs only its parse.
+   5. *Within the transport.* One mapped entity is at most one op, so a seed within the cap
+      is at most 500 ops, a quarter of the transport's `MAX_OPS` (2000).
+2. **How the caps relate to the measurements.** IMP-2a's target is 3 s for one import, the
+   stall bound of apeSection's host-api v1 §7 item 5. Times are wall times of `import_dxf`,
+   parse, core and replay together (decision 9), one run each, with the caps lifted.
+   1. *The review's measurements (comment 6501, at apeCAD 3a62c90),* for one ring: 2,000
+      vertices about 2.4 s, 8,000 about 36 s, and 20,000, the old cap, about 228 s. Time
+      grows with the square of the vertex count, mostly in the shared float
+      `section/geometry.py::is_simple`. Nesting grows with the square of the shape count in
+      `section/dxf_seed.py::_nest`: 2,000 concentric circles take about 22 s.
+   2. *Re-measured at d4d93d4 for this erratum,* on the office workstation, Python 3.11.15:
+      one ring of 1,000, 2,000 and 4,000 vertices, 0.61 s, 2.39 s and 9.35 s; 250, 500 and
+      1,000 concentric circles, 0.39 s, 1.55 s and 6.23 s; a 1,996-vertex ring around 499
+      bars, 2.57 s; a 1,500-vertex ring around 499 circular holes, 2.28 s.
+   3. *What the caps meet.* 2,000 is the largest round vertex count whose single ring meets
+      3 s (2.4 s; 4,000 takes 9 s). 500 is where concentric circles, the review's nesting
+      case, take 1.55 s, about a sixteenth of 2,000's 22 s, as the quadratic law gives. One
+      outline at the caps with its holes or bars stays under 3 s: a 1,996-vertex ring with
+      499 bars takes 2.57 s, and a 1,500-vertex ring with 499 circular holes 2.28 s.
+   4. *What they do not meet: many nested rings.* Rings are related exactly in
+      `fractions.Fraction` (decision 6), and a ring pair costs far more than a circle pair,
+      most where the coordinates are not short binary fractions. Measured at d4d93d4, N
+      concentric squares, 4 vertices each:
+      - axis-aligned, N = 500 (the two caps at once): 6.9 s, also 7.1 s with every
+        coordinate offset by 1234.5;
+      - rotated 30°: N = 100, 2.82 s; 150, 6.33 s; 200, 11.35 s; 500, 70.4 s;
+      - 125 concentric 16-gons (2,000 vertices): 3.25 s.
+
+      So the caps hold the target for one outline with its holes and bars, and do not hold it
+      for a drawing of more than about 100 nested rings. Such a drawing is not a section
+      (decision 6 reads even depth as faces and odd depth as holes), but the caps admit it.
+      The owner rules at this record's merge whether the caps stand so, or a ring count is
+      added by a further erratum.
+3. **Raised only by a further erratum.** The caps may be raised, or a cap added, only by an
+   erratum to this record that cites new measurements, once faster checks land: an
+   `is_simple` below quadratic, and a nesting that decides fewer pairs exactly. No slice
+   raises them on its own.
+4. **The code lands in its own slice, before IMP-1b.** IMP-1b first exposes `import_dxf` to
+   agents and the CLI, so the lowered caps land before it, in a slice that owns
+   `section/dxf_seed.py`'s two constants and the cap tests of
+   `tests/test_dxf_import{,_core}.py`. Its oracles:
+   - each cap at its bound is read, and one above it is refused `TOO_LARGE` with
+     `dxf too-large:`, before any geometry (a file over the entity cap whose rings cross is
+     refused `too-large`, not `ring-contact`);
+   - a bulge whose chords pass 2,000 vertices is refused while it is tessellated;
+   - the cases of items 2.2 to 2.4 are re-timed at the slice's head and the times stated in
+     its PR; a test asserts the counts and refusals, never a wall time, which CI's machines
+     would make flaky.
+
+   The Slices table gains a row:
+
+   | Slice | Repo | Owns | Lock | Size |
+   |---|---|---|---|---|
+   | IMP-1c (caps) | apeCAD | `section/dxf_seed.py`'s `MAX_MAPPED_ENTITIES` and `MAX_VERTICES`; the cap tests | none | S |
+
+   The order becomes: ADR 0042, IMP-1a, this erratum, IMP-1c, IMP-1b, PIN, IMP-2a, IMP-2b.
+
+### Ruling
+
+The owner answered on 2026-11-26, relayed verbatim in apeSection#9, comment 6533, item 3
+("ADR 0042 import caps"): **"Lower to ~2,000 / ~500 (Recommended)".** The comment records:
+the caps become about 2,000 vertices and about 500 nested entities; a larger drawing is
+refused by name; this is an ADR 0042 erratum PR in apeCAD, owner-merged, landing before
+IMP-1b.
