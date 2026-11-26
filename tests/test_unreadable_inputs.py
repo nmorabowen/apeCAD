@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import threading
+import tracemalloc
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from threading import Thread
@@ -83,7 +84,8 @@ def server() -> Iterator[ScratchpadServer]:
     session.apply("AddPoint", {"x_mm": 0, "y_mm": 0, "z_mm": 0})
     session.apply("AddPoint", {"x_mm": 100, "y_mm": 0, "z_mm": 0})
     session.undo()
-    Thread(target=bound.serve_forever, daemon=True).start()
+    # a short poll: `shutdown()` waits out one, and the default 0.5 s is most of a teardown
+    Thread(target=lambda: bound.serve_forever(poll_interval=0.05), daemon=True).start()
     yield bound
     bound.shutdown()
     bound.server_close()
@@ -370,3 +372,55 @@ def test_a_shared_reference_dag_is_scanned_once_per_container() -> None:
     assert named == "AddPoint.x_mm is nested 200 levels deep, too deep to read"
     assert large is not None and large.startswith("AddPoint.x_mm[0][0]")
 
+
+
+# ---- the scan's memory (apeSection#371 review, finding 1) ---------------------------------
+
+SCAN_CEILING = 8_000_000
+"""Bytes the scan may hold at peak on `_deep_and_wide()`: about 0.2 MB measured. Building a
+path string per child, as the first version did, held 295 MB at this width."""
+
+
+def _deep_and_wide(width: int = 100_000, levels: int = 900) -> object:
+    """A list of `width` ones and one oversized integer, inside `levels` lists."""
+    node: object = [1] * width + [10**400]
+    for _ in range(levels):
+        node = [node]
+    return node
+
+
+def _peak(call: Callable[[], object]) -> tuple[object, int]:
+    tracemalloc.start()
+    try:
+        out = call()
+        return out, tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+
+
+@pytest.mark.parametrize("deep_first", [False, True], ids=["large-first", "deep-first"])
+def test_the_scan_holds_memory_per_container_not_per_child_path(deep_first: bool) -> None:
+    value = {"aaa": _deep_and_wide()}
+    named, peak = _peak(lambda: cause(value, "AddPoint", deep_first=deep_first))
+    assert peak < SCAN_CEILING, f"the scan held {peak / 1e6:.1f} MB"
+    if deep_first:
+        assert named == "AddPoint.aaa is nested 901 levels deep, too deep to read"
+    else:
+        assert named == (
+            "AddPoint.aaa" + "[0]" * 900 + "[100000] is an integer too large to read"
+            f" ({(10**400).bit_length()} bits; a number holds 1024)"
+        )
+
+
+def test_the_reviewers_load_body_is_refused_in_bounded_memory(server: ScratchpadServer) -> None:
+    """A 0.6 MB `/api/load` body, 900 lists around 200k ones beside an op with a 401-digit
+    `x_mm`, held 592 MB in the first version. The answer is the named refusal."""
+    deep = json.dumps(_deep_and_wide(200_000)).replace(str(10**400), "1")
+    log = _log(_point(BIG))
+    body = '{"aaa": ' + deep + ", " + log[1:]
+    before = _state(server)
+    (status, answer), peak = _peak(lambda: _post(server, "/api/load", body))
+    assert status == 400 and answer["code"] == REFUSED, answer
+    assert f"document.ops[0].x_mm {TOO_LARGE}" in cast(str, answer["error"])
+    assert peak < 6 * SCAN_CEILING, f"the request held {peak / 1e6:.1f} MB"
+    assert _state(server) == before

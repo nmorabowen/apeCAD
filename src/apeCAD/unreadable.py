@@ -16,7 +16,7 @@ the original error go: a real bug stays loud.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Generator, Mapping
+from collections.abc import Callable, Generator, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from typing import cast
 
@@ -55,35 +55,73 @@ def cause(value: object, where: str, *, deep_first: bool) -> str | None:
     return None
 
 
-def _children(value: object) -> list[tuple[str, object]] | None:
-    """`(path step, child)` of a JSON container; None for anything else."""
-    if isinstance(value, Mapping):
-        items = cast(Mapping[object, object], value).items()
-        return [(f".{key}", child) for key, child in items]
-    if isinstance(value, list | tuple):
-        return [(f"[{i}]", child) for i, child in enumerate(cast(list[object], value))]
-    return None
+def _is_container(value: object) -> bool:
+    return isinstance(value, Mapping | list | tuple)
+
+
+def _is_sequence(value: object) -> bool:
+    return isinstance(value, list | tuple)
+
+
+def _items(container: object) -> Iterator[tuple[object, object]]:
+    """`(key or index, child)` of a container, lazily: no list, no strings per child."""
+    if isinstance(container, Mapping):
+        return iter(cast(Mapping[object, object], container).items())
+    return enumerate(cast(Sequence[object], container))
+
+
+def _step(container: object, key: object) -> str:
+    return f".{key}" if isinstance(container, Mapping) else f"[{key}]"
+
+
+def _overflows(value: object) -> bool:
+    if not isinstance(value, int) or isinstance(value, bool):
+        return False
+    try:
+        float(value)
+    except OverflowError:
+        return True
+    return False
 
 
 def _too_large(value: object, where: str) -> str | None:
-    """The first integer no float can hold, depth first."""
+    """An integer no float can hold: a leaf of the first container that has one, in a
+    depth-first walk. Memory is one parent link per container, never a path per child: the
+    path is built only for the integer it names (apeSection#371 review)."""
+    if not _is_container(value):
+        return _large(where, value) if _overflows(value) else None
+    links: list[tuple[int, object, object]] = []  # (parent link, container, key); -1 = root
     seen: set[int] = set()
-    stack: list[tuple[str, object]] = [(where, value)]
+    stack: list[tuple[object, int]] = [(value, -1)]
     while stack:
-        path, node = stack.pop()
-        if isinstance(node, int) and not isinstance(node, bool):
-            try:
-                float(node)
-            except OverflowError:
-                bits = node.bit_length()
-                return f"{path} is an integer too large to read ({bits} bits; a number holds 1024)"
-            continue
-        kids = _children(node)
-        if kids is None or id(node) in seen:
+        node, link = stack.pop()
+        if id(node) in seen:
             continue
         seen.add(id(node))
-        stack.extend((path + step, child) for step, child in reversed(kids))
+        below: list[tuple[object, object]] = []
+        for key, child in _items(node):
+            if _is_container(child):
+                if id(child) not in seen:
+                    below.append((key, child))
+            elif _overflows(child):
+                return _large(_path(where, links, link) + _step(node, key), child)
+        for key, child in reversed(below):
+            links.append((link, node, key))
+            stack.append((child, len(links) - 1))
     return None
+
+
+def _large(path: str, value: object) -> str:
+    bits = cast(int, value).bit_length()
+    return f"{path} is an integer too large to read ({bits} bits; a number holds 1024)"
+
+
+def _path(where: str, links: list[tuple[int, object, object]], link: int) -> str:
+    steps: list[str] = []
+    while link >= 0:
+        link, container, key = links[link]
+        steps.append(_step(container, key))
+    return where + "".join(reversed(steps))
 
 
 def _too_deep(value: object, where: str) -> str | None:
@@ -95,38 +133,35 @@ def _too_deep(value: object, where: str) -> str | None:
         return f"{where} contains itself"
     path, node = where, value
     for _ in range(PATH_STEPS):
-        kids = [(s, c) for s, c in _children(node) or [] if _children(c) is not None]
-        if not kids:
+        best: tuple[object, object] | None = None
+        for key, child in _items(node) if _is_container(node) else ():
+            if _is_container(child) and (best is None or heights[id(child)] > heights[id(best[1])]):
+                best = (key, child)
+        if best is None or (_is_sequence(node) and _is_sequence(best[1])):
             break
-        step, child = max(kids, key=lambda kid: heights[id(kid[1])])
-        if _is_sequence(node) and _is_sequence(child):
-            break
-        path, node = path + step, child
-    height = heights.get(id(node), 0)
+        path, node = path + _step(node, best[0]), best[1]
+    height = heights.get(id(node), 0) if _is_container(node) else 0
     if height < NESTING_FLOOR:
         return None
     return f"{path} is nested {height} levels deep, too deep to read"
 
 
-def _is_sequence(value: object) -> bool:
-    return isinstance(value, list | tuple)
-
-
 def _heights(value: object) -> dict[int, int] | None:
     """Each container's height (a leaf is 0) by `id`, computed once per container without
-    recursion; None when a container holds itself."""
+    recursion; None when a container holds itself. Only containers go on the stack."""
     heights: dict[int, int] = {}
+    if not _is_container(value):
+        return heights
     open_: set[int] = set()
     stack: list[tuple[object, bool]] = [(value, False)]
     while stack:
         node, closing = stack.pop()
-        kids = _children(node)
-        if kids is None:
-            continue
         key = id(node)
         if closing:
             open_.discard(key)
-            heights[key] = 1 + max((heights.get(id(child), 0) for _, child in kids), default=0)
+            heights[key] = 1 + max(
+                (heights[id(c)] for _, c in _items(node) if _is_container(c)), default=0
+            )
             continue
         if key in heights:
             continue
@@ -134,5 +169,5 @@ def _heights(value: object) -> dict[int, int] | None:
             return None
         open_.add(key)
         stack.append((node, True))
-        stack.extend((child, False) for _, child in kids)
+        stack.extend((c, False) for _, c in _items(node) if _is_container(c))
     return heights
