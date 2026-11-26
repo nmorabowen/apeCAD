@@ -8,7 +8,8 @@ product geometry, in both directions:
   is read as a face and its hole, and every pair whose boundaries meet is refused as
   `dxf ring-contact`; the counts of each verdict are printed (`pytest -s`) and floored;
 - with the exact decision replaced by plain floats (`hole_rules._q = float`), the same fuzz
-  disagrees with the truth, so it would catch that regression.
+  disagrees with the truth, so it would catch that regression; so it does with the import's
+  float box screen rounded inward instead of outward.
 
 Inputs: gaps of -1, -0.01, 0, +0.01 and +1 mm from each contact, and the nearest floats on
 either side of contact; grids of 0.01, 0.1, 1 and 5 mm; offsets of 0, 0.1, 1234.5 and
@@ -28,6 +29,7 @@ from fractions import Fraction
 import pytest
 
 from _dxf_import_truth import Region, relation
+from apeCAD.section import dxf_seed
 from apeCAD.section.dxf_options import DxfRefusedError
 from apeCAD.section.dxf_seed import RawEntity, relate, seed_from_entities
 from apeCAD.section.templates import hole_rules
@@ -225,4 +227,25 @@ def test_plain_floats_disagree_with_the_truth(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(hole_rules, "_q", float)
     wrong = [case.name for case in CASES if _product(case) != relation(case.a, case.b)]
     print(f"\nwith plain floats, {len(wrong)} of {len(CASES)} pairs disagree; e.g. {wrong[:3]}")
+    assert wrong
+
+
+def test_an_inward_box_screen_disagrees_with_the_truth(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The import skips pairs whose float boxes are apart; a circle's box must round outward.
+    Rounded inward, it skips touching pairs, and the fuzz catches it."""
+
+    def inward(s: dxf_seed._Shape) -> tuple[float, float, float, float]:
+        if s.ring is not None:
+            xs, ys = [p[0] for p in s.ring], [p[1] for p in s.ring]
+            return (min(xs), min(ys), max(xs), max(ys))
+        (x, y), r = s.circle  # type: ignore[misc]
+        up, down = math.inf, -math.inf
+        return (
+            math.nextafter(x - r, up), math.nextafter(y - r, up),
+            math.nextafter(x + r, down), math.nextafter(y + r, down),
+        )  # fmt: skip
+
+    monkeypatch.setattr(dxf_seed, "_fbox", inward)
+    wrong = [case.name for case in CASES if _read_verdict(case) != _truth(case)]
+    print(f"\nwith an inward screen, {len(wrong)} of {len(CASES)} pairs disagree")
     assert wrong
