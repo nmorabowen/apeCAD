@@ -72,7 +72,34 @@ FAULTS: dict[str, tuple[str, str, dict[str, object]]] = {
     "too_many_vertices": ("too-large", "20001 polyline vertices", {}),
     "too_many_bytes": ("too-large", f"{MAX_BYTES + 1} bytes", {}),
     "unreadable": ("unreadable", "", {}),
+    # Review round 1 of apeCAD#87: no HEADER is not metres; a circle's reach is its extent.
+    "no_header": ("no-units", "$INSUNITS is None", {}),
+    "header_without_insunits": ("no-units", "$INSUNITS is None", {}),
+    "circle_out_of_extent": ("extent", "radius 2097152.0 mm", {}),
+    "unknown_entity_on_face_layer": (
+        "entity-unsupported",
+        "AECC_COGO_POINT FFF0 on layer CONCRETE-CUT",
+        {},
+    ),
 }
+
+
+def test_a_file_without_a_header_reads_with_the_units_argument() -> None:
+    """ezdxf makes up `$INSUNITS` 6 for a file with no HEADER; the import reports None and
+    reads the circle at its drawn radius once the caller names the units."""
+    for build in (FIX.no_header, FIX.header_without_insunits):
+        result = import_dxf(build(), units="mm")
+        assert _section(result)["faces"][0]["boundary"]["radius_mm"] == 100.0
+        assert result.report["units"]["insunits"] is None
+        assert result.report["warnings"] == []
+
+
+def test_an_unknown_entity_on_an_unmapped_layer_is_counted_not_refused() -> None:
+    result = import_dxf(FIX.unknown_entity_on_notes())
+    assert result.seed == import_dxf(FIX.column()).seed
+    assert result.report["unmapped"] == 2
+    notes = [x for x in result.report["layers"] if x["name"] == "NOTES"]
+    assert notes == [{"name": "NOTES", "role": None, "counts": {"AECC_COGO_POINT": 1}}]
 
 
 def test_every_fault_fixture_has_a_row() -> None:

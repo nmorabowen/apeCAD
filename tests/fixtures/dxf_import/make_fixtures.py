@@ -299,6 +299,50 @@ def unreadable() -> bytes:
     return b"0\nSECTION\n2\nENTITIES\nthis is not a dxf\n"
 
 
+# Hand-written files: what ezdxf would never write.
+ENTITIES_ONLY = (
+    "0\nSECTION\n2\nENTITIES\n"
+    "0\nCIRCLE\n8\nCONCRETE-CUT\n10\n0\n20\n0\n30\n0\n40\n100\n"
+    "0\nENDSEC\n0\nEOF\n"
+)
+
+
+def no_header() -> bytes:
+    """No HEADER section at all: ezdxf makes up `$INSUNITS` 6 (metres); the import must not."""
+    return ENTITIES_ONLY.encode("ascii")
+
+
+def header_without_insunits() -> bytes:
+    """An R12 HEADER that names no `$INSUNITS`."""
+    header = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1009\n0\nENDSEC\n"
+    return (header + ENTITIES_ONLY).encode("ascii")
+
+
+def circle_out_of_extent() -> bytes:
+    """A face circle centred on the origin whose radius, 2^21 mm, reaches past the extent."""
+    return _one(lambda m: m.add_circle((0, 0), 2.0**21, dxfattribs={"layer": "CONCRETE-CUT"}))
+
+
+def _with_unknown_entity(layer: str) -> bytes:
+    """`column` plus an entity type ezdxf does not know (Civil 3D's AECC_COGO_POINT), which it
+    keeps as raw tags with no `layer` attribute."""
+    text = column().decode("utf-8")
+    raw = (
+        "0\nAECC_COGO_POINT\n5\nFFF0\n330\n1F\n100\nAcDbEntity\n"
+        f"8\n{layer}\n100\nAeccDbCogoPoint\n10\n1.0\n20\n2.0\n"
+    )
+    end = text.index("0\nENDSEC", text.index("ENTITIES"))
+    return (text[:end] + raw + text[end:]).encode("utf-8")
+
+
+def unknown_entity_on_notes() -> bytes:
+    return _with_unknown_entity("NOTES")
+
+
+def unknown_entity_on_face_layer() -> bytes:
+    return _with_unknown_entity("CONCRETE-CUT")
+
+
 GOOD: dict[str, Callable[[], bytes]] = {
     "column": column,
     "column_binary": column_binary,
@@ -306,6 +350,7 @@ GOOD: dict[str, Callable[[], bytes]] = {
     "mirrored": mirrored,
     "polyline2d": polyline2d,
     "bulge_face": bulge_face,
+    "unknown_entity_on_notes": unknown_entity_on_notes,
 }
 
 FAULTS: dict[str, Callable[[], bytes]] = {
@@ -333,6 +378,10 @@ FAULTS: dict[str, Callable[[], bytes]] = {
     "too_many_vertices": too_many_vertices,
     "too_many_bytes": too_many_bytes,
     "unreadable": unreadable,
+    "no_header": no_header,
+    "header_without_insunits": header_without_insunits,
+    "circle_out_of_extent": circle_out_of_extent,
+    "unknown_entity_on_face_layer": unknown_entity_on_face_layer,
 }
 
 

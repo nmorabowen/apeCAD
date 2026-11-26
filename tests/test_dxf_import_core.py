@@ -319,11 +319,38 @@ def test_a_vertex_1_mm_from_another_faces_merges_into_it() -> None:
         ("extent", rect(0, 0, 2.0**20 + 1.0, 9)),
         ("extent", circle((-(2.0**20) - 1.0, 0.0), 8.0)),
         ("extent", rect(0, 0, math.nan, 9)),
+        ("extent", circle((0.0, 0.0), 2.0**21, layer="CONCRETE-CUT")),
+        ("extent", circle((0.0, 0.0), math.inf, layer="CONCRETE-CUT")),
+        ("extent", circle((0.0, 0.0), math.nan)),
+        ("extent", circle((0.0, 0.0), 1e306)),
     ],
 )
 def test_each_entity_fault_is_refused_by_name(reason: str, entity: RawEntity) -> None:
     message = refused(reason, entity)
     assert f"{entity.dxftype} {entity.handle} on layer {entity.layer}" in message
+
+
+@pytest.mark.parametrize("layer", ["CONCRETE-CUT", "BAR"])
+def test_a_radius_that_overflows_once_scaled_is_out_of_extent(layer: str) -> None:
+    """1e306 m is not a float in millimetres: refused by name before any geometry, not a raw
+    OverflowError from the exact predicates."""
+    message = refused("extent", circle((0.0, 0.0), 1e306, layer=layer), insunits=6)
+    assert "inf mm: not a finite length" in message
+
+
+def test_a_circles_reach_is_its_extent_on_both_sides_of_the_limit() -> None:
+    """centre ± radius within ±2^20 mm, decided exactly: the last radius that fits is read,
+    the next float above it is refused (face and bar alike)."""
+    limit = 2.0**20
+    for cx, fits in ((0.0, limit), (1.0, limit - 1.0), (-0.5, limit - 0.5)):
+        over = math.nextafter(fits, math.inf)
+        face = seed(circle((cx, 0.0), fits, layer="CONCRETE-CUT"))
+        assert faces(face)[0]["boundary"]["radius_mm"] == fits
+        refused("extent", circle((cx, 0.0), over, layer="CONCRETE-CUT"))
+        refused("extent", circle((0.0, cx), over, layer="CONCRETE-CUT"))
+    layers = {"BAR": {"role": "bar", "designation": "Ø16"}}
+    seed(circle((limit - 8.0, 0.0), 8.0), layers=layers)
+    refused("extent", circle((limit - 8.0, 0.0), math.nextafter(8.0, 9.0)), layers=layers)
 
 
 def test_nesting_faults_are_refused_by_name() -> None:

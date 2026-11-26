@@ -78,11 +78,10 @@ def import_dxf(
         raise DxfTooLargeError(
             "too-large", f"{len(data)} bytes; the import reads at most {MAX_BYTES}"
         )
-    doc = _read(bytes(data), _ezdxf())
+    doc, insunits = _read(bytes(data), _ezdxf())
     try:
         entities = [_raw(e) for e in doc.modelspace()]
         layer_names = [str(layer.dxf.name) for layer in doc.layers]
-        insunits: object = doc.header.get("$INSUNITS")
     except Exception as exc:  # ezdxf objects a malformed file left inconsistent
         raise DxfRefusedError("unreadable", f"{type(exc).__name__}: {exc}") from exc
     built = seed_from_entities(
@@ -108,28 +107,70 @@ def _ezdxf() -> Any:
         ) from exc
 
 
-def _read(data: bytes, files: Any) -> Any:
-    """The ezdxf drawing of `data`, binary or text, or `dxf unreadable`."""
+def _read(data: bytes, files: Any) -> tuple[Any, object]:
+    """The ezdxf drawing of `data`, binary or text, and the `$INSUNITS` the file itself
+    states (`_file_insunits`); or `dxf unreadable`."""
     try:
+        tagger: Any = importlib.import_module("ezdxf.lldxf.tagger")
         if data.startswith(BINARY_SENTINEL):
-            tagger: Any = importlib.import_module("ezdxf.lldxf.tagger")
             drawing: Any = importlib.import_module("ezdxf.document").Drawing
-            return drawing.load(tagger.binary_tags_loader(data, errors="strict"))
-        text = data.replace(b"\r\n", b"\n")
-        info = files.dxf_stream_info(io.StringIO(text.decode("utf-8", errors="ignore")))
-        return files.read(io.StringIO(text.decode(info.encoding, errors="strict")))
+            insunits = _file_insunits(tagger.binary_tags_loader(data, errors="strict"))
+            return drawing.load(tagger.binary_tags_loader(data, errors="strict")), insunits
+        raw = data.replace(b"\r\n", b"\n")
+        info = files.dxf_stream_info(io.StringIO(raw.decode("utf-8", errors="ignore")))
+        text = raw.decode(info.encoding, errors="strict")
+        insunits = _file_insunits(tagger.ascii_tags_loader(io.StringIO(text)))
+        return files.read(io.StringIO(text)), insunits
     except Exception as exc:  # ezdxf raises its structure errors and plain ones alike
         raise DxfRefusedError("unreadable", f"{type(exc).__name__}: {exc}") from exc
+
+
+def _file_insunits(tags: Any) -> object:
+    """`$INSUNITS` as the file's HEADER section states it; None without one (decision 4).
+
+    Not `doc.header`: for a file with no HEADER section ezdxf makes up a default header whose
+    `$INSUNITS` is 6 (metres), which would be a guess. The scan stops at the HEADER's end.
+    """
+    after_section, in_header, wanted = False, False, False
+    for tag in tags:
+        code, value = tag.code, tag.value
+        if after_section and code == 2:
+            in_header = value == "HEADER"
+        elif in_header and code == 0 and value == "ENDSEC":
+            return None
+        elif in_header and code == 9:
+            wanted = value == "$INSUNITS"
+        elif in_header and wanted:
+            try:
+                return int(str(value).strip())
+            except ValueError:
+                return str(value)
+        after_section = code == 0 and value == "SECTION"
+    return None
 
 
 def _xy(v: Any) -> Point2:
     return (float(v[0]), float(v[1]))
 
 
+def _layer(e: Any) -> str:
+    """The entity's layer. ezdxf keeps a type it does not know (an `AECC_COGO_POINT`, say) as
+    raw tags, whose namespace has no `layer`: group 8 is read from the tags instead, and an
+    entity without one is on DXF's default layer "0". Either way it is counted (decision 10)."""
+    try:
+        return str(e.dxf.layer)
+    except AttributeError:  # ezdxf's DXFAttributeError is one
+        for subclass in getattr(getattr(e, "xtags", None), "subclasses", ()):
+            for tag in subclass:
+                if tag.code == 8:
+                    return str(tag.value)
+        return "0"
+
+
 def _raw(e: Any) -> RawEntity:
     """One model-space entity as the core reads it: OCS x and y, and what decides its fate."""
     kind = str(e.dxftype())
-    base: dict[str, Any] = {"dxftype": kind, "layer": str(e.dxf.layer), "handle": str(e.dxf.handle)}
+    base: dict[str, Any] = {"dxftype": kind, "layer": _layer(e), "handle": str(e.dxf.handle)}
     if e.dxf.hasattr("extrusion"):
         x, y, z = e.dxf.extrusion
         base["extrusion"] = (float(x), float(y), float(z))

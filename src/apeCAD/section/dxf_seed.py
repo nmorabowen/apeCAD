@@ -138,6 +138,18 @@ def _xy(e: RawEntity, p: Point2, scale: float) -> Point2:
     return out
 
 
+def _require_disc_extent(e: RawEntity, centre: Point2, radius: float) -> None:
+    """The whole circle, centre ± radius, lies within the extent, decided exactly (as
+    `templates/holes.py` checks a circle hole)."""
+    reach = [Fraction(abs(v)) + Fraction(radius) for v in centre]
+    if not all(v <= EXTENT_LIMIT_MM for v in reach):
+        raise DxfRefusedError(
+            "extent",
+            f"{e.name}, centre ({centre[0]!r}, {centre[1]!r}) mm and radius {radius!r} mm, "
+            f"reaches outside ±{EXTENT_LIMIT_MM:g} mm; no origin is moved",
+        )
+
+
 @dataclass(slots=True)
 class _Reading:
     """What the entity loop gathers, and the vertices counted so far against the cap."""
@@ -186,10 +198,15 @@ def _read(e: RawEntity, role: LayerRole, scale: float, chord: float | None, r: _
     if e.extrusion not in ((0.0, 0.0, 1.0), (0.0, 0.0, -1.0)):
         raise DxfRefusedError("tilted", f"{e.name} has extrusion {e.extrusion}, not ±Z")
     if e.dxftype == "CIRCLE" and e.center is not None:
-        if not (math.isfinite(e.radius) and e.radius > 0.0):
+        centre, radius = _xy(e, e.center, scale), e.radius * scale
+        if not math.isfinite(radius):
+            raise DxfRefusedError(
+                "extent", f"{e.name} has radius {e.radius!r}, {radius!r} mm: not a finite length"
+            )
+        if not radius > 0.0:
             reason = "bar-size" if role.role == "bar" else "ring-not-simple"
             raise DxfRefusedError(reason, f"{e.name} has radius {e.radius!r}")
-        centre, radius = _xy(e, e.center, scale), e.radius * scale
+        _require_disc_extent(e, centre, radius)
         if role.role == "bar":
             r.bars.append((e, role, centre, radius * 2.0))
         else:
