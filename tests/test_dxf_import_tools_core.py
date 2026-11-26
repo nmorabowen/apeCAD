@@ -54,16 +54,20 @@ def test_without_the_extra_every_surface_is_unavailable(
 
 
 def test_bad_arguments_are_named_before_the_extra_is_needed(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The arguments are checked before any byte is read, so a core install names them too."""
+    """The arguments are checked before any byte is read or decoded, so a core install names
+    them too, and a bad argument with a missing file is the argument, not `IO_ERROR`."""
     monkeypatch.setitem(sys.modules, "ezdxf.filemanagement", None)
     b64 = base64.b64encode(ANY_BYTES).decode("ascii")
-    envelope = tools.import_dxf(data=b64, units="furlong")
-    assert envelope["error"] == {  # pyright: ignore[reportIndexIssue]
+    want = {
         "code": "INVALID_ARGUMENT",
         "message": "dxf units: must be one of in, ft, mm, cm, m, got 'furlong'",
     }
+    assert tools.import_dxf(data=b64, units="furlong")["error"] == want
+    assert tools.import_dxf(data="not base64!", units="furlong")["error"] == want
+    missing = LocalTools(tmp_path).import_dxf(path="none.dxf", units="furlong")
+    assert missing["error"] == want
 
 
 # --- the parity listing --------------------------------------------------------------------
