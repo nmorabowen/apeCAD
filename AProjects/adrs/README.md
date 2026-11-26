@@ -51,6 +51,7 @@ Status: `Proposed` → `Accepted` → `Amended` / `Superseded`.
 | [0039](0039-section-draft-v2-general-sections.md) | `apeCAD.section-draft` v2: general sections with many faces, roles, circles and spirals | Accepted |
 | [0040](0040-parametric-section-templates.md) | Parametric section templates are composite ops that keep their parameters in the log | Accepted |
 | [0041](0041-section-results-overlay.md) | A read-only results overlay on the section client and the render tool | Accepted |
+| [0042](0042-dxf-import-to-section-seed.md) | DXF import to a section-seed v2: strict, in apeCAD, behind the `dxf` extra | Accepted |
 
 ## Template
 
