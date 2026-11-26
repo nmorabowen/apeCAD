@@ -270,27 +270,38 @@ in apeSection#9, comment 6417:
 
 Recorded after review round 1 of IMP-1a (apeCAD PR #87; apeSection#373, comment 6501), which
 found the import's time quadratic in the counts decision 11 caps. The Decision text above is
-kept as accepted; this erratum replaces decision 11's two geometry caps and nothing else.
-Code is cited at apeCAD d4d93d4 by `path::symbol`, with paths under `src/apeCAD/`.
+kept as accepted. This erratum replaces decision 11's two geometry caps and adds a third
+(rings); it changes nothing else. Code is cited at apeCAD d4d93d4 by `path::symbol`, with
+paths under `src/apeCAD/`.
 
-1. **The geometry caps are 2,000 vertices and 500 mapped entities (owner's ruling, quoted
-   under "Ruling" below).** Decision 11 now reads: 8 MiB of input before parsing (unchanged);
-   **500** mapped entities and **2,000** vertices before any geometry.
-   1. *The names stay.* `section/dxf_seed.py::MAX_MAPPED_ENTITIES` becomes 500 (was 2000)
-      and `MAX_VERTICES` 2000 (was 20000). `section/dxf_options.py::MAX_BYTES` is unchanged.
-   2. *What they count is unchanged.* Mapped entities are the entities on mapped layers that
-      decision 3 does not skip: face rings and circles, which are the shapes nesting
-      (decision 6) relates pairwise, and bar circles. The ruling's "nested entities" is this
-      count; bars are in it, as before, so it bounds the input of `_nest` from above.
-      Vertices are polyline vertices on mapped layers, and the chords that `arc_chord_mm`
-      adds count as each bulge is flattened (`_tessellate`), before any ring is checked.
-   3. *Refused by name, as before.* A larger drawing is refused `TOO_LARGE`, its message
-      starting `dxf too-large:` and naming the count found and the cap. No reason and no
-      code is added (decision 14).
-   4. *Counted before any geometry, as before.* Both counts are checked before any ring is
-      checked for simplicity, any pair is nested and any seed is replayed, so a refused file
-      costs only its parse.
-   5. *Within the transport.* One mapped entity is at most one op, so a seed within the cap
+1. **The geometry caps are 2,000 vertices, 500 mapped entities and 100 rings (the owner's
+   two rulings, quoted under "Ruling" below).** Decision 11 now reads: 8 MiB of input before
+   parsing (unchanged); **500** mapped entities, **2,000** vertices and **100** rings before
+   any geometry.
+   1. *The names.* `section/dxf_seed.py::MAX_MAPPED_ENTITIES` becomes 500 (was 2000) and
+      `MAX_VERTICES` 2000 (was 20000). A new `MAX_RINGS = 100` sits beside them.
+      `section/dxf_options.py::MAX_BYTES` is unchanged.
+   2. *Mapped entities and vertices count what they counted.* Mapped entities are the
+      entities on mapped layers that decision 3 does not skip: face rings and circles, which
+      are the shapes nesting (decision 6) relates pairwise, and bar circles. The first
+      ruling's "nested entities" is this count. Bars are in it, as before, so it bounds the
+      input of `_nest` from above. Vertices are polyline vertices on mapped layers. The
+      chords that `arc_chord_mm` adds count as each bulge is flattened (`_tessellate`),
+      before any ring is checked.
+   3. *Rings are the polylines on face layers.* `MAX_RINGS` counts the LWPOLYLINE and
+      POLYLINE entities on mapped layers of role `concrete`, `steel` or `void`: outlines,
+      their holes, voids and steel rings, the "closed polylines" of the second ruling. They
+      are counted by type, before any is read. An open one is still counted: it would be
+      refused anyway (decision 10), and the cap is checked first. A bulged ring counts as
+      one, however many chords it gets. Circles, on face layers or `BAR`, are not rings;
+      they count only under the 500.
+   4. *Refused by name, as before.* A drawing over any cap is refused `TOO_LARGE`. The message
+      starts `dxf too-large:` and names the count found and the cap. No reason and no code
+      is added (decision 14).
+   5. *Counted before any geometry, as before.* All three counts are checked before any
+      ring's simplicity, any nesting pair and any replay, so a refused file costs only its
+      parse.
+   6. *Within the transport.* One mapped entity is at most one op, so a seed within the cap
       is at most 500 ops, a quarter of the transport's `MAX_OPS` (2000).
 2. **How the caps relate to the measurements.** IMP-2a's target is 3 s for one import, the
    stall bound of apeSection's host-api v1 §7 item 5. Times are wall times of `import_dxf`,
@@ -309,48 +320,76 @@ Code is cited at apeCAD d4d93d4 by `path::symbol`, with paths under `src/apeCAD/
       case, take 1.55 s, about a sixteenth of 2,000's 22 s, as the quadratic law gives. One
       outline at the caps with its holes or bars stays under 3 s: a 1,996-vertex ring with
       499 bars takes 2.57 s, and a 1,500-vertex ring with 499 circular holes 2.28 s.
-   4. *What they do not meet: many nested rings.* Rings are related exactly in
-      `fractions.Fraction` (decision 6), and a ring pair costs far more than a circle pair,
-      most where the coordinates are not short binary fractions. Measured at d4d93d4, N
-      concentric squares, 4 vertices each:
-      - axis-aligned, N = 500 (the two caps at once): 6.9 s, also 7.1 s with every
+   4. *Why a ring cap: many nested rings.* Rings are related exactly in `fractions.Fraction`
+      (decision 6). A ring pair costs far more than a circle pair, most of all where the
+      coordinates are not short binary fractions. Measured at d4d93d4 on N concentric
+      squares, 4 vertices each:
+      - axis-aligned, N = 500 (the first two caps at once): 6.9 s, and 7.1 s with every
         coordinate offset by 1234.5;
-      - rotated 30°: N = 100, 2.82 s; 150, 6.33 s; 200, 11.35 s; 500, 70.4 s;
+      - rotated 30°: N = 100, 2.82 s; N = 150, 6.33 s; N = 200, 11.35 s; N = 500, 70.4 s;
       - 125 concentric 16-gons (2,000 vertices): 3.25 s.
 
-      So the caps hold the target for one outline with its holes and bars, and do not hold it
-      for a drawing of more than about 100 nested rings. Such a drawing is not a section
-      (decision 6 reads even depth as faces and odd depth as holes), but the caps admit it.
-      The owner rules at this record's merge whether the caps stand so, or a ring count is
-      added by a further erratum.
+      Without a ring cap, the first two caps held the target for one outline with its holes
+      and bars. They did not hold it for a drawing of more than about 100 nested rings. The
+      owner then ruled the ring cap at 100 (comment 6595).
+   5. *With the ring cap.* Every case above that the three caps admit meets 3 s:
+      - 100 rotated squares: 2.82 s;
+      - 500 concentric circles: 1.55 s;
+      - one 2,000-vertex ring: 2.39 s;
+      - a 1,996-vertex ring with 499 bars: 2.57 s.
+
+      Measured again at d4d93d4, 100 concentric rings rotated 30° take:
+      - as squares (400 vertices): 1.79 s;
+      - as 20-gons (2,000 vertices): 2.19 s;
+      - as 20-gons with 400 bars: 2.44 s.
+   6. *What the caps still admit over 3 s: rings nested among many circles.* At d4d93d4,
+      100 rotated rings with 400 concentric circles drawn around them take:
+      - as squares: 5.78 s;
+      - as 20-gons: 10.61 s.
+
+      Each circle is related exactly to every ring whose box meets its own. The circles come
+      under the 500 only, as ruled. Such a drawing, 250 alternating faces and holes, is not a
+      section. It is recorded here and not capped. A count of nested circles, or of rings
+      and circles together, needs a further ruling and erratum.
 3. **Raised only by a further erratum.** The caps may be raised, or a cap added, only by an
    erratum to this record that cites new measurements, once faster checks land: an
    `is_simple` below quadratic, and a nesting that decides fewer pairs exactly. No slice
    raises them on its own.
 4. **The code lands in its own slice, before IMP-1b.** IMP-1b first exposes `import_dxf` to
-   agents and the CLI, so the lowered caps land before it, in a slice that owns
-   `section/dxf_seed.py`'s two constants and the cap tests of
+   agents and the CLI, so the caps land before it. They land in a slice that owns
+   `section/dxf_seed.py`'s three constants, the ring count and the cap tests of
    `tests/test_dxf_import{,_core}.py`. Its oracles:
-   - each cap at its bound is read, and one above it is refused `TOO_LARGE` with
-     `dxf too-large:`, before any geometry (a file over the entity cap whose rings cross is
-     refused `too-large`, not `ring-contact`);
-   - a bulge whose chords pass 2,000 vertices is refused while it is tessellated;
-   - the cases of items 2.2 to 2.4 are re-timed at the slice's head and the times stated in
-     its PR; a test asserts the counts and refusals, never a wall time, which CI's machines
-     would make flaky.
+   - **Each cap at its bound** is read. One above it is refused `TOO_LARGE` with
+     `dxf too-large:`, before any geometry.
+     - A file over the entity cap whose rings cross is refused `too-large`, not
+       `ring-contact`.
+     - 101 crossing polylines are refused `too-large`.
+     - 100 rings with 400 circles are read.
+   - **Tessellation.** A bulge whose chords pass 2,000 vertices is refused while it is
+     tessellated. A bulged ring counts once toward `MAX_RINGS`.
+   - **Timings.** The cases of items 2.2 to 2.6 are re-timed at the slice's head, and the
+     times are stated in its PR. A test asserts the counts and refusals, never a wall time,
+     which CI's machines would make flaky.
 
    The Slices table gains a row:
 
    | Slice | Repo | Owns | Lock | Size |
    |---|---|---|---|---|
-   | IMP-1c (caps) | apeCAD | `section/dxf_seed.py`'s `MAX_MAPPED_ENTITIES` and `MAX_VERTICES`; the cap tests | none | S |
+   | IMP-1c (caps) | apeCAD | `section/dxf_seed.py`'s `MAX_MAPPED_ENTITIES`, `MAX_VERTICES` and `MAX_RINGS`; the cap tests | none | S |
 
    The order becomes: ADR 0042, IMP-1a, this erratum, IMP-1c, IMP-1b, PIN, IMP-2a, IMP-2b.
 
 ### Ruling
 
-The owner answered on 2026-11-26, relayed verbatim in apeSection#9, comment 6533, item 3
-("ADR 0042 import caps"): **"Lower to ~2,000 / ~500 (Recommended)".** The comment records:
-the caps become about 2,000 vertices and about 500 nested entities; a larger drawing is
-refused by name; this is an ADR 0042 erratum PR in apeCAD, owner-merged, landing before
-IMP-1b.
+The owner ruled twice on 2026-11-26. Both rulings are relayed verbatim in apeSection#9.
+
+1. **Comment 6533, item 3 ("ADR 0042 import caps"): "Lower to ~2,000 / ~500
+   (Recommended)".** The comment records:
+   - the caps become about 2,000 vertices and about 500 nested entities;
+   - a larger drawing is refused by name;
+   - this is an ADR 0042 erratum PR in apeCAD, owner-merged, landing before IMP-1b.
+2. **Comment 6595, item 2 (the DXF ring cap on apeCAD #88): "Cap ~100 rings
+   (Recommended)".** The comment records:
+   - the cap is about 100 closed polylines: outlines, voids and steel;
+   - circles and bars still count under the 500;
+   - the ring cap is added to #88, which is then re-gated.
