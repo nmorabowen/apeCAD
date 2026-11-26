@@ -222,6 +222,20 @@ def cmd_export_dxf(args: argparse.Namespace) -> Envelope:
     return _with_file(args.file, call)
 
 
+def cmd_import_dxf(args: argparse.Namespace) -> Envelope:
+    """DXF FILE to an `apeCAD.section-seed` v2 and a report (ADR 0042), through the same
+    `import_dxf` tool body as MCP: the envelope is `{ok, seed, report}`. No document file is
+    read or written."""
+    params: dict[str, object] = {"path": args.file}
+    if args.layers is not None:
+        params["layers"] = _json_arg("--layers", args.layers)
+    if args.units is not None:
+        params["units"] = args.units
+    if args.arc_chord_mm is not None:
+        params["arc_chord_mm"] = args.arc_chord_mm
+    return LocalTools().import_dxf(**params)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m apeCAD.cli",
@@ -296,6 +310,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="no tags, dimensions or title on a plan of a section",
     )
     export.set_defaults(run=cmd_export_dxf)
+
+    imported = sub.add_parser(
+        "import-dxf", help="read a DXF section into a section-seed v2 (import_dxf, ADR 0042)"
+    )
+    imported.add_argument("file", metavar="FILE.dxf")
+    imported.add_argument(
+        "--layers", metavar="LAYERS_JSON",
+        help="replace the layer map: {name: {role, material?, designation?}}",
+    )
+    imported.add_argument("--units", help="mm, cm, m, in or ft; overrides $INSUNITS")
+    imported.add_argument(
+        "--arc-chord-mm", type=float, metavar="MM",
+        help="flatten bulges to chords within this sagitta; without it a bulge is refused",
+    )
+    imported.set_defaults(run=cmd_import_dxf)
     return parser
 
 

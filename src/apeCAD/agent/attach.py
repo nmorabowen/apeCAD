@@ -12,6 +12,9 @@ drawing the human sees. Stdlib `urllib` only.
 - `render` and `export_dxf` draw a snapshot read with `get_document`, so `save_to` resolves
   under the agent's
   root (`--root`, else the scratchpad's root, else the cwd), as in local mode.
+- `import_dxf` (ADR 0042) needs no document and is not hosted: it runs here, as in local
+  mode, and its `path` resolves against the same agent root. It never edits the scratchpad's
+  document; the seed it returns is the host's to replay.
 """
 
 from __future__ import annotations
@@ -173,6 +176,12 @@ class AttachTools:
         return self._on_snapshot(
             document, lambda s, root: tools.export_dxf(s, root=root, **params)
         )
+
+    def import_dxf(self, **params: object) -> Envelope:
+        """DXF to a section-seed v2 and a report (ADR 0042), in this process, as in local
+        mode: no document, so no revision, and nothing is sent to the scratchpad."""
+        root = self.root if self.root is not None else Path.cwd()
+        return tools.import_dxf(root=root, **params)
 
     def _on_snapshot(
         self, document: object, call: Callable[[Session, Path], Envelope]
