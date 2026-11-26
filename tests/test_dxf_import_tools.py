@@ -398,6 +398,27 @@ def test_no_refusal_echoes_a_files_bytes(tmp_path: Path) -> None:
         assert caught.value.reason == "unreadable" and "abc123" not in str(caught.value)
 
 
+def test_unreadable_names_only_the_parsers_own_trailing_line(tmp_path: Path) -> None:
+    """ezdxf quotes the bad tag, then ends with its position: 'Invalid group code "PIN line
+    4821 for vault\\n" at line 1.' Only that trailing position is named, never the file's
+    digits (apeCAD#90 review round 2)."""
+    (tmp_path / "s.txt").write_text("PIN line 4821 for vault\n", encoding="utf-8")
+    error: Any = LocalTools(tmp_path).import_dxf(path="s.txt")["error"]
+    assert error["message"] == (
+        "dxf unreadable: DXFStructureError at line 1; the bytes are not a DXF this import reads"
+    )
+    assert "4821" not in error["message"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    ["", "bad tag line 4821 in the middle", 'Invalid group code "x at line 99"', "at line 7: x"],
+)
+def test_unreadable_without_a_trailing_position_names_the_type_alone(message: str) -> None:
+    refusal = dxf_import_module.unreadable(ValueError(message))
+    assert str(refusal) == "dxf unreadable: ValueError; the bytes are not a DXF this import reads"
+
+
 # --- the path rule: read as open_document reads ---------------------------------------------
 
 

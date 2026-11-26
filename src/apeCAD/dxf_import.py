@@ -102,9 +102,11 @@ def unreadable(exc: Exception) -> DxfRefusedError:
 
     Never the parser's own message: ezdxf quotes the offending tag (a non-DXF file's first
     line, a decode error's byte), so the message would hand back the input's bytes to whoever
-    asked, file contents an agent tool must not leak (apeCAD#90 review round 1).
+    asked, file contents an agent tool must not leak (apeCAD#90 review round 1). The line is
+    only ezdxf's own trailing position (`... at line N.`), anchored to the end of its message:
+    the quoted tag before it may hold "line 4821" too (round 2). Without one, the type alone.
     """
-    line = re.search(r"\bline (\d+)", str(exc))
+    line = re.search(r"at line (\d+)\.?\s*$", str(exc))
     where = f" at line {line.group(1)}" if line else ""
     return DxfRefusedError(
         "unreadable", f"{type(exc).__name__}{where}; the bytes are not a DXF this import reads"
