@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from threading import Thread
@@ -352,14 +351,22 @@ def test_a_container_that_holds_itself_is_named() -> None:
 
 
 def test_a_shared_reference_dag_is_scanned_once_per_container() -> None:
-    """2^200 paths, 200 containers: the scan is linear in containers, not in paths."""
+    """2^200 paths, 200 containers: the scan is linear in containers, not in paths. It runs
+    in a daemon thread, so a scan that walks paths fails at the limit instead of hanging."""
     node: object = 10**400
     for _ in range(200):
         node = [node, node]
-    started = time.perf_counter()
-    named = cause({"x_mm": node}, "AddPoint", deep_first=True)
+    found: list[str | None] = []
+
+    def scan() -> None:
+        found.append(cause({"x_mm": node}, "AddPoint", deep_first=True))
+        found.append(cause({"x_mm": node}, "AddPoint", deep_first=False))
+
+    worker = threading.Thread(target=scan, daemon=True)
+    worker.start()
+    worker.join(timeout=10.0)  # WALL_GUARD: about 1 ms on a quiet machine
+    assert not worker.is_alive(), "the scan walks paths, not containers"
+    named, large = found
     assert named == "AddPoint.x_mm is nested 200 levels deep, too deep to read"
-    large = cause({"x_mm": node}, "AddPoint", deep_first=False)
     assert large is not None and large.startswith("AddPoint.x_mm[0][0]")
-    assert time.perf_counter() - started < 10.0  # WALL_GUARD: about 1 ms on a quiet machine
 
