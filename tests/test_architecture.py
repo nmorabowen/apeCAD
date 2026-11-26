@@ -226,6 +226,32 @@ def test_section_draft_sits_above_the_document() -> None:
     assert not offenders, f"these sit below apeCAD.section_draft: {offenders}"
 
 
+def test_dxf_import_sits_above_the_document() -> None:
+    """`apeCAD.dxf_import` replays its seed through `section_draft` (ADR 0042), so nothing the
+    document, the section draft or the renderer is built from may import it."""
+    below = [SRC / "document.py", SRC / "section_draft.py", *(SRC / "draft").glob("*.py")]
+    below += [*SRC.glob("section/**/*.py"), *(SRC / "ops").glob("*.py")]
+    below += [*(SRC / "render").glob("*.py")]
+    offenders = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in below
+        if any(name.startswith("apeCAD.dxf_import") for name in _apecad_imports(path))
+    )
+    assert not offenders, f"these sit below apeCAD.dxf_import: {offenders}"
+
+
+def test_only_the_dxf_reader_and_writer_name_ezdxf() -> None:
+    """ezdxf is the `dxf` extra's: `render/dxf.py` writes with it and `dxf_import.py` reads
+    with it (ADR 0034, 0042). The pure core `section/dxf_seed.py` never names it."""
+    allowed = {"render/dxf.py", "dxf_import.py"}
+    naming = sorted(
+        path.relative_to(SRC).as_posix()
+        for path in SRC.rglob("*.py")
+        if "ezdxf" in path.read_text(encoding="utf-8")
+    )
+    assert set(naming) <= allowed, f"only {sorted(allowed)} may name ezdxf: {naming}"
+
+
 def test_core_never_imports_the_scratchpad() -> None:
     offenders = [
         path.relative_to(SRC).as_posix()
