@@ -30,6 +30,7 @@ from apeCAD.scratchpad.transport import handle as transport_handle
 from apeCAD.scratchpad.transport import refusal as transport_refusal
 from apeCAD.section.draft import DRAFT_SCHEMA, SEED_SCHEMA
 from apeCAD.section_draft import document_from_draft, document_from_section_seed
+from apeCAD.unreadable import refusing_unreadable
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_HOST = "127.0.0.1"
@@ -102,6 +103,7 @@ class ScratchpadServer(ThreadingHTTPServer):
 
 class ScratchpadHandler(BaseHTTPRequestHandler):
     server: ScratchpadServer  # type: ignore[assignment]
+    _body: object = None  # the last JSON body read, for `refusing_unreadable` to scan
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -218,8 +220,9 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             return
         with self.server.lock:
             try:
-                if self._post_api(parsed.path):
-                    return
+                with refusing_unreadable("body", lambda: self._body, OpArgumentError):
+                    if self._post_api(parsed.path):
+                        return
             except (DocumentError, ToolError) as exc:
                 status = 409 if exc.code in (STALE, DETACHED) else 400
                 revision = self.server.session.revision
@@ -343,6 +346,7 @@ class ScratchpadHandler(BaseHTTPRequestHandler):
             if not isinstance(key, str):
                 raise OpArgumentError("JSON keys must be strings")
             typed[key] = value
+        self._body = typed
         return typed
 
     def _send_json(self, status: int, payload: dict[str, object]) -> None:

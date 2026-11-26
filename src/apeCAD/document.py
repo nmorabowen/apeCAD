@@ -67,6 +67,7 @@ from apeCAD.ops import (
 from apeCAD.section.lint import LintWarning, lint_section
 from apeCAD.typed_section_ops import SectionTypedOps
 from apeCAD.typed_template_ops import TemplateTypedOps
+from apeCAD.unreadable import refusing_unreadable
 
 
 class Document(TemplateTypedOps, SectionTypedOps):
@@ -220,10 +221,12 @@ class Document(TemplateTypedOps, SectionTypedOps):
         if not isinstance(raw_ops, list):
             raise DocumentError("ops must be a list")
         document = cls()
-        ops = [op_from_dict(_as_string_dict(raw)) for raw in cast(list[object], raw_ops)]
-        document._replay(ops)
+        with refusing_unreadable("document", lambda: payload, DocumentError):
+            ops = [op_from_dict(_as_string_dict(raw)) for raw in cast(list[object], raw_ops)]
+            document._replay(ops)
         if redo is not None:
-            stack = [op_from_dict(_as_string_dict(raw)) for raw in redo]
+            with refusing_unreadable("redo", lambda: redo, DocumentError):
+                stack = [op_from_dict(_as_string_dict(raw)) for raw in redo]
             document._redo = list(reversed(stack))
         return document
 

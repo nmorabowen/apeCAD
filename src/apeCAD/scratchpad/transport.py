@@ -36,7 +36,7 @@ from typing import cast
 
 from apeCAD import catalog
 from apeCAD.document import Document
-from apeCAD.errors import INVALID_ARGUMENT, TOO_LARGE, DocumentError
+from apeCAD.errors import INVALID_ARGUMENT, TOO_LARGE, DocumentError, OpArgumentError
 from apeCAD.ops import op_to_dict
 from apeCAD.scratchpad.payload import scene_payload
 from apeCAD.section.draft import DRAFT_SCHEMA, SEED_SCHEMA
@@ -45,6 +45,7 @@ from apeCAD.section_draft import (
     document_from_section_seed,
     section_draft,
 )
+from apeCAD.unreadable import refusing_unreadable
 
 Json = dict[str, object]
 
@@ -81,7 +82,8 @@ def refusal(code: str, message: str) -> Json:
 def handle(request: object) -> Json:
     """Run one transport request; see the module docstring for the contract."""
     try:
-        return _handle(_object(request, "the request"))
+        with refusing_unreadable("request", lambda: request, OpArgumentError):
+            return _handle(_object(request, "the request"))
     except _Refusal as exc:
         return refusal(exc.code, str(exc))
     except DocumentError as exc:
