@@ -21,7 +21,9 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import pathlib
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -90,7 +92,7 @@ def surfaces(
     b64 = base64.b64encode(data).decode("ascii")
     calls: dict[str, Callable[[], Envelope]] = {
         "tool data": lambda: tools.import_dxf(data=b64, **kwargs),
-        "tool path": lambda: tools.import_dxf(root=tmp_path, path=relative, **kwargs),
+        "tool path": lambda: tools.import_dxf(tmp_path, False, path=relative, **kwargs),
         "local": lambda: LocalTools(tmp_path).import_dxf(path=relative, **kwargs),
         "attach": lambda: AttachTools(DEAD_SCRATCHPAD, 0, tmp_path).import_dxf(
             path=relative, **kwargs
@@ -266,7 +268,7 @@ def test_a_file_over_the_byte_cap_is_never_opened(
     _spy(monkeypatch, dxf_import_module, "_read", seen)
     message = f"dxf too-large: {MAX_BYTES + 1} bytes; the import reads at most {MAX_BYTES}"
     envelopes = [
-        tools.import_dxf(root=tmp_path, path="big.dxf"),
+        tools.import_dxf(tmp_path, False, path="big.dxf"),
         LocalTools(tmp_path).import_dxf(path="big.dxf"),
         AttachTools(DEAD_SCRATCHPAD, 0, tmp_path).import_dxf(path="big.dxf"),
         TOOLS["import_dxf"].call(LocalTools(tmp_path), {"path": "big.dxf"}),
@@ -290,9 +292,110 @@ def test_base64_over_the_byte_cap_is_never_decoded(monkeypatch: pytest.MonkeyPat
     ):
         error: Any = envelope["error"]
         assert error["code"] == "TOO_LARGE"
-        assert error["message"].startswith(f"dxf too-large: data is {len(text)} base64")
+        size = tools.base64_size(text)
+        want = f"dxf too-large: {size} bytes; the import reads at most {MAX_BYTES}"
+        assert error["message"] == want
     assert seen == []
     assert tools.MAX_BASE64_CHARS == len(base64.b64encode(bytes(MAX_BYTES)))
+
+
+@pytest.mark.parametrize(
+    ("size", "refused"), [(MAX_BYTES - 1, False), (MAX_BYTES, False), (MAX_BYTES + 1, True)]
+)
+def test_base64_at_the_byte_cap(size: int, refused: bool, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`MAX_BYTES % 3 == 2`, so `MAX_BYTES` bytes (one `=`) and one byte more (no padding)
+    take the same `MAX_BASE64_CHARS`: the decoded size decides, counted before decoding."""
+    assert MAX_BYTES % 3 == 2
+    text = base64.b64encode(bytes(size)).decode("ascii")
+    assert len(text) == tools.MAX_BASE64_CHARS and tools.base64_size(text) == size
+    seen: list[str] = []
+    _spy(monkeypatch, base64, "b64decode", seen)
+    error: Any = tools.import_dxf(data=text)["error"]
+    if refused:  # one character over: the same length, one byte more
+        assert seen == []
+        assert error == {
+            "code": "TOO_LARGE",
+            "message": f"dxf too-large: {size} bytes; the import reads at most {MAX_BYTES}",
+        }
+    else:  # at the limit: decoded and read (zeros are no DXF)
+        assert seen == ["b64decode"]
+        assert error["code"] == "REFUSED" and error["message"].startswith("dxf unreadable: ")
+
+
+# --- no file outside the root in attach mode, and no file's bytes in any refusal -------------
+
+SECRET = "TOKEN=abc123secret"
+
+
+def _secret_layout(tmp_path: Path) -> tuple[Path, Path]:
+    root = tmp_path / "root"
+    root.mkdir()
+    (tmp_path / "secret.env").write_text(SECRET + "\n", encoding="utf-8")
+    (root / "inside.env").write_text(SECRET + "\n", encoding="utf-8")
+    return root, tmp_path / "secret.env"
+
+
+def _junction(link: Path, target: Path) -> None:
+    """A directory junction (Windows) or symlink (POSIX) at `link` that leads to `target`."""
+    if os.name == "nt":
+        made = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+        )
+        if made.returncode != 0:
+            pytest.skip(f"mklink /J failed: {made.stderr!r}")
+    else:
+        os.symlink(target, link, target_is_directory=True)
+
+
+def test_attach_mode_reads_only_under_the_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As `render`'s `save_to`: `..`, an absolute path out, the root itself and a junction out
+    are refused by name before any file is opened. Local mode keeps `open_document`'s rule."""
+    root, secret = _secret_layout(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "c.dxf").write_bytes(FIX.column())
+    _junction(root / "j", outside)
+    attach = AttachTools(DEAD_SCRATCHPAD, 0, root)
+    seen: list[str] = []
+    _spy(monkeypatch, pathlib.Path, "open", seen)
+    for path in ("../secret.env", str(secret), ".", "j/c.dxf", str(root / "j" / "c.dxf")):
+        error: Any = attach.import_dxf(path=path)["error"]
+        assert error["code"] == "INVALID_ARGUMENT", path
+        assert error["message"] == (
+            f"path {path!r} must resolve to a file under the root {root.resolve()}"
+        )
+        assert SECRET not in error["message"]
+    assert seen == []
+    monkeypatch.undo()
+    assert attach.import_dxf(path="inside.env")["error"]["code"] == "REFUSED"  # pyright: ignore[reportIndexIssue]
+    local = LocalTools(root).import_dxf(path="j/c.dxf")  # local mode is not confined
+    assert local == expected(FIX.column(), {})
+
+
+def test_no_refusal_echoes_a_files_bytes(tmp_path: Path) -> None:
+    """`dxf unreadable` names the parser's exception type and line, never its message, which
+    quotes the offending tag: here the secret's first line. By path and by data, every mode."""
+    root, secret = _secret_layout(tmp_path)
+    b64 = base64.b64encode(secret.read_bytes()).decode("ascii")
+    envelopes = [
+        LocalTools(root).import_dxf(path="../secret.env"),
+        LocalTools(root).import_dxf(path=str(secret)),
+        AttachTools(DEAD_SCRATCHPAD, 0, root).import_dxf(path="inside.env"),
+        tools.import_dxf(data=b64),
+        TOOLS["import_dxf"].call(LocalTools(root), {"data": b64}),
+    ]
+    for envelope in envelopes:
+        assert envelope["error"] == {  # pyright: ignore[reportIndexIssue]
+            "code": "REFUSED",
+            "message": "dxf unreadable: DXFStructureError at line 1; the bytes are not a DXF "
+            "this import reads",
+        }
+    for data in (b"\xff\xfe" + SECRET.encode(), SECRET.encode() + b"\n0\nSECTION\n"):
+        with pytest.raises(DxfRefusedError) as caught:
+            import_dxf(data)
+        assert caught.value.reason == "unreadable" and "abc123" not in str(caught.value)
 
 
 # --- the path rule: read as open_document reads ---------------------------------------------
@@ -324,6 +427,9 @@ def test_path_resolves_as_open_document_does(tmp_path: Path) -> None:
         ({"path": 3}, "path must be a string"),
         ({"data": "not base64!"}, "dxf data: must be the file's bytes in base64"),
         ({"path": "x.dxf", "colour": "red"}, "extra ['colour']"),
+        ({"data": 5}, "dxf data: must be the file's bytes in base64, got int"),
+        ({"path": "../secret.env", "confine": False}, "extra ['confine']"),
+        ({"path": "../secret.env", "root": "/"}, "extra ['root']"),
     ],
 )
 def test_bad_tool_arguments_are_invalid_argument(params: dict[str, object], says: str) -> None:

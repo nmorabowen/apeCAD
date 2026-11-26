@@ -306,7 +306,7 @@ without it, `UNAVAILABLE`, and never another reader.
 | Param | Type | Default | Notes |
 |---|---|---|---|
 | `data` | string \| null | null | the file's bytes, base64 (no line breaks); give exactly one of `data` and `path` |
-| `path` | string \| null | null | a DXF file, read as `open_document` reads: relative to `--root`, else the cwd, and not confined to the root |
+| `path` | string \| null | null | a DXF file. Local mode reads it as `open_document` does: relative to `--root`, else the cwd, not confined. Attach mode confines it under the agent's root, as `save_to` (below) |
 | `layers` | object \| null | null: the writer's layers `CONCRETE-CUT`, `STEEL-CUT`, `VOID`, `BAR` | replaces the map: `{name: {role, material?, designation?}}` (decision 2) |
 | `units` | string \| null | null: `$INSUNITS` | `mm`, `cm`, `m`, `in` or `ft`; wins over `$INSUNITS` (decision 4) |
 | `arc_chord_mm` | number \| null | null: a bulge is refused | flattens bulges to chords within this sagitta (decision 5) |
@@ -317,7 +317,8 @@ structured content and its JSON the text block; the CLI prints the same envelope
 bytes and arguments give the same JSON on every surface (local, attach, MCP, CLI).
 
 Caps, each counted before the work it bounds (decision 11, erratum item 1): 8 MiB of input
-(a `path` by its size before it is opened, `data` by its base64 length before it is decoded),
+(a `path` by its size before it is opened, `data` by the size its base64 decodes to, counted
+before it is decoded),
 then 500 mapped entities, 2,000 vertices and 100 rings before any geometry. Over one is
 `TOO_LARGE`, `dxf too-large: ...`.
 
@@ -329,8 +330,15 @@ byte is read; `TOO_LARGE` (`too-large`); `REFUSED` for `unreadable`, `no-units`,
 `replay-mismatch`. Plus, from the tool itself: `INVALID_ARGUMENT` when not exactly one of
 `data` and `path` is given, and `IO_ERROR` when the file cannot be read.
 
-In attach mode it runs in the agent's process, as in local mode, and is not hosted: it sends
-nothing to the scratchpad, and `path` resolves against the agent's root.
+In attach mode it runs in the agent's process and is not hosted: it sends nothing to the
+scratchpad. There `path` must resolve, links and junctions followed, to a file under the agent's
+root, as `save_to` must: `..`, an absolute path outside it, the root itself or a junction that
+leads out of it is `INVALID_ARGUMENT` before the file is touched. Attach mode opens no other
+file (`open_document` is refused there).
+
+`dxf unreadable` names the parser's exception type and at most a line number, never the
+parser's message: it would quote the input's bytes. No refusal echoes a file's contents back,
+whether it came by `path` or by `data`.
 
 ### `get_document`
 

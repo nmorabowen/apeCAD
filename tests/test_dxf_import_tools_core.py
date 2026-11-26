@@ -38,7 +38,7 @@ def test_without_the_extra_every_surface_is_unavailable(
     b64 = base64.b64encode(ANY_BYTES).decode("ascii")
     envelopes: list[dict[str, Any]] = [
         tools.import_dxf(data=b64),
-        tools.import_dxf(root=tmp_path, path="in.dxf"),
+        tools.import_dxf(tmp_path, False, path="in.dxf"),
         LocalTools(tmp_path).import_dxf(path="in.dxf"),
         AttachTools("http://127.0.0.1:9", 0, tmp_path).import_dxf(path="in.dxf"),
         TOOLS["import_dxf"].call(LocalTools(tmp_path), {"data": b64}),

@@ -115,7 +115,7 @@ class LocalTools:
         """DXF to a section-seed v2 and a report (ADR 0042); `path` reads as `open_document`.
         Needs no document, so the envelope has no revision."""
         root = self.root if self.root is not None else Path.cwd()
-        return tools.import_dxf(root=root, **params)
+        return tools.import_dxf(root, False, **params)
 
     def get_document(self, document: object) -> Envelope:
         return self._with(document, tools.get_document)

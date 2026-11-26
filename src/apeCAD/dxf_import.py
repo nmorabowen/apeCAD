@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib
 import io
+import re
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -83,7 +84,7 @@ def import_dxf(
         entities = [_raw(e) for e in doc.modelspace()]
         layer_names = [str(layer.dxf.name) for layer in doc.layers]
     except Exception as exc:  # ezdxf objects a malformed file left inconsistent
-        raise DxfRefusedError("unreadable", f"{type(exc).__name__}: {exc}") from exc
+        raise unreadable(exc) from exc
     built = seed_from_entities(
         entities,
         layer_names=layer_names,
@@ -94,6 +95,20 @@ def import_dxf(
     )
     require_replay(built)
     return DxfImport(built.seed, built.report)
+
+
+def unreadable(exc: Exception) -> DxfRefusedError:
+    """`dxf unreadable`, naming the parser's exception type and at most a line number.
+
+    Never the parser's own message: ezdxf quotes the offending tag (a non-DXF file's first
+    line, a decode error's byte), so the message would hand back the input's bytes to whoever
+    asked, file contents an agent tool must not leak (apeCAD#90 review round 1).
+    """
+    line = re.search(r"\bline (\d+)", str(exc))
+    where = f" at line {line.group(1)}" if line else ""
+    return DxfRefusedError(
+        "unreadable", f"{type(exc).__name__}{where}; the bytes are not a DXF this import reads"
+    )
 
 
 def _ezdxf() -> Any:
@@ -122,7 +137,7 @@ def _read(data: bytes, files: Any) -> tuple[Any, object]:
         insunits = _file_insunits(tagger.ascii_tags_loader(io.StringIO(text)))
         return files.read(io.StringIO(text)), insunits
     except Exception as exc:  # ezdxf raises its structure errors and plain ones alike
-        raise DxfRefusedError("unreadable", f"{type(exc).__name__}: {exc}") from exc
+        raise unreadable(exc) from exc
 
 
 def _file_insunits(tags: Any) -> object:

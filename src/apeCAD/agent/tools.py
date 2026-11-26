@@ -329,18 +329,29 @@ def export_dxf(session: Session, *, root: Path | None = None, **params: object) 
 IMPORT_DXF_KEYS = frozenset({"data", "path", "layers", "units", "arc_chord_mm"})
 
 MAX_BASE64_CHARS = 4 * -(-MAX_BYTES // 3)
-"""The longest base64 text of at most `MAX_BYTES` bytes; longer `data` is over the byte cap."""
+"""The length of the base64 of `MAX_BYTES` bytes, the longest `data` that can be read.
+
+Length alone cannot be the bound: with `MAX_BYTES % 3 == 2`, `MAX_BYTES` bytes (one `=` of
+padding) and `MAX_BYTES + 1` bytes (none) both take this many characters. `_base64_dxf`
+therefore bounds the decoded size, `len // 4 * 3` less the padding, before decoding."""
 
 
-def import_dxf(*, root: Path | None = None, **params: object) -> Envelope:
+def import_dxf(
+    root: Path | None = None, confine: bool = False, /, **params: object
+) -> Envelope:
     """DXF to an `apeCAD.section-seed` v2 and a report (ADR 0042): `{ok, seed, report}`.
 
     Exactly one of `data` (the file's bytes, base64) and `path` (read as `open_document`
-    reads: relative to `root`, else the cwd). `layers`, `units` and `arc_chord_mm` are
+    reads: relative to `root`, else the cwd). With `confine` (attach mode), `path` must resolve,
+    links and junctions followed, to a file under `root`, as `render`'s `save_to` must; it is
+    refused by name before the file is touched. `layers`, `units` and `arc_chord_mm` are
     `dxf_import.import_dxf`'s. It needs no document and touches none, so the envelope has no
     revision; the host replays the seed (the transport's `seed` action). The arguments and
     the 8 MiB byte cap are checked before a byte is read or decoded. A refusal is
     `dxf <reason>: ...` under its ADR 0042 code; without the `dxf` extra, `UNAVAILABLE`.
+
+    `root` and `confine` are positional-only, so a `root` or `confine` key an agent sends
+    stays in `params` and is refused as an extra key; it can never widen the path rule.
     """
 
     def body() -> Envelope:
@@ -354,9 +365,16 @@ def import_dxf(*, root: Path | None = None, **params: object) -> Envelope:
         require_units(units)
         require_chord(chord)
         if data is not None:
-            raw = _base64_dxf(as_str("data", data))
+            if not isinstance(data, str):
+                kind = type(data).__name__
+                raise DxfArgumentError("data", f"must be the file's bytes in base64, got {kind}")
+            raw = _base64_dxf(data)
         else:
-            raw = _read_dxf(resolve_path(Path.cwd() if root is None else root, "path", path))
+            base = (Path.cwd() if root is None else root).resolve()
+            target = resolve_path(base, "path", path)
+            if confine and (target == base or not target.is_relative_to(base)):
+                raise invalid(f"path {path!r} must resolve to a file under the root {base}")
+            raw = _read_dxf(target)
         result = _import_dxf(raw, layers=layers, units=units, arc_chord_mm=chord)
         return {"ok": True, "seed": result.seed, "report": result.report}
 
@@ -372,17 +390,22 @@ def resolve_path(base: Path, name: str, value: object) -> Path:
 
 
 def _too_large(size: int) -> DxfTooLargeError:
-    """`dxf_import.import_dxf`'s own byte-cap refusal, word for word."""
+    """`dxf_import.import_dxf`'s own byte-cap refusal, word for word, for a file of `size`
+    bytes or base64 `data` that decodes to `size` bytes."""
     return DxfTooLargeError("too-large", f"{size} bytes; the import reads at most {MAX_BYTES}")
 
 
+def base64_size(text: str) -> int:
+    """The bytes base64 `text` decodes to when it is valid (`validate=True`: no whitespace,
+    padded to a multiple of 4), counted without decoding it."""
+    padding = min(len(text) - len(text.rstrip("=")), 2)
+    return len(text) // 4 * 3 - padding
+
+
 def _base64_dxf(text: str) -> bytes:
-    if len(text) > MAX_BASE64_CHARS:  # counted before decoding
-        raise DxfTooLargeError(
-            "too-large",
-            f"data is {len(text)} base64 characters, over the {MAX_BASE64_CHARS} that "
-            f"{MAX_BYTES} bytes take; the import reads at most {MAX_BYTES} bytes",
-        )
+    size = base64_size(text)
+    if size > MAX_BYTES:  # counted before decoding; the same words as a file that size
+        raise _too_large(size)
     try:
         return base64.b64decode(text, validate=True)
     except (binascii.Error, ValueError) as exc:
