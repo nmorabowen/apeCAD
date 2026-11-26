@@ -156,6 +156,8 @@
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  white-space: nowrap; /* never wrap mid-word (apeSection#230 item 3); the head text wraps instead */
+  flex: 0 0 auto;
 }
 
 .apecad-section-overlay.stale .apecad-section-legend,
