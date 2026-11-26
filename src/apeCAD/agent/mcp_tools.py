@@ -53,6 +53,7 @@ class ToolSet(Protocol):
     def export_dxf(self, document: object, **params: object) -> Envelope: ...
     def get_document(self, document: object) -> Envelope: ...
     def get_section_draft(self, document: object, version: object = None) -> Envelope: ...
+    def import_dxf(self, **params: object) -> Envelope: ...
 
 
 class ArgumentProblem(Exception):
@@ -260,6 +261,42 @@ TOOLS: dict[str, McpTool] = {
             },
             lambda t, a: t.get_section_draft(a["document"], a.get("version")),
             ("document",),
+        ),
+        _tool(
+            "import_dxf",
+            "Read a DXF drawing of a section into an apeCAD.section-seed v2 and a report "
+            "(ADR 0042). It touches no document: replay the seed with the transport's seed "
+            "action. Give exactly one of data (the file, base64) and path (relative to --root, "
+            "else the cwd). The default layers are apeCAD's own: CONCRETE-CUT, STEEL-CUT, VOID "
+            "and BAR; layers replaces them. units (mm, cm, m, in, ft) wins over $INSUNITS, and "
+            "with neither the file is refused, never guessed. Bulges are refused unless "
+            "arc_chord_mm is given. A refusal reads 'dxf <reason>: ...'. Needs the dxf extra, "
+            "else UNAVAILABLE.",
+            {
+                "data": {
+                    "type": ["string", "null"],
+                    "description": "The DXF file's bytes, base64; at most 8 MiB decoded",
+                },
+                "path": {
+                    "type": ["string", "null"],
+                    "description": "A DXF file; relative paths resolve against --root, else "
+                    "the cwd",
+                },
+                "layers": {
+                    "type": ["object", "null"],
+                    "description": "Replaces the layer map: {name: {role: concrete|steel|void|"
+                    "bar, material?, designation?}}",
+                },
+                "units": {
+                    "type": ["string", "null"],
+                    "description": "mm, cm, m, in or ft; overrides $INSUNITS",
+                },
+                "arc_chord_mm": {
+                    "type": ["number", "null"],
+                    "description": "Flatten bulges to chords within this sagitta (mm)",
+                },
+            },
+            lambda t, a: t.import_dxf(**a),
         ),
     )
 }

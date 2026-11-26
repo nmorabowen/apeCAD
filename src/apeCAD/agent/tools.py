@@ -8,6 +8,7 @@ never raises: it comes back as `{ok: false, error: {code, message}, revision}`.
 from __future__ import annotations
 
 import base64
+import binascii
 from pathlib import Path
 from typing import Any
 
@@ -30,12 +31,21 @@ from apeCAD.agent.errors import Envelope, ToolError, guarded
 from apeCAD.agent.query import query_entities as _query_entities
 from apeCAD.agent.session import Session
 from apeCAD.catalog import Applied
-from apeCAD.errors import INVALID_ARGUMENT, DocumentError
+from apeCAD.dxf_import import import_dxf as _import_dxf
+from apeCAD.errors import INVALID_ARGUMENT, IO_ERROR, DocumentError
 from apeCAD.ops import SCHEMA_ID
 from apeCAD.render.api import PngResult, RenderResult, render_png, render_svg
 from apeCAD.render.dxf import export_dxf as _export_dxf
 from apeCAD.render.scene import closure, entity_map
 from apeCAD.render.section import NOT_DRAWN, not_drawn, not_drawn_reason
+from apeCAD.section.dxf_options import (
+    MAX_BYTES,
+    DxfArgumentError,
+    DxfTooLargeError,
+    layer_map,
+    require_chord,
+    require_units,
+)
 from apeCAD.section_draft import section_draft
 
 RENDER_DEFAULTS: dict[str, object] = {
@@ -314,6 +324,108 @@ def export_dxf(session: Session, *, root: Path | None = None, **params: object) 
         return _ok(session, fields)
 
     return guarded(lambda: session.revision, body)
+
+
+IMPORT_DXF_KEYS = frozenset({"data", "path", "layers", "units", "arc_chord_mm"})
+
+MAX_BASE64_CHARS = 4 * -(-MAX_BYTES // 3)
+"""The length of the base64 of `MAX_BYTES` bytes, the longest `data` that can be read.
+
+Length alone cannot be the bound: with `MAX_BYTES % 3 == 2`, `MAX_BYTES` bytes (one `=` of
+padding) and `MAX_BYTES + 1` bytes (none) both take this many characters. `_base64_dxf`
+therefore bounds the decoded size, `len // 4 * 3` less the padding, before decoding."""
+
+
+def import_dxf(
+    root: Path | None = None, confine: bool = False, /, **params: object
+) -> Envelope:
+    """DXF to an `apeCAD.section-seed` v2 and a report (ADR 0042): `{ok, seed, report}`.
+
+    Exactly one of `data` (the file's bytes, base64) and `path` (read as `open_document`
+    reads: relative to `root`, else the cwd). With `confine` (attach mode), `path` must resolve,
+    links and junctions followed, to a file under `root`, as `render`'s `save_to` must; it is
+    refused by name before the file is touched. `layers`, `units` and `arc_chord_mm` are
+    `dxf_import.import_dxf`'s. It needs no document and touches none, so the envelope has no
+    revision; the host replays the seed (the transport's `seed` action). The arguments and
+    the 8 MiB byte cap are checked before a byte is read or decoded. A refusal is
+    `dxf <reason>: ...` under its ADR 0042 code; without the `dxf` extra, `UNAVAILABLE`.
+
+    `root` and `confine` are positional-only, so a `root` or `confine` key an agent sends
+    stays in `params` and is refused as an extra key; it can never widen the path rule.
+    """
+
+    def body() -> Envelope:
+        only_keys("import_dxf", params, set(IMPORT_DXF_KEYS))
+        data, path = params.get("data"), params.get("path")
+        if (data is None) == (path is None):
+            raise invalid("import_dxf takes exactly one of data (the file, base64) and path")
+        layers, units = params.get("layers"), params.get("units")
+        chord = params.get("arc_chord_mm")
+        layer_map(layers)  # every argument is named before any byte is read, as import_dxf does
+        require_units(units)
+        require_chord(chord)
+        if data is not None:
+            if not isinstance(data, str):
+                kind = type(data).__name__
+                raise DxfArgumentError("data", f"must be the file's bytes in base64, got {kind}")
+            raw = _base64_dxf(data)
+        else:
+            base = (Path.cwd() if root is None else root).resolve()
+            target = resolve_path(base, "path", path)
+            if confine and (target == base or not target.is_relative_to(base)):
+                raise invalid(f"path {path!r} must resolve to a file under the root {base}")
+            raw = _read_dxf(target)
+        result = _import_dxf(raw, layers=layers, units=units, arc_chord_mm=chord)
+        return {"ok": True, "seed": result.seed, "report": result.report}
+
+    return guarded(lambda: None, body)
+
+
+def resolve_path(base: Path, name: str, value: object) -> Path:
+    """A path argument: relative paths resolve against `base` (the root, else the cwd)."""
+    text = as_str(name, value)
+    if not text.strip():
+        raise invalid(f"{name} must not be empty")
+    return (base / Path(text).expanduser()).resolve()
+
+
+def _too_large(size: int) -> DxfTooLargeError:
+    """`dxf_import.import_dxf`'s own byte-cap refusal, word for word, for a file of `size`
+    bytes or base64 `data` that decodes to `size` bytes."""
+    return DxfTooLargeError("too-large", f"{size} bytes; the import reads at most {MAX_BYTES}")
+
+
+def base64_size(text: str) -> int:
+    """The bytes base64 `text` decodes to when it is valid (`validate=True`: no whitespace,
+    padded to a multiple of 4), counted without decoding it."""
+    padding = min(len(text) - len(text.rstrip("=")), 2)
+    return len(text) // 4 * 3 - padding
+
+
+def _base64_dxf(text: str) -> bytes:
+    size = base64_size(text)
+    if size > MAX_BYTES:  # counted before decoding; the same words as a file that size
+        raise _too_large(size)
+    try:
+        return base64.b64decode(text, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise DxfArgumentError("data", f"must be the file's bytes in base64: {exc}") from exc
+
+
+def _read_dxf(target: Path) -> bytes:
+    """The file's bytes; its size is checked before it is opened, and no more than the cap
+    plus one byte is ever read (a file that grew is still refused, by `import_dxf`)."""
+    try:
+        size = target.stat().st_size
+    except OSError as exc:
+        raise ToolError(IO_ERROR, f"cannot read {target}: {exc}") from exc
+    if size > MAX_BYTES:
+        raise _too_large(size)
+    try:
+        with target.open("rb") as handle:
+            return handle.read(MAX_BYTES + 1)
+    except OSError as exc:
+        raise ToolError(IO_ERROR, f"cannot read {target}: {exc}") from exc
 
 
 def _render_window(value: object) -> tuple[list[float], list[float]] | None:

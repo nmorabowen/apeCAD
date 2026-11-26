@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from apeCAD.agent import tools
-from apeCAD.agent.args import as_str, invalid
+from apeCAD.agent.args import invalid
 from apeCAD.agent.errors import Envelope, ToolError, failure, guarded
 from apeCAD.agent.session import Session
 from apeCAD.document import Document
@@ -111,6 +111,12 @@ class LocalTools:
         root = self.root if self.root is not None else Path.cwd()
         return self._with(document, lambda s: tools.export_dxf(s, root=root, **params))
 
+    def import_dxf(self, **params: object) -> Envelope:
+        """DXF to a section-seed v2 and a report (ADR 0042); `path` reads as `open_document`.
+        Needs no document, so the envelope has no revision."""
+        root = self.root if self.root is not None else Path.cwd()
+        return tools.import_dxf(root, False, **params)
+
     def get_document(self, document: object) -> Envelope:
         return self._with(document, tools.get_document)
 
@@ -136,14 +142,11 @@ class LocalTools:
     def _resolve(self, name: str, value: object, *, confine: bool) -> Path:
         """Relative paths resolve against the root, else the cwd. With a root and `confine`,
         the path must land under it."""
-        text = as_str(name, value)
-        if not text.strip():
-            raise invalid(f"{name} must not be empty")
         base = self.root if self.root is not None else Path.cwd()
-        target = (base / Path(text).expanduser()).resolve()
+        target = tools.resolve_path(base, name, value)
         if confine and self.root is not None and (
             target == self.root or not target.is_relative_to(self.root)
         ):
-            raise invalid(f"{name} {text!r} must resolve to a file under the root {self.root}")
+            raise invalid(f"{name} {value!r} must resolve to a file under the root {self.root}")
         return target
 

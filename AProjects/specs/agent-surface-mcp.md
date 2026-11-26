@@ -1,7 +1,7 @@
 # Spec — agent surface: op catalog, MCP server, render and query tools
 
 **Status:** Implemented (2026-10-14)
-**ADRs:** 0006, 0019, 0023, 0026, 0027, 0028, 0034, 0040
+**ADRs:** 0006, 0019, 0023, 0026, 0027, 0028, 0034, 0040, 0042
 
 What agents call to draw with apeCAD, and the order to build it in. ADR 0028 holds the
 reasons; this file holds the shapes. Units are millimetres throughout (ADR 0006). Every JSON
@@ -54,9 +54,9 @@ Error codes used by every surface:
 | `REFUSED` | refusal | The document refused a well-formed op. Message = `DocumentError` text | No; change the op or the draft |
 | `STALE` | refusal | `expect_revision` did not match. Nothing changed | Only after `inspect` |
 | `NOT_FOUND` | refusal | Unknown document id, entity id or label | No |
-| `TOO_LARGE` | refusal | Over a cap (`MAX_OPS`, batch size). Never truncated | No |
+| `TOO_LARGE` | refusal | Over a cap (`MAX_OPS`, batch size, a DXF import's caps). Never truncated | No |
 | `DETACHED` | environment | Attach mode lost its scratchpad, or the identity changed | After the human restarts it |
-| `UNAVAILABLE` | environment | An optional extra is missing (`png`) | After installing it |
+| `UNAVAILABLE` | environment | An optional extra is missing (`png`, `dxf`) | After installing it |
 | `IO_ERROR` | environment | A file could not be read or written | Maybe |
 | `TEMPLATE_LOCKED` | refusal | The op would change, delete or reference a section-template child (ADR 0040 decision 3). Edit the template's params, delete it, or explode it | No |
 
@@ -295,6 +295,51 @@ Result: MCP content `[{type: "text", text: "<the DXF>"}]`, plus the envelope
 AC1027 (R2013) in millimetres (`$INSUNITS` 4), on the `render/style.py` layers with ByLayer
 ADR-005 weights and colours. The function behind it is `apeCAD.render.dxf.export_dxf`.
 
+### `import_dxf`
+
+A DXF drawing of a section read into an `apeCAD.section-seed` v2 and a report
+([ADR 0042](../adrs/0042-dxf-import-to-section-seed.md) and its erratum; slice IMP-1b). It
+needs no document and touches none, so its envelope has no `revision`. The host replays the
+seed: the transport's `seed` action, or `document_from_section_seed`. Needs the `dxf` extra;
+without it, `UNAVAILABLE`, and never another reader.
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `data` | string \| null | null | the file's bytes, base64 (no line breaks); give exactly one of `data` and `path` |
+| `path` | string \| null | null | a DXF file. Local mode reads it as `open_document` does: relative to `--root`, else the cwd, not confined. Attach mode confines it under the agent's root, as `save_to` (below) |
+| `layers` | object \| null | null: the writer's layers `CONCRETE-CUT`, `STEEL-CUT`, `VOID`, `BAR` | replaces the map: `{name: {role, material?, designation?}}` (decision 2) |
+| `units` | string \| null | null: `$INSUNITS` | `mm`, `cm`, `m`, `in` or `ft`; wins over `$INSUNITS` (decision 4) |
+| `arc_chord_mm` | number \| null | null: a bulge is refused | flattens bulges to chords within this sagitta (decision 5) |
+
+Result: `{ok, seed, report}`, where `seed` and `report` are
+`apeCAD.dxf_import.import_dxf(...).seed` and `.report`, unchanged. Over MCP the envelope is the
+structured content and its JSON the text block; the CLI prints the same envelope. The same
+bytes and arguments give the same JSON on every surface (local, attach, MCP, CLI).
+
+Caps, each counted before the work it bounds (decision 11, erratum item 1): 8 MiB of input
+(a `path` by its size before it is opened, `data` by the size its base64 decodes to, counted
+before it is decoded),
+then 500 mapped entities, 2,000 vertices and 100 rings before any geometry. Over one is
+`TOO_LARGE`, `dxf too-large: ...`.
+
+Errors (decision 14), each message starting `dxf <reason>:`: `INVALID_ARGUMENT` for a bad
+`data`, `layers`, `units` or `arc_chord_mm` (`dxf data:`, `dxf layers:`, ...), named before a
+byte is read; `TOO_LARGE` (`too-large`); `REFUSED` for `unreadable`, `no-units`,
+`entity-unsupported`, `tilted`, `open-outline`, `arc`, `width`, `ring-not-simple`,
+`ring-contact`, `hole-layer`, `nested-void`, `bar-size`, `extent`, `no-geometry` and
+`replay-mismatch`. Plus, from the tool itself: `INVALID_ARGUMENT` when not exactly one of
+`data` and `path` is given, and `IO_ERROR` when the file cannot be read.
+
+In attach mode it runs in the agent's process and is not hosted: it sends nothing to the
+scratchpad. There `path` must resolve, links and junctions followed, to a file under the agent's
+root, as `save_to` must: `..`, an absolute path outside it, the root itself or a junction that
+leads out of it is `INVALID_ARGUMENT` before the file is touched. Attach mode opens no other
+file (`open_document` is refused there).
+
+`dxf unreadable` names the parser's exception type and at most a line number, never the
+parser's message: it would quote the input's bytes. No refusal echoes a file's contents back,
+whether it came by `path` or by `data`.
+
 ### `get_document`
 
 | Param | Type |
@@ -339,7 +384,7 @@ attached scratchpad.
 | `GET /api/revision` | | `{revision}`; the browser polls it about once a second |
 | `POST /api/op` (changed) | adds optional `expect_revision`; also accepts `{op, params}` | as today, plus `revision`; errors gain `code` |
 | `POST /api/ops` | `{ops: [{op, params}], expect_revision?}` | `apply_ops` result |
-| `POST /api/tool` (S5) | `{tool, arguments}`: `list_ops`, `apply_op`, `apply_ops`, `undo`, `redo`, `inspect`, `query_entities`, `get_document`, `get_section_draft`, with the §4 params minus `document` | that tool's envelope, from the scratchpad's session. What attach mode calls. `render` is not hosted: the attached side renders a `get_document` snapshot, so `save_to` resolves under the agent's root and the scratchpad writes no files |
+| `POST /api/tool` (S5) | `{tool, arguments}`: `list_ops`, `apply_op`, `apply_ops`, `undo`, `redo`, `inspect`, `query_entities`, `get_document`, `get_section_draft`, with the §4 params minus `document` | that tool's envelope, from the scratchpad's session. What attach mode calls. `render` is not hosted: the attached side renders a `get_document` snapshot, so `save_to` resolves under the agent's root and the scratchpad writes no files. `import_dxf` is not hosted either: it needs no document and runs in the agent's process |
 | `POST /api/undo`, `/api/redo`, `/api/reset`, `/api/load` (changed) | | as today, plus `revision` |
 
 `/api/op` keeps status 400 for bad arguments and refusals (ADR 0026 decision 2). `STALE` and
@@ -362,7 +407,11 @@ python -m apeCAD.cli query FILE [--kind K,K] [--tag T] [--label L] [--ids 1,2]
 python -m apeCAD.cli render FILE [-o OUT.svg] [--format svg|png] [--view top] [--size 800x600]
                      [--ids 1,2] [--highlight 3] [--window=...] [--no-labels] [--show-ids] [--no-annotate]
 python -m apeCAD.cli export-dxf FILE [-o OUT.dxf] [--ids 1,2] [--no-annotate]
+python -m apeCAD.cli import-dxf FILE.dxf [--layers LAYERS_JSON] [--units mm] [--arc-chord-mm 0.5]
 ```
+
+`import-dxf` prints `import_dxf`'s envelope, `{ok, seed, report}`, for the DXF file; it reads
+no document file and writes nothing.
 
 Without `-o`, `render` puts the SVG in the envelope's `svg` field (or base64 PNG in `png` when
 `--format png`), and `export-dxf` the DXF in
@@ -397,7 +446,7 @@ what its tests prove.
 | **S5 — attach mode** | `agent/attach.py` (urllib), `--attach-port`, `--attach`, `--root`, `X-ApeCAD-Instance`, the browser polling `/api/revision` | A scratchpad on port 0 plus an attached tool set: apply through MCP, and it shows up in `/api/scene`. Stop the scratchpad → the next call is `DETACHED`, and no local document exists. Wrong `--root` → exit 2. Restart on the same port (new pid) → `DETACHED` |
 | **S6 — CLI** | `apeCAD/cli.py` | Each subcommand against a temp file; exit codes 0, 1, 2 |
 | **S7 — PNG (optional, implemented)** | `png` extra (`resvg-py>=0.2`); `render_png`; `format: "png"` | Without the extra: `UNAVAILABLE`, never SVG. With it: a PNG whose size matches the request (`resvg_py.svg_to_bytes`) |
-| **S8 — DXF (optional; export implemented in D5 / ADR 0034)** | `dxf` extra (ezdxf): `import_dxf` → ops, `export_dxf` | Import of a fixture produces only catalog ops and replays. Export then import keeps line and arc counts. `export_dxf` shipped in ADR 0034 (stage D5) |
+| **S8 — DXF (optional; export implemented in D5 / ADR 0034, import in ADR 0042)** | `dxf` extra (ezdxf): `export_dxf`; `import_dxf` → a section-seed v2 and a report, not ops (ADR 0042 replaced this stage's import line) | `export_dxf` shipped in ADR 0034 (stage D5). `import_dxf` shipped in IMP-1a/1c (the reader) and IMP-1b (the tool): the tool, the MCP body and the CLI return the reader's seed and report byte for byte on the v2 round trips, and each refusal by name (`tests/test_dxf_import_tools*.py`) |
 
 S1 should land before section mode's first composite op (ADR 0024), so that op arrives with
 its catalog entry. S2 needs ADR 0027 (atomic ops, PR #17) for its batch and

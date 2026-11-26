@@ -81,9 +81,11 @@ match the scratchpad's root) edits the document of a running scratchpad, and
 the browser picks the edits up by polling `/api/revision`. A wrong root or no
 scratchpad exits 2; a stopped or restarted scratchpad is `DETACHED`.
 
-`python -m apeCAD.cli ops|new|apply|inspect|query|render ...` runs the same
+`python -m apeCAD.cli ops|new|apply|inspect|query|render|export-dxf ...` runs the same
 tools over document files and prints one JSON envelope (spec §7). It exits 0
-ok, 1 refusal or environment error, 2 bad argument.
+ok, 1 refusal or environment error, 2 bad argument. `import-dxf FILE.dxf` is
+the `import_dxf` tool (ADR 0042): it prints the section-seed v2 and report,
+and reads no document file.
 
 ## Run the scratchpad
 
@@ -155,6 +157,7 @@ These break a sibling repo if you change them:
 | `apeCAD.section-draft` v1 and v2: the fenced blocks of `AProjects/specs/section-draft.md` and `section-draft-v2.md`, each pinned by its SHA-256 (`tests/test_section_draft.py`, `tests/test_section_draft_v2_spec.py`); `apeCAD.section-seed` v1 and v2. v1 is never edited; hosts get v2 only by asking for `version=2` (ADR 0039 Errata 1) | apeConcrete (v1 wall reader, ADR-0025 D8; v2 general reader, ADR-0026), ape-web-tools HA-04 (v1), apeSection (v2, its ADR-0001) |
 | `apeCAD.scratchpad.transport.handle(request)`, `TRANSPORT_VERSION = 1`, `MAX_OPS`; refusals are `{ok: false, status: 422, error}` (ADR 0026). Importing it must not load `scratchpad.server` (`tests/test_transport.py`) | ape-web-tools HA-04 `POST /api/cad/transport` (its ADR-0006 D3) |
 | `Document.to_frame()` (mm internally) | apeSteel, per coupling-map; `to_gmsh` is not implemented |
+| `apeCAD.dxf_import.import_dxf(data, *, layers, units, arc_chord_mm)` → `DxfImport{seed, report}` (ADR 0042); the agent tool `import_dxf` and CLI `import-dxf` return `{ok, seed, report}`. Refusals keep the codes of decision 14 and the `dxf <reason>:` prefix; the report grows only by additive keys | apeSection (`section_import`, its ADR-0005 §2; IMP-2a), which pins `apeCAD[dxf]` |
 
 apeWorkbench's `CadAdapter` passes `--root <folder>`; the CLI accepts it
 since PR #10 (ADR 0021). Before that it exited with `SystemExit 2` (ADR 0020,
