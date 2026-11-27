@@ -720,3 +720,70 @@ The Decision and Errata 1 to 12 above are unchanged. Code is cited at apeCAD 131
       (`draft/transform.py::_oriented`, through `signed_area`). After an explode, a mirror
       that computes new floats could produce a hole whose float and exact orientations
       disagree. The step's refusal (16.1) covers only what a template stores.
+
+## Errata (2026-11-27): two notes on the lints of 17.6
+
+Recorded from the review of C9-3 (apeCAD PR #77, approved at c12a21b), as apeSection#303.
+These notes correct how 17.6 describes the lints. They change no rule, refusal, lint, test,
+template version or contract, and the Decision and Errata 1 to 21 above are unchanged. Code
+is cited at apeCAD 7c877db by `path::symbol`, with paths under `src/apeCAD/` unless they
+start with `tests/`. The counts are the ones that
+`tests/test_section_template_hole_lint.py::test_the_step_and_the_lint_agree_on_the_generators_cases`
+prints under `pytest -s` at 7c877db: 1,369 cases, and 13 refused by R4, R5 or R7 with no
+warning (R4 2, R5 4, R7 7).
+
+22. **`hoop-bar-not-in-face` is a counterpart of R4 too.** 17.6 names three lints for R4,
+    R5 and R7: `bar-outside-concrete`, `crosstie-crosses-outside` and
+    `circular-tie-outside-face`. It leaves out `hoop-bar-not-in-face`, which also fires
+    when a hole covers a bar's centre.
+    - `section/lint.py::_hoop_bar_not_in_face_v2` warns on a hoop's bars whose centres the
+      concrete face does not cover (`not region.covers(...)`). A centre inside a hole is not
+      covered. A hole that covers a bar's centre meets that bar, so R4 refuses it.
+    - On the same bar, `bar-outside-concrete` always fires too. A face that does not cover a
+      point does not contain it (`section/regions.py::Region.covers`, `Region.contains`), and
+      `section/lint.py::_bar_outside_concrete_v2` warns, among other cases, on a bar whose
+      centre no concrete face contains. A template draws one concrete face, and its bars lie in no void or
+      steel face, so that function checks every one of them. In the parity test's cases, the
+      84 `hoop-bar-not-in-face` warnings name 148 bars, and every one of those bars also
+      draws `bar-outside-concrete`.
+
+    So 17.6's second bullet reads: R4, R5 and R7 refuse what `bar-outside-concrete` and
+    `hoop-bar-not-in-face`, `crosstie-crosses-outside` and `circular-tie-outside-face` would
+    warn about on the exploded drawing. The parity test already reads it this way
+    (`RULE_OF` maps `hoop-bar-not-in-face` to R4, and its docstring says so).
+
+23. **R7's silent refusals are not all contact.** 17.6 says that R4, R5 and R7 refuse what
+    the lints would warn about, "and contact besides". That reads as if contact were the
+    only thing these rules refuse without a warning. For R7 it is not.
+    - `section/lint.py::_circular_tie_outside_face` checks only the tie's centreline circle
+      (`circle_in_region(center, e.centerline_radius_mm, r)`), not the band of steel of
+      width t around it. A hole that sits in the band without reaching the centreline draws
+      no warning, however deep it lies in the steel.
+    - Of the parity test's 13 silent refusals, 4 are R7 holes that reach more than 0.01 mm
+      into the band. Measured in floats outside the test, from the band's nearer face to the
+      hole's farthest point, they reach about 0.02, 0.88, 1.52 and 3.0 mm into it. The other
+      3 silent R7 cases reach 0.001 mm or less: contact, or near it.
+    - An example: on `circular_column`, with ρ 255 and t 10, the band runs from 250 to
+      260 mm from the spiral's centre. A ring hole that lies wholly 259.12 to 259.99 mm from
+      the centre sits inside the tie's steel. R7 refuses it, and the lint is silent.
+
+    This is safe, because the step refuses the hole. The lint stays advisory (17.6), and no
+    lint code changes. So 17.6's "and contact besides" reads, for R7: "and contact, and holes
+    in the tie's steel that do not reach its centreline, besides".
+
+24. **The parity test is one-sided, as 17.6 asks.** This is a note, not a change.
+    - 17.6 asks for two things: a template whose holes clear every rule by 0.01 mm draws no
+      warning, and each lint warns only on what its counterpart rule refuses. It does not ask
+      a lint to warn on what its rule refuses. The test checks exactly that, so it passes a
+      lint that warns less on a face with holes. Its break-once rows
+      (`tests/test_section_template_hole_lint.py::ROWS`) all make the lint warn more.
+    - This was checked outside the test at 7c877db. In `_bar_outside_concrete_v2`, the bar's
+      clearance was taken from the outline alone (`r.clearance(p)` became
+      `r.boundary.distance(p)`). With that change, the test over all the cases still passes,
+      and its R4 silent count rises from 2 to 22.
+    - A `bar-outside-concrete` that ignores holes altogether is still caught, but only
+      because every `bar-outside-concrete` among the cases comes from a hole. That lint never
+      fires, and the test's assertion that every counterpart fires fails.
+
+    A two-sided parity, with each lint warning on whatever its rule refuses, would be a
+    change to 17.6, and the owner's to rule.
